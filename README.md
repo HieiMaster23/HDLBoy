@@ -14,6 +14,6 @@ Experimental Game Boy emulator implemented in VHDL and targeting an Intel/Altera
 ## Progresso atual
 
 - Documentação de referência inicial disponível em `docs/architecture/GameboyCpu.md`, alinhando o design com o Pan Docs.
-- Estrutura mínima da CPU (`rtl/cpu/`) implementada com pacote de tipos, banco de registradores, ALU parcial, unidade de controle e stub de interrupções para evolução incremental.
+- Estrutura mínima da CPU (`rtl/cpu/`) implementada com pacote de tipos, banco de registradores, ALU expandida, unidade de controle com microciclos e bloco de interrupções com vetores priorizados.
 
 As próximas etapas incluem detalhar cada módulo do sistema, incorporar documentação de referência e iniciar a implementação incremental dos blocos principais do hardware.

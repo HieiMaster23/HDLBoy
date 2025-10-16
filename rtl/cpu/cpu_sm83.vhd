@@ -42,6 +42,7 @@ architecture struct of cpu_sm83 is
   signal din_if,din_ie : std_logic_vector(4 downto 0) := (others=>'0');
   signal din_ime : std_logic := '0';
   signal q_if,q_ie : std_logic_vector(4 downto 0); signal q_ime_int : std_logic; signal irq_req : std_logic;
+  signal irq_vector : u16; signal irq_ack : std_logic;
 
   -- Estado HALT
   signal halted : std_logic;
@@ -69,6 +70,7 @@ begin
   u_alu: entity work.alu
     port map (
       op=>alu_op, a=>alu_a, b=>alu_b, cin=>cin,
+      flags_in=>q_flags,
       y=>alu_y, flags_o=>flags_from_alu
     );
 
@@ -80,7 +82,9 @@ begin
       we_if=>we_if, din_if=>din_if, q_if=>q_if,
       we_ie=>we_ie, din_ie=>din_ie, q_ie=>q_ie,
       we_ime=>we_ime, din_ime=>din_ime, q_ime=>q_ime_int,
-      irq_req=>irq_req
+      irq_ack=>irq_ack,
+      irq_req=>irq_req,
+      irq_vector=>irq_vector
     );
 
   -- CONTROL UNIT
@@ -100,6 +104,8 @@ begin
       alu_op=>alu_op, alu_a=>alu_a, alu_b=>alu_b, cin=>cin, alu_y=>alu_y, flags_from_alu=>flags_from_alu,
       inc_pc=>inc_pc, dec_sp=>dec_sp, inc_hl=>inc_hl, dec_hl=>dec_hl,
       irq_req=>irq_req,
+      irq_vector=>irq_vector,
+      irq_ack=>irq_ack,
       halted=>halted
     );
 

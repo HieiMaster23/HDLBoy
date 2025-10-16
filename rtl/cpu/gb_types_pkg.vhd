@@ -24,7 +24,9 @@ package gb_types_pkg is
     ALU_AND,
     ALU_OR,
     ALU_XOR,
-    ALU_CP
+    ALU_CP,
+    ALU_INC,
+    ALU_DEC
   );
 
   -- Seletores de fonte do barramento de dados interno
