@@ -32,14 +32,22 @@ begin
         tmp := ('0' & a_u) + ('0' & b_u);
         res_v := tmp(7 downto 0);
         c_v := tmp(8);
-        h_v := std_logic(((a_u(3 downto 0) + b_u(3 downto 0)) > "1111"));
+        if (to_integer(a_u(3 downto 0)) + to_integer(b_u(3 downto 0))) > 15 then
+          h_v := '1';
+        else
+          h_v := '0';
+        end if;
         n_v := '0';
 
       when ALU_SUB =>
         tmp := ('0' & a_u) - ('0' & b_u);
         res_v := tmp(7 downto 0);
         c_v := tmp(8); -- Em SUB no LR35902, C indica borrow; ajustar em fases futuras.
-        h_v := std_logic((a_u(3 downto 0) < b_u(3 downto 0)));
+        if a_u(3 downto 0) < b_u(3 downto 0) then
+          h_v := '1';
+        else
+          h_v := '0';
+        end if;
         n_v := '1';
 
       when ALU_AND =>
@@ -64,7 +72,11 @@ begin
         tmp := ('0' & a_u) - ('0' & b_u);
         res_v := a_u; -- CP não altera A
         c_v := tmp(8);
-        h_v := std_logic((a_u(3 downto 0) < b_u(3 downto 0)));
+        if a_u(3 downto 0) < b_u(3 downto 0) then
+          h_v := '1';
+        else
+          h_v := '0';
+        end if;
         n_v := '1';
 
       when others =>
