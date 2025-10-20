@@ -34,8 +34,13 @@ architecture struct of cpu_sm83 is
   -- ALU
   signal alu_op  : alu_op_t; signal alu_a,alu_b,alu_y : u8; signal cin : std_logic; signal flags_from_alu : flags_t;
 
-  -- Controle de endereços (sinais reservados para futuras integrações)
-  signal inc_pc,dec_sp,inc_hl,dec_hl : std_logic;
+  -- Controle de endereços
+  signal inc_pc,inc_sp,dec_sp,inc_hl,dec_hl : std_logic;
+  signal idu_addr_sel : addr_sel_t;
+  signal idu_load_pc, idu_load_sp, idu_load_hl : std_logic;
+  signal idu_pc_value, idu_sp_value, idu_hl_value : u16;
+  signal idu_addr : u16;
+  signal idu_next_pc, idu_next_sp, idu_next_hl : u16;
 
   -- INT CTRL
   signal we_if,we_ie,we_ime : std_logic := '0';
@@ -74,6 +79,30 @@ begin
       y=>alu_y, flags_o=>flags_from_alu
     );
 
+  -- Unidade de endereços
+  u_idu: entity work.idu
+    port map (
+      pc_in=>q_pc,
+      sp_in=>q_sp,
+      hl_in=>q_h & q_l,
+      load_pc=>idu_load_pc,
+      pc_value=>idu_pc_value,
+      load_sp=>idu_load_sp,
+      sp_value=>idu_sp_value,
+      load_hl=>idu_load_hl,
+      hl_value=>idu_hl_value,
+      inc_pc=>inc_pc,
+      inc_sp=>inc_sp,
+      dec_sp=>dec_sp,
+      inc_hl=>inc_hl,
+      dec_hl=>dec_hl,
+      addr_sel=>idu_addr_sel,
+      addr_o=>idu_addr,
+      next_pc=>idu_next_pc,
+      next_sp=>idu_next_sp,
+      next_hl=>idu_next_hl
+    );
+
   -- INT CTRL (stub funcional)
   u_int: entity work.int_ctrl
     port map (
@@ -102,7 +131,15 @@ begin
       we_sp=>we_sp, din_sp=>din_sp,
       we_ir=>we_ir, din_ir=>din_ir,
       alu_op=>alu_op, alu_a=>alu_a, alu_b=>alu_b, cin=>cin, alu_y=>alu_y, flags_from_alu=>flags_from_alu,
-      inc_pc=>inc_pc, dec_sp=>dec_sp, inc_hl=>inc_hl, dec_hl=>dec_hl,
+      inc_pc=>inc_pc, inc_sp=>inc_sp, dec_sp=>dec_sp, inc_hl=>inc_hl, dec_hl=>dec_hl,
+      idu_addr_sel=>idu_addr_sel,
+      idu_load_pc=>idu_load_pc, idu_pc_value=>idu_pc_value,
+      idu_load_sp=>idu_load_sp, idu_sp_value=>idu_sp_value,
+      idu_load_hl=>idu_load_hl, idu_hl_value=>idu_hl_value,
+      idu_addr=>idu_addr,
+      idu_next_pc=>idu_next_pc,
+      idu_next_sp=>idu_next_sp,
+      idu_next_hl=>idu_next_hl,
       irq_req=>irq_req,
       irq_vector=>irq_vector,
       irq_ack=>irq_ack,

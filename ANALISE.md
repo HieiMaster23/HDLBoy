@@ -9,6 +9,8 @@
 - ALU expandida com operações aritméticas (`ADC`/`SBC`) e lógicas adicionais, preservando semântica de flags.
 - Máquina de estados da `control_unit` revisada para suportar microciclos de preparação/commit da ALU, leitura de imediatos e verificação de interrupções após cada instrução.
 - Bloco de interrupções (`int_ctrl.vhd`) atualizado com priorização, vetores oficiais e handshake de acknowledge com a control unit.
+- Unidade de endereços (`idu.vhd`) refeita como bloco combinacional, provendo incrementos/decrementos de `PC/SP/HL` e seleção de endereço centralizada para a control unit.
+- FSM ampliada para loads imediatos (`LD r,d8`), transferências simples (`LD A,B`, `LD B,A`) e acessos indiretos via `(HL)` incluindo `INC/DEC (HL)`.
 
 ## Etapas implícitas no processo até aqui
 1. **Definição do objetivo**: estabelecer o escopo do projeto e a plataforma alvo (Cyclone IV EP4CE6).
@@ -20,10 +22,11 @@
    - Registrar convenções de codificação VHDL, padrões de reset, clock e estilo de FSM.
    - Expandir a documentação técnica com mapas de memória e cronogramas de instruções.
 2. **Evolução da CPU**
-   - Integrar a unidade de endereços (`idu.vhd`) ao fluxo da `control_unit`, habilitando manipulação de `PC`, `SP` e `HL` sem lógica duplicada.
-   - Completar a cobertura da ALU com rotações, shifts e operações bit a bit (`CB xx`) e validar os cálculos de flags remanescentes.
-   - Implementar mais instruções na FSM (loads indiretos, operações nos registradores BC/DE/HL, saltos simples) e validar com testbenches.
-   - Completar o bloco de interrupções com espelhamento realista de IF/IE/IME e interface com a control unit (instruções `EI`/`DI`, push/pop do `PC`).
+   - Expandir loads e operações aritméticas envolvendo os pares `BC`/`DE` e estender transferências entre todos os registradores de 8 bits.
+   - Introduzir manipulação completa da pilha e do ponteiro de stack (`PUSH/POP`, `LD (nn),SP`, autoincrementos/decrementos controlados).
+   - Implementar saltos, chamadas e retornos (`JR`, `JP`, `CALL`, `RET`) com temporização aproximada aos ciclos oficiais.
+   - Completar a cobertura da ALU com rotações, shifts e operações bit a bit (`CB xx`) validando flags remanescentes.
+   - Evoluir o bloco de interrupções com suporte às instruções `EI`/`DI`, empilhamento automático do `PC` e desbloqueio condicional do `IME`.
 3. **Infraestrutura de testes e simulação**
    - Configurar testbenches para `register_file`, `alu` e `control_unit`, garantindo regressões automáticas.
    - Documentar como executar simulações (ModelSim/ghdl) e registrar resultados esperados.
@@ -32,7 +35,7 @@
    - Avaliar requisitos específicos da placa (pinos, clock base, memória interna) e preparar um projeto Quartus inicial.
 
 ## Próximas ações imediatas sugeridas
-- Revisar e detalhar a FSM da `control_unit` para cobrir instruções adicionais de carga e aritmética simples.
-- Ajustar o fluxo de escrita de `PC/SP/HL` utilizando a `idu.vhd`, reduzindo redundâncias.
-- Criar testes unitários mínimos (por exemplo, um testbench da ALU com os opcodes já suportados).
+- Criar testbenches direcionados para validar o caminho de loads indiretos (`LD A,(HL)`, `LD (HL),A`, `INC/DEC (HL)`) e as atualizações de flags correspondentes.
+- Estender a FSM para suportar operações com os pares `BC`/`DE` e rotas adicionais de transferência entre registradores de 8 bits.
+- Prototipar o fluxo de pilha (push/pop) e definir como o `SP` será manipulado via `idu.vhd`.
 - Continuar alimentando a documentação conforme novos blocos forem implementados.

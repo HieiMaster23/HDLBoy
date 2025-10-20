@@ -29,6 +29,13 @@ package gb_types_pkg is
     ALU_DEC
   );
 
+  -- Destinos possíveis para os resultados da ALU
+  type alu_dest_t is (
+    ALU_DEST_NONE,
+    ALU_DEST_A,
+    ALU_DEST_MEM_HL
+  );
+
   -- Seletores de fonte do barramento de dados interno
   type bus_src_t is (
     BUS_SRC_NONE,
@@ -41,6 +48,25 @@ package gb_types_pkg is
     BUS_SRC_REG_H,
     BUS_SRC_REG_L,
     BUS_SRC_MEM_DI -- dado vindo de data_in externo
+  );
+
+  -- Seleção de endereço fornecido pela unidade de endereços
+  type addr_sel_t is (
+    ADDR_SEL_PC,
+    ADDR_SEL_HL,
+    ADDR_SEL_SP
+  );
+
+  -- Seleção simples de registradores de 8 bits
+  type reg_sel_t is (
+    REG_NONE,
+    REG_A,
+    REG_B,
+    REG_C,
+    REG_D,
+    REG_E,
+    REG_H,
+    REG_L
   );
 
 end package;
