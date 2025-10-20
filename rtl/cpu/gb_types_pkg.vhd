@@ -66,7 +66,8 @@ package gb_types_pkg is
     REG_D,
     REG_E,
     REG_H,
-    REG_L
+    REG_L,
+    REG_MEM_HL
   );
 
 end package;

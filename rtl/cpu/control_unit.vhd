@@ -61,8 +61,10 @@ architecture rtl of control_unit is
     S_FETCH,
     S_DECODE,
     S_READ_IMM,
-    S_MEM_RD_HL,
-    S_MEM_WR_HL,
+    S_READ_IMM16_LO,
+    S_READ_IMM16_HI,
+    S_MEM_READ,
+    S_MEM_WRITE,
     S_ALU_PREP,
     S_ALU_WRITE,
     S_HALT
@@ -91,12 +93,42 @@ architecture rtl of control_unit is
     EXEC_DEC_MEM_HL
   );
 
+  type mem_mode_t is (
+    MEM_MODE_NONE,
+    MEM_MODE_HL,
+    MEM_MODE_HL_INC,
+    MEM_MODE_HL_DEC,
+    MEM_MODE_BC,
+    MEM_MODE_DE,
+    MEM_MODE_ABS16,
+    MEM_MODE_IO_IMM,
+    MEM_MODE_IO_C
+  );
+
+  type mem_action_t is (
+    MEM_ACT_NONE,
+    MEM_ACT_READ,
+    MEM_ACT_WRITE
+  );
+
+  type hl_update_t is (
+    HL_UPDATE_NONE,
+    HL_UPDATE_INC,
+    HL_UPDATE_DEC
+  );
+
   signal st : state_t := S_RESET;
   signal current_op : micro_op_t := EXEC_NONE;
   signal operand_reg : u8 := (others => '0');
   signal pending_reg_imm : reg_sel_t := REG_NONE;
   signal pending_mem_load : reg_sel_t := REG_NONE;
   signal alu_target_r : alu_dest_t := ALU_DEST_NONE;
+  signal pending_mem_mode : mem_mode_t := MEM_MODE_NONE;
+  signal pending_mem_action : mem_action_t := MEM_ACT_NONE;
+  signal pending_hl_update : hl_update_t := HL_UPDATE_NONE;
+  signal pending_mem_after_imm : std_logic := '0';
+  signal pending_write_value : u8 := (others => '0');
+  signal pending_addr16 : u16 := (others => '0');
 
   signal data_out_r : u8 := (others => '0');
   signal addr_r     : u16 := (others => '0');
@@ -120,6 +152,35 @@ architecture rtl of control_unit is
   signal idu_load_pc_r, idu_load_sp_r, idu_load_hl_r : std_logic := '0';
   signal idu_pc_value_r, idu_sp_value_r, idu_hl_value_r : u16 := (others => '0');
 
+  function decode_reg(code : std_logic_vector(2 downto 0)) return reg_sel_t is
+  begin
+    case code is
+      when "000" => return REG_B;
+      when "001" => return REG_C;
+      when "010" => return REG_D;
+      when "011" => return REG_E;
+      when "100" => return REG_H;
+      when "101" => return REG_L;
+      when "110" => return REG_MEM_HL;
+      when others => return REG_A;
+    end case;
+  end function;
+
+  function get_reg_value(sel : reg_sel_t;
+                         a_in, b_in, c_in, d_in, e_in, h_in, l_in : u8) return u8 is
+  begin
+    case sel is
+      when REG_A => return a_in;
+      when REG_B => return b_in;
+      when REG_C => return c_in;
+      when REG_D => return d_in;
+      when REG_E => return e_in;
+      when REG_H => return h_in;
+      when REG_L => return l_in;
+      when others => return (others => '0');
+    end case;
+  end function;
+
 begin
   data_out <= data_out_r;
   addr     <= addr_r;
@@ -142,6 +203,57 @@ begin
   idu_load_hl  <= idu_load_hl_r;  idu_hl_value <= idu_hl_value_r;
 
   process(clk)
+    variable dest_sel, src_sel : reg_sel_t;
+    variable src_val : u8;
+
+    procedure write_reg(dest : reg_sel_t; value : u8) is
+    begin
+      case dest is
+        when REG_A =>
+          we_a_r <= '1';
+          din_a_r <= value;
+        when REG_B =>
+          we_b_r <= '1';
+          din_b_r <= value;
+        when REG_C =>
+          we_c_r <= '1';
+          din_c_r <= value;
+        when REG_D =>
+          we_d_r <= '1';
+          din_d_r <= value;
+        when REG_E =>
+          we_e_r <= '1';
+          din_e_r <= value;
+        when REG_H =>
+          we_h_r <= '1';
+          din_h_r <= value;
+        when REG_L =>
+          we_l_r <= '1';
+          din_l_r <= value;
+        when others =>
+          null;
+      end case;
+    end procedure;
+
+    procedure apply_hl(update : hl_update_t) is
+    begin
+      case update is
+        when HL_UPDATE_INC =>
+          inc_hl_r <= '1';
+          we_h_r <= '1';
+          we_l_r <= '1';
+          din_h_r <= idu_next_hl(15 downto 8);
+          din_l_r <= idu_next_hl(7 downto 0);
+        when HL_UPDATE_DEC =>
+          dec_hl_r <= '1';
+          we_h_r <= '1';
+          we_l_r <= '1';
+          din_h_r <= idu_next_hl(15 downto 8);
+          din_l_r <= idu_next_hl(7 downto 0);
+        when others =>
+          null;
+      end case;
+    end procedure;
   begin
     if rising_edge(clk) then
       if reset='1' then
@@ -162,6 +274,12 @@ begin
         current_op <= EXEC_NONE; operand_reg <= (others => '0');
         pending_reg_imm <= REG_NONE; pending_mem_load <= REG_NONE;
         alu_target_r <= ALU_DEST_NONE;
+        pending_mem_mode <= MEM_MODE_NONE;
+        pending_mem_action <= MEM_ACT_NONE;
+        pending_hl_update <= HL_UPDATE_NONE;
+        pending_mem_after_imm <= '0';
+        pending_write_value <= (others => '0');
+        pending_addr16 <= (others => '0');
       else
         -- defaults a cada ciclo
         data_out_r <= (others => '0');
@@ -182,6 +300,10 @@ begin
         idu_load_pc_r <= '0'; idu_load_sp_r <= '0'; idu_load_hl_r <= '0';
         idu_pc_value_r <= q_pc; idu_sp_value_r <= q_sp; idu_hl_value_r <= q_h & q_l;
 
+        dest_sel := REG_NONE;
+        src_sel := REG_NONE;
+        src_val := (others => '0');
+
         case st is
           when S_RESET =>
             idu_addr_sel_r <= ADDR_SEL_PC;
@@ -196,6 +318,12 @@ begin
             pending_reg_imm <= REG_NONE;
             pending_mem_load <= REG_NONE;
             alu_target_r <= ALU_DEST_NONE;
+            pending_mem_mode <= MEM_MODE_NONE;
+            pending_mem_action <= MEM_ACT_NONE;
+            pending_hl_update <= HL_UPDATE_NONE;
+            pending_mem_after_imm <= '0';
+            pending_write_value <= (others => '0');
+            pending_addr16 <= (others => '0');
             st <= S_IRQ_CHECK;
 
           when S_IRQ_CHECK =>
@@ -219,6 +347,12 @@ begin
             pending_reg_imm <= REG_NONE;
             pending_mem_load <= REG_NONE;
             alu_target_r <= ALU_DEST_NONE;
+            pending_mem_mode <= MEM_MODE_NONE;
+            pending_mem_action <= MEM_ACT_NONE;
+            pending_hl_update <= HL_UPDATE_NONE;
+            pending_mem_after_imm <= '0';
+            pending_write_value <= (others => '0');
+            pending_addr16 <= (others => '0');
             st <= S_FETCH;
 
           when S_FETCH =>
@@ -236,6 +370,10 @@ begin
             pending_reg_imm <= REG_NONE;
             pending_mem_load <= REG_NONE;
             alu_target_r <= ALU_DEST_NONE;
+            pending_mem_mode <= MEM_MODE_NONE;
+            pending_mem_action <= MEM_ACT_NONE;
+            pending_hl_update <= HL_UPDATE_NONE;
+            pending_mem_after_imm <= '0';
             case q_ir is
               when x"00" =>
                 st <= S_IRQ_CHECK; -- NOP
@@ -323,10 +461,16 @@ begin
                 st <= S_IRQ_CHECK;
               when x"7E" =>
                 pending_mem_load <= REG_A;
-                st <= S_MEM_RD_HL;
+                pending_mem_mode <= MEM_MODE_HL;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_NONE;
+                st <= S_MEM_READ;
               when x"77" =>
-                operand_reg <= q_a;
-                st <= S_MEM_WR_HL;
+                pending_mem_mode <= MEM_MODE_HL;
+                pending_mem_action <= MEM_ACT_WRITE;
+                pending_hl_update <= HL_UPDATE_NONE;
+                pending_write_value <= q_a;
+                st <= S_MEM_WRITE;
               when x"23" =>
                 inc_hl_r <= '1';
                 we_h_r <= '1';
@@ -343,12 +487,137 @@ begin
                 st <= S_IRQ_CHECK;
               when x"34" =>
                 current_op <= EXEC_INC_MEM_HL;
-                st <= S_MEM_RD_HL;
+                pending_mem_mode <= MEM_MODE_HL;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_NONE;
+                st <= S_MEM_READ;
               when x"35" =>
                 current_op <= EXEC_DEC_MEM_HL;
-                st <= S_MEM_RD_HL;
+                pending_mem_mode <= MEM_MODE_HL;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_NONE;
+                st <= S_MEM_READ;
+              when x"36" =>
+                pending_reg_imm <= REG_MEM_HL;
+                pending_mem_mode <= MEM_MODE_HL;
+                pending_mem_action <= MEM_ACT_WRITE;
+                pending_hl_update <= HL_UPDATE_NONE;
+                st <= S_READ_IMM;
+              when x"0A" =>
+                pending_mem_load <= REG_A;
+                pending_mem_mode <= MEM_MODE_BC;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_NONE;
+                st <= S_MEM_READ;
+              when x"1A" =>
+                pending_mem_load <= REG_A;
+                pending_mem_mode <= MEM_MODE_DE;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_NONE;
+                st <= S_MEM_READ;
+              when x"02" =>
+                pending_mem_mode <= MEM_MODE_BC;
+                pending_mem_action <= MEM_ACT_WRITE;
+                pending_hl_update <= HL_UPDATE_NONE;
+                pending_write_value <= q_a;
+                st <= S_MEM_WRITE;
+              when x"12" =>
+                pending_mem_mode <= MEM_MODE_DE;
+                pending_mem_action <= MEM_ACT_WRITE;
+                pending_hl_update <= HL_UPDATE_NONE;
+                pending_write_value <= q_a;
+                st <= S_MEM_WRITE;
+              when x"22" =>
+                pending_mem_mode <= MEM_MODE_HL;
+                pending_mem_action <= MEM_ACT_WRITE;
+                pending_hl_update <= HL_UPDATE_INC;
+                pending_write_value <= q_a;
+                st <= S_MEM_WRITE;
+              when x"2A" =>
+                pending_mem_load <= REG_A;
+                pending_mem_mode <= MEM_MODE_HL;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_INC;
+                st <= S_MEM_READ;
+              when x"32" =>
+                pending_mem_mode <= MEM_MODE_HL;
+                pending_mem_action <= MEM_ACT_WRITE;
+                pending_hl_update <= HL_UPDATE_DEC;
+                pending_write_value <= q_a;
+                st <= S_MEM_WRITE;
+              when x"3A" =>
+                pending_mem_load <= REG_A;
+                pending_mem_mode <= MEM_MODE_HL;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_DEC;
+                st <= S_MEM_READ;
+              when x"EA" =>
+                pending_mem_mode <= MEM_MODE_ABS16;
+                pending_mem_action <= MEM_ACT_WRITE;
+                pending_hl_update <= HL_UPDATE_NONE;
+                pending_write_value <= q_a;
+                st <= S_READ_IMM16_LO;
+              when x"FA" =>
+                pending_mem_load <= REG_A;
+                pending_mem_mode <= MEM_MODE_ABS16;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_NONE;
+                st <= S_READ_IMM16_LO;
+              when x"E0" =>
+                pending_mem_mode <= MEM_MODE_IO_IMM;
+                pending_mem_action <= MEM_ACT_WRITE;
+                pending_hl_update <= HL_UPDATE_NONE;
+                pending_write_value <= q_a;
+                pending_mem_after_imm <= '1';
+                st <= S_READ_IMM;
+              when x"F0" =>
+                pending_mem_load <= REG_A;
+                pending_mem_mode <= MEM_MODE_IO_IMM;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_NONE;
+                pending_mem_after_imm <= '1';
+                st <= S_READ_IMM;
+              when x"E2" =>
+                pending_mem_mode <= MEM_MODE_IO_C;
+                pending_mem_action <= MEM_ACT_WRITE;
+                pending_hl_update <= HL_UPDATE_NONE;
+                pending_write_value <= q_a;
+                st <= S_MEM_WRITE;
+              when x"F2" =>
+                pending_mem_load <= REG_A;
+                pending_mem_mode <= MEM_MODE_IO_C;
+                pending_mem_action <= MEM_ACT_READ;
+                pending_hl_update <= HL_UPDATE_NONE;
+                st <= S_MEM_READ;
               when others =>
-                st <= S_IRQ_CHECK; -- TODO: expand
+                if q_ir(7 downto 6) = "01" then
+                  dest_sel := decode_reg(q_ir(5 downto 3));
+                  src_sel  := decode_reg(q_ir(2 downto 0));
+                  if dest_sel = REG_MEM_HL then
+                    if src_sel /= REG_MEM_HL then
+                      src_val := get_reg_value(src_sel, q_a, q_b, q_c, q_d, q_e, q_h, q_l);
+                      pending_mem_mode <= MEM_MODE_HL;
+                      pending_mem_action <= MEM_ACT_WRITE;
+                      pending_hl_update <= HL_UPDATE_NONE;
+                      pending_write_value <= src_val;
+                      st <= S_MEM_WRITE;
+                    else
+                      st <= S_IRQ_CHECK;
+                    end if;
+                  elsif src_sel = REG_MEM_HL then
+                    pending_mem_load <= dest_sel;
+                    pending_mem_mode <= MEM_MODE_HL;
+                    pending_mem_action <= MEM_ACT_READ;
+                    pending_hl_update <= HL_UPDATE_NONE;
+                    st <= S_MEM_READ;
+                  else
+                    src_val := get_reg_value(src_sel, q_a, q_b, q_c, q_d, q_e, q_h, q_l);
+                    write_reg(dest_sel, src_val);
+                    st <= S_IRQ_CHECK;
+                  end if;
+                else
+                  st <= S_IRQ_CHECK; -- TODO: expand
+                end if;
             end case;
 
           when S_READ_IMM =>
@@ -358,7 +627,11 @@ begin
             we_pc_r <= '1';
             din_pc_r <= idu_next_pc;
             operand_reg <= data_in;
-            if pending_reg_imm /= REG_NONE then
+            if pending_reg_imm = REG_MEM_HL then
+              pending_reg_imm <= REG_NONE;
+              pending_write_value <= data_in;
+              st <= S_MEM_WRITE;
+            elsif pending_reg_imm /= REG_NONE then
               case pending_reg_imm is
                 when REG_A =>
                   we_a_r <= '1';
@@ -386,54 +659,108 @@ begin
               end case;
               pending_reg_imm <= REG_NONE;
               st <= S_IRQ_CHECK;
+            elsif pending_mem_after_imm = '1' then
+              pending_mem_after_imm <= '0';
+              if pending_mem_mode = MEM_MODE_IO_IMM then
+                pending_addr16 <= x"FF" & data_in;
+              end if;
+              if pending_mem_action = MEM_ACT_WRITE then
+                st <= S_MEM_WRITE;
+              elsif pending_mem_action = MEM_ACT_READ then
+                st <= S_MEM_READ;
+              else
+                st <= S_IRQ_CHECK;
+              end if;
             elsif current_op /= EXEC_NONE then
               st <= S_ALU_PREP;
             else
               st <= S_IRQ_CHECK;
             end if;
 
-          when S_MEM_RD_HL =>
-            idu_addr_sel_r <= ADDR_SEL_HL;
+          when S_READ_IMM16_LO =>
+            idu_addr_sel_r <= ADDR_SEL_PC;
+            rd_r <= '1';
+            inc_pc_r <= '1';
+            we_pc_r <= '1';
+            din_pc_r <= idu_next_pc;
+            pending_addr16(7 downto 0) <= data_in;
+            st <= S_READ_IMM16_HI;
+
+          when S_READ_IMM16_HI =>
+            idu_addr_sel_r <= ADDR_SEL_PC;
+            rd_r <= '1';
+            inc_pc_r <= '1';
+            we_pc_r <= '1';
+            din_pc_r <= idu_next_pc;
+            pending_addr16(15 downto 8) <= data_in;
+            if pending_mem_action = MEM_ACT_WRITE then
+              st <= S_MEM_WRITE;
+            elsif pending_mem_action = MEM_ACT_READ then
+              st <= S_MEM_READ;
+            else
+              st <= S_IRQ_CHECK;
+            end if;
+
+          when S_MEM_READ =>
+            case pending_mem_mode is
+              when MEM_MODE_HL | MEM_MODE_HL_INC | MEM_MODE_HL_DEC =>
+                idu_addr_sel_r <= ADDR_SEL_HL;
+              when MEM_MODE_BC =>
+                addr_r <= q_b & q_c;
+              when MEM_MODE_DE =>
+                addr_r <= q_d & q_e;
+              when MEM_MODE_ABS16 =>
+                addr_r <= pending_addr16;
+              when MEM_MODE_IO_IMM =>
+                addr_r <= pending_addr16;
+              when MEM_MODE_IO_C =>
+                addr_r <= x"FF" & q_c;
+              when others =>
+                null;
+            end case;
             rd_r <= '1';
             operand_reg <= data_in;
             if pending_mem_load /= REG_NONE then
-              case pending_mem_load is
-                when REG_A =>
-                  we_a_r <= '1';
-                  din_a_r <= data_in;
-                when REG_B =>
-                  we_b_r <= '1';
-                  din_b_r <= data_in;
-                when REG_C =>
-                  we_c_r <= '1';
-                  din_c_r <= data_in;
-                when REG_D =>
-                  we_d_r <= '1';
-                  din_d_r <= data_in;
-                when REG_E =>
-                  we_e_r <= '1';
-                  din_e_r <= data_in;
-                when REG_H =>
-                  we_h_r <= '1';
-                  din_h_r <= data_in;
-                when REG_L =>
-                  we_l_r <= '1';
-                  din_l_r <= data_in;
-                when others =>
-                  null;
-              end case;
+              write_reg(pending_mem_load, data_in);
               pending_mem_load <= REG_NONE;
+              apply_hl_update(pending_hl_update);
+              pending_mem_mode <= MEM_MODE_NONE;
+              pending_mem_action <= MEM_ACT_NONE;
+              pending_hl_update <= HL_UPDATE_NONE;
               st <= S_IRQ_CHECK;
             elsif current_op /= EXEC_NONE then
               st <= S_ALU_PREP;
             else
+              apply_hl_update(pending_hl_update);
+              pending_mem_mode <= MEM_MODE_NONE;
+              pending_mem_action <= MEM_ACT_NONE;
+              pending_hl_update <= HL_UPDATE_NONE;
               st <= S_IRQ_CHECK;
             end if;
 
-          when S_MEM_WR_HL =>
-            idu_addr_sel_r <= ADDR_SEL_HL;
-            data_out_r <= operand_reg;
+          when S_MEM_WRITE =>
+            case pending_mem_mode is
+              when MEM_MODE_HL | MEM_MODE_HL_INC | MEM_MODE_HL_DEC =>
+                idu_addr_sel_r <= ADDR_SEL_HL;
+              when MEM_MODE_BC =>
+                addr_r <= q_b & q_c;
+              when MEM_MODE_DE =>
+                addr_r <= q_d & q_e;
+              when MEM_MODE_ABS16 =>
+                addr_r <= pending_addr16;
+              when MEM_MODE_IO_IMM =>
+                addr_r <= pending_addr16;
+              when MEM_MODE_IO_C =>
+                addr_r <= x"FF" & q_c;
+              when others =>
+                null;
+            end case;
+            data_out_r <= pending_write_value;
             wr_r <= '1';
+            apply_hl_update(pending_hl_update);
+            pending_mem_mode <= MEM_MODE_NONE;
+            pending_mem_action <= MEM_ACT_NONE;
+            pending_hl_update <= HL_UPDATE_NONE;
             st <= S_IRQ_CHECK;
 
           when S_ALU_PREP =>
@@ -521,8 +848,9 @@ begin
                 din_a_r <= alu_y;
                 st <= S_IRQ_CHECK;
               when ALU_DEST_MEM_HL =>
-                operand_reg <= alu_y;
-                st <= S_MEM_WR_HL;
+                pending_write_value <= alu_y;
+                pending_mem_action <= MEM_ACT_WRITE;
+                st <= S_MEM_WRITE;
               when others =>
                 st <= S_IRQ_CHECK;
             end case;

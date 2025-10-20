@@ -17,16 +17,25 @@ O LR35902 utiliza opcodes de 8 bits. A tabela completa está disponível no Pan 
 | Opcode | Mnemônico       | Descrição resumida                                         |
 |--------|-----------------|------------------------------------------------------------|
 | `0x00` | `NOP`           | Não faz nada.                                              |
+| `0x02` | `LD (BC), A`    | Escreve `A` na memória apontada por `BC`.                  |
 | `0x06` | `LD B, d8`      | Carrega imediato de 8 bits em `B`.                         |
+| `0x0A` | `LD A, (BC)`    | Lê a memória apontada por `BC` para `A`.                   |
 | `0x0E` | `LD C, d8`      | Carrega imediato de 8 bits em `C`.                         |
+| `0x12` | `LD (DE), A`    | Escreve `A` na memória apontada por `DE`.                  |
 | `0x16` | `LD D, d8`      | Carrega imediato de 8 bits em `D`.                         |
+| `0x1A` | `LD A, (DE)`    | Lê a memória apontada por `DE` para `A`.                   |
 | `0x1E` | `LD E, d8`      | Carrega imediato de 8 bits em `E`.                         |
+| `0x22` | `LD (HL+), A`   | Escreve `A` em `(HL)` e incrementa `HL`.                   |
 | `0x23` | `INC HL`        | Incrementa o par `HL`.                                     |
 | `0x26` | `LD H, d8`      | Carrega imediato de 8 bits em `H`.                         |
+| `0x2A` | `LD A, (HL+)`   | Lê `(HL)` para `A` e incrementa `HL`.                      |
 | `0x2B` | `DEC HL`        | Decrementa o par `HL`.                                     |
 | `0x2E` | `LD L, d8`      | Carrega imediato de 8 bits em `L`.                         |
+| `0x32` | `LD (HL-), A`   | Escreve `A` em `(HL)` e decrementa `HL`.                   |
 | `0x34` | `INC (HL)`      | Incrementa o byte apontado por `HL`, preservando `C`.      |
 | `0x35` | `DEC (HL)`      | Decrementa o byte apontado por `HL`, preservando `C`.      |
+| `0x36` | `LD (HL), d8`   | Escreve imediato de 8 bits na memória apontada por `HL`.   |
+| `0x3A` | `LD A, (HL-)`   | Lê `(HL)` para `A` e decrementa `HL`.                      |
 | `0x3C` | `INC A`         | Incrementa `A`, preservando `C`.                           |
 | `0x3D` | `DEC A`         | Decrementa `A`, preservando `C`.                           |
 | `0x3E` | `LD A, d8`      | Carrega imediato de 8 bits em `A`.                         |
@@ -46,10 +55,18 @@ O LR35902 utiliza opcodes de 8 bits. A tabela completa está disponível no Pan 
 | `0xCE` | `ADC A, d8`     | Soma imediato e `C` com `A`.                               |
 | `0xD6` | `SUB A, d8`     | Subtrai imediato de `A`.                                   |
 | `0xDE` | `SBC A, d8`     | Subtrai imediato e `C` de `A`.                             |
+| `0xE0` | `LDH (n), A`    | Escreve `A` em `0xFF00 + n`.                               |
+| `0xE2` | `LD (C), A`     | Escreve `A` em `0xFF00 + C`.                               |
 | `0xE6` | `AND d8`        | `A := A AND d8`.                                           |
+| `0xEA` | `LD (nn), A`    | Escreve `A` na memória apontada por endereço imediato.     |
 | `0xEE` | `XOR d8`        | `A := A XOR d8`.                                           |
+| `0xF0` | `LDH A, (n)`    | Lê `0xFF00 + n` para `A`.                                  |
+| `0xF2` | `LD A, (C)`     | Lê `0xFF00 + C` para `A`.                                  |
 | `0xF6` | `OR d8`         | `A := A OR d8`.                                            |
+| `0xFA` | `LD A, (nn)`    | Lê endereço imediato de 16 bits para `A`.                  |
 | `0xFE` | `CP d8`         | Compara `A` com imediato (flags como `SUB`).               |
+
+Além das instruções explícitas acima, toda a matriz `0x40–0x7F` (`LD r,r'`) foi habilitada, permitindo transferências entre quaisquer registradores de 8 bits ou entre registrador e `(HL)`.
 
 Os loads indiretos que usam `HL` e os incrementos/decrementos de 16 bits são resolvidos pela `idu.vhd`, que fornece os valores atualizados de `PC/SP/HL` e seleciona o endereço ativo no barramento. Os demais opcodes serão adicionados progressivamente. Quando necessário, consultar as seções "CPU Instruction Set" e "Instruction Timing" do Pan Docs para detalhes de ciclos e efeitos nos registradores/flags.
 
@@ -66,7 +83,7 @@ O controlador atualiza `PC` em múltiplos estágios (`FETCH`, leitura de imediat
 
 ## Próximos Passos
 
-* Cobrir loads/aritimética envolvendo os pares `BC` e `DE`, além de estender transferências entre registradores de 8 bits.
+* Validar por simulação os loads de 8 bits recém-implementados e evoluir para operações de pilha/manipulação de `SP`.
 * Implementar instruções de pilha e manipulação de `SP` (`PUSH/POP`, `LD (nn),SP`, autoincremento/decremento). 
 * Adicionar saltos e retornos (`JR`, `JP`, `CALL`, `RET`) com temporização aproximada aos ciclos do LR35902.
 * Incluir rotações, shifts e operações bitwise adicionais (prefixo `CB`) na ALU e na FSM.

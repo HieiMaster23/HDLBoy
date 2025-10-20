@@ -11,6 +11,7 @@
 - Bloco de interrupções (`int_ctrl.vhd`) atualizado com priorização, vetores oficiais e handshake de acknowledge com a control unit.
 - Unidade de endereços (`idu.vhd`) refeita como bloco combinacional, provendo incrementos/decrementos de `PC/SP/HL` e seleção de endereço centralizada para a control unit.
 - FSM ampliada para loads imediatos (`LD r,d8`), transferências simples (`LD A,B`, `LD B,A`) e acessos indiretos via `(HL)` incluindo `INC/DEC (HL)`.
+- Cobertura estendida para as instruções de carga de 8 bits: tabela completa `LD r,r'` (0x40–0x7F), `LD (HL),d8`, acessos `A↔(BC/DE/HL±/nn)` e modos `LDH/LD (C),A` mapeados na FSM.
 
 ## Etapas implícitas no processo até aqui
 1. **Definição do objetivo**: estabelecer o escopo do projeto e a plataforma alvo (Cyclone IV EP4CE6).
@@ -22,7 +23,7 @@
    - Registrar convenções de codificação VHDL, padrões de reset, clock e estilo de FSM.
    - Expandir a documentação técnica com mapas de memória e cronogramas de instruções.
 2. **Evolução da CPU**
-   - Expandir loads e operações aritméticas envolvendo os pares `BC`/`DE` e estender transferências entre todos os registradores de 8 bits.
+   - Validar e ajustar os tempos/ciclos das rotas de load recém-implementadas e avançar para operações de pilha (`PUSH/POP`) e manipulação completa de `SP`.
    - Introduzir manipulação completa da pilha e do ponteiro de stack (`PUSH/POP`, `LD (nn),SP`, autoincrementos/decrementos controlados).
    - Implementar saltos, chamadas e retornos (`JR`, `JP`, `CALL`, `RET`) com temporização aproximada aos ciclos oficiais.
    - Completar a cobertura da ALU com rotações, shifts e operações bit a bit (`CB xx`) validando flags remanescentes.
@@ -35,7 +36,7 @@
    - Avaliar requisitos específicos da placa (pinos, clock base, memória interna) e preparar um projeto Quartus inicial.
 
 ## Próximas ações imediatas sugeridas
-- Criar testbenches direcionados para validar o caminho de loads indiretos (`LD A,(HL)`, `LD (HL),A`, `INC/DEC (HL)`) e as atualizações de flags correspondentes.
-- Estender a FSM para suportar operações com os pares `BC`/`DE` e rotas adicionais de transferência entre registradores de 8 bits.
+- Criar testbenches direcionados para validar o caminho de loads indiretos (`LD A,(HL)`, `LD (HL),A`, `INC/DEC (HL)`), as variantes `LDH/LD (C),A` e confirmar as atualizações de flags correspondentes.
+- Planejar a etapa de simulações completas dos loads de 8 bits antes de seguir para pilha/saltos.
 - Prototipar o fluxo de pilha (push/pop) e definir como o `SP` será manipulado via `idu.vhd`.
 - Continuar alimentando a documentação conforme novos blocos forem implementados.
