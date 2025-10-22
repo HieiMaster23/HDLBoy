@@ -70,6 +70,16 @@ package gb_types_pkg is
     REG_MEM_HL
   );
 
+  -- Seleção de registradores de 16 bits (pares ou especiais)
+  type reg16_sel_t is (
+    REG16_NONE,
+    REG16_AF,
+    REG16_BC,
+    REG16_DE,
+    REG16_HL,
+    REG16_SP
+  );
+
 end package;
 
 package body gb_types_pkg is

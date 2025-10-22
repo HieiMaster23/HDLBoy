@@ -17,14 +17,18 @@ O LR35902 utiliza opcodes de 8 bits. A tabela completa está disponível no Pan 
 | Opcode | Mnemônico       | Descrição resumida                                         |
 |--------|-----------------|------------------------------------------------------------|
 | `0x00` | `NOP`           | Não faz nada.                                              |
+| `0x01` | `LD BC, d16`    | Carrega imediato de 16 bits em `BC`.                       |
 | `0x02` | `LD (BC), A`    | Escreve `A` na memória apontada por `BC`.                  |
 | `0x06` | `LD B, d8`      | Carrega imediato de 8 bits em `B`.                         |
+| `0x08` | `LD (nn), SP`   | Escreve `SP` (low depois high) no endereço imediato.       |
 | `0x0A` | `LD A, (BC)`    | Lê a memória apontada por `BC` para `A`.                   |
 | `0x0E` | `LD C, d8`      | Carrega imediato de 8 bits em `C`.                         |
+| `0x11` | `LD DE, d16`    | Carrega imediato de 16 bits em `DE`.                       |
 | `0x12` | `LD (DE), A`    | Escreve `A` na memória apontada por `DE`.                  |
 | `0x16` | `LD D, d8`      | Carrega imediato de 8 bits em `D`.                         |
 | `0x1A` | `LD A, (DE)`    | Lê a memória apontada por `DE` para `A`.                   |
 | `0x1E` | `LD E, d8`      | Carrega imediato de 8 bits em `E`.                         |
+| `0x21` | `LD HL, d16`    | Carrega imediato de 16 bits em `HL`.                       |
 | `0x22` | `LD (HL+), A`   | Escreve `A` em `(HL)` e incrementa `HL`.                   |
 | `0x23` | `INC HL`        | Incrementa o par `HL`.                                     |
 | `0x26` | `LD H, d8`      | Carrega imediato de 8 bits em `H`.                         |
@@ -52,23 +56,33 @@ O LR35902 utiliza opcodes de 8 bits. A tabela completa está disponível no Pan 
 | `0xAF` | `XOR A`         | `A := A XOR A` (zera acumulador, limpa `C`).               |
 | `0xB7` | `OR A`          | `A := A OR A` (mantém valor, ajusta flags).                |
 | `0xC6` | `ADD A, d8`     | Soma imediato com `A`.                                     |
+| `0xC1` | `POP BC`        | Lê dois bytes da pilha para `BC`.                          |
+| `0xC5` | `PUSH BC`       | Empilha o par `BC` (high primeiro).                        |
 | `0xCE` | `ADC A, d8`     | Soma imediato e `C` com `A`.                               |
 | `0xD6` | `SUB A, d8`     | Subtrai imediato de `A`.                                   |
+| `0xD1` | `POP DE`        | Lê dois bytes da pilha para `DE`.                          |
+| `0xD5` | `PUSH DE`       | Empilha o par `DE` (high primeiro).                        |
 | `0xDE` | `SBC A, d8`     | Subtrai imediato e `C` de `A`.                             |
 | `0xE0` | `LDH (n), A`    | Escreve `A` em `0xFF00 + n`.                               |
 | `0xE2` | `LD (C), A`     | Escreve `A` em `0xFF00 + C`.                               |
 | `0xE6` | `AND d8`        | `A := A AND d8`.                                           |
+| `0xE1` | `POP HL`        | Lê dois bytes da pilha para `HL`.                          |
+| `0xE5` | `PUSH HL`       | Empilha o par `HL` (high primeiro).                        |
 | `0xEA` | `LD (nn), A`    | Escreve `A` na memória apontada por endereço imediato.     |
 | `0xEE` | `XOR d8`        | `A := A XOR d8`.                                           |
 | `0xF0` | `LDH A, (n)`    | Lê `0xFF00 + n` para `A`.                                  |
 | `0xF2` | `LD A, (C)`     | Lê `0xFF00 + C` para `A`.                                  |
 | `0xF6` | `OR d8`         | `A := A OR d8`.                                            |
+| `0xF1` | `POP AF`        | Lê dois bytes da pilha para `AF` (flags ajustados).        |
+| `0xF5` | `PUSH AF`       | Empilha `AF` (flags comprimidos nos bits 7-4).             |
+| `0xF8` | `LD HL, SP+e8`  | Soma deslocamento assinado ao `SP` e grava em `HL` (flags `H/C`). |
+| `0xF9` | `LD SP, HL`     | Copia o par `HL` para `SP`.                                |
 | `0xFA` | `LD A, (nn)`    | Lê endereço imediato de 16 bits para `A`.                  |
 | `0xFE` | `CP d8`         | Compara `A` com imediato (flags como `SUB`).               |
 
 Além das instruções explícitas acima, toda a matriz `0x40–0x7F` (`LD r,r'`) foi habilitada, permitindo transferências entre quaisquer registradores de 8 bits ou entre registrador e `(HL)`.
 
-Os loads indiretos que usam `HL` e os incrementos/decrementos de 16 bits são resolvidos pela `idu.vhd`, que fornece os valores atualizados de `PC/SP/HL` e seleciona o endereço ativo no barramento. Os demais opcodes serão adicionados progressivamente. Quando necessário, consultar as seções "CPU Instruction Set" e "Instruction Timing" do Pan Docs para detalhes de ciclos e efeitos nos registradores/flags.
+Os loads indiretos que usam `HL` e os incrementos/decrementos de 16 bits são resolvidos pela `idu.vhd`, que fornece os valores atualizados de `PC/SP/HL` e seleciona o endereço ativo no barramento. O estágio atual cobre também os loads de 16 bits (`LD rr,d16`, `LD (nn),SP`, `LD HL,SP+e8`, `LD SP,HL`) e as operações de pilha (`PUSH/POP rr`), preparando a FSM para a próxima leva de saltos e aritmética ampla. Os demais opcodes serão adicionados progressivamente. Quando necessário, consultar as seções "CPU Instruction Set" e "Instruction Timing" do Pan Docs para detalhes de ciclos e efeitos nos registradores/flags.
 
 ## Pipeline de Execução Simplificado
 
@@ -83,8 +97,8 @@ O controlador atualiza `PC` em múltiplos estágios (`FETCH`, leitura de imediat
 
 ## Próximos Passos
 
-* Validar por simulação os loads de 8 bits recém-implementados e evoluir para operações de pilha/manipulação de `SP`.
-* Implementar instruções de pilha e manipulação de `SP` (`PUSH/POP`, `LD (nn),SP`, autoincremento/decremento). 
+* Exercitar em simulação o caminho completo de loads (8 e 16 bits) incluindo `PUSH/POP`, `LD (nn),SP` e `LD HL,SP+e8`, conferindo flags e sequenciamento do `SP`.
+* Estender a FSM para aritmética de 16 bits (`ADD HL,rr`, `INC/DEC rr`, `ADD SP,e8`) e preparar o caminho de empilhamento automático do `PC` para interrupções.
 * Adicionar saltos e retornos (`JR`, `JP`, `CALL`, `RET`) com temporização aproximada aos ciclos do LR35902.
 * Incluir rotações, shifts e operações bitwise adicionais (prefixo `CB`) na ALU e na FSM.
 * Evoluir o bloco de interrupções para suportar `EI`/`DI`, empilhamento do `PC` e sequenciamento completo de acknowledge.

@@ -67,6 +67,13 @@ architecture rtl of control_unit is
     S_MEM_WRITE,
     S_ALU_PREP,
     S_ALU_WRITE,
+    S_MISC_OP,
+    S_PUSH_WRITE_HI,
+    S_PUSH_WRITE_LO,
+    S_POP_READ_LO,
+    S_POP_READ_HI,
+    S_MEM_WRITE16_LO,
+    S_MEM_WRITE16_HI,
     S_HALT
   );
 
@@ -90,7 +97,8 @@ architecture rtl of control_unit is
     EXEC_XOR_A_IMM,
     EXEC_CP_IMM,
     EXEC_INC_MEM_HL,
-    EXEC_DEC_MEM_HL
+    EXEC_DEC_MEM_HL,
+    EXEC_LD_HL_SP_E8
   );
 
   type mem_mode_t is (
@@ -129,6 +137,11 @@ architecture rtl of control_unit is
   signal pending_mem_after_imm : std_logic := '0';
   signal pending_write_value : u8 := (others => '0');
   signal pending_addr16 : u16 := (others => '0');
+  signal pending_reg16_load : reg16_sel_t := REG16_NONE;
+  signal pending_mem16_write : std_logic := '0';
+  signal pending_mem16_value : u16 := (others => '0');
+  signal pending_stack_reg : reg16_sel_t := REG16_NONE;
+  signal pending_stack_value : u16 := (others => '0');
 
   signal data_out_r : u8 := (others => '0');
   signal addr_r     : u16 := (others => '0');
@@ -181,6 +194,37 @@ architecture rtl of control_unit is
     end case;
   end function;
 
+  function pack_flags(f : flags_t) return u8 is
+    variable res : u8 := (others => '0');
+  begin
+    res(7) := f.z;
+    res(6) := f.n;
+    res(5) := f.h;
+    res(4) := f.c;
+    res(3 downto 0) := "0000";
+    return res;
+  end function;
+
+  function unpack_flags(v : u8) return flags_t is
+  begin
+    return (z => v(7), n => v(6), h => v(5), c => v(4));
+  end function;
+
+  function get_reg16_value(sel : reg16_sel_t;
+                           a_in, b_in, c_in, d_in, e_in, h_in, l_in : u8;
+                           sp_in : u16;
+                           flags_in : flags_t) return u16 is
+  begin
+    case sel is
+      when REG16_AF => return a_in & pack_flags(flags_in);
+      when REG16_BC => return b_in & c_in;
+      when REG16_DE => return d_in & e_in;
+      when REG16_HL => return h_in & l_in;
+      when REG16_SP => return sp_in;
+      when others   => return (others => '0');
+    end case;
+  end function;
+
 begin
   data_out <= data_out_r;
   addr     <= addr_r;
@@ -205,6 +249,16 @@ begin
   process(clk)
     variable dest_sel, src_sel : reg_sel_t;
     variable src_val : u8;
+    variable sp_temp : unsigned(15 downto 0);
+    variable addr_temp : unsigned(15 downto 0);
+    variable result_vec : u16;
+    variable flags_temp : flags_t;
+    variable sum_byte : unsigned(8 downto 0);
+    variable sum_nibble : unsigned(4 downto 0);
+    variable offset_u : unsigned(7 downto 0);
+    variable offset_s : signed(7 downto 0);
+    variable sp_s : signed(15 downto 0);
+    variable result_s : signed(15 downto 0);
 
     procedure write_reg(dest : reg_sel_t; value : u8) is
     begin
@@ -230,6 +284,81 @@ begin
         when REG_L =>
           we_l_r <= '1';
           din_l_r <= value;
+        when others =>
+          null;
+      end case;
+    end procedure;
+
+    procedure write_reg16(pair : reg16_sel_t; value : u16) is
+    begin
+      case pair is
+        when REG16_BC =>
+          we_b_r <= '1';
+          din_b_r <= value(15 downto 8);
+          we_c_r <= '1';
+          din_c_r <= value(7 downto 0);
+        when REG16_DE =>
+          we_d_r <= '1';
+          din_d_r <= value(15 downto 8);
+          we_e_r <= '1';
+          din_e_r <= value(7 downto 0);
+        when REG16_HL =>
+          we_h_r <= '1';
+          din_h_r <= value(15 downto 8);
+          we_l_r <= '1';
+          din_l_r <= value(7 downto 0);
+          idu_load_hl_r <= '1';
+          idu_hl_value_r <= value;
+        when REG16_SP =>
+          we_sp_r <= '1';
+          din_sp_r <= value;
+          idu_load_sp_r <= '1';
+          idu_sp_value_r <= value;
+        when REG16_AF =>
+          we_a_r <= '1';
+          din_a_r <= value(15 downto 8);
+          we_f_r <= '1';
+          din_flags_r <= unpack_flags(value(7 downto 0));
+        when others =>
+          null;
+      end case;
+    end procedure;
+
+    procedure write_reg16_high(pair : reg16_sel_t; value : u8) is
+    begin
+      case pair is
+        when REG16_BC =>
+          we_b_r <= '1';
+          din_b_r <= value;
+        when REG16_DE =>
+          we_d_r <= '1';
+          din_d_r <= value;
+        when REG16_HL =>
+          we_h_r <= '1';
+          din_h_r <= value;
+        when REG16_AF =>
+          we_a_r <= '1';
+          din_a_r <= value;
+        when others =>
+          null;
+      end case;
+    end procedure;
+
+    procedure write_reg16_low(pair : reg16_sel_t; value : u8) is
+    begin
+      case pair is
+        when REG16_BC =>
+          we_c_r <= '1';
+          din_c_r <= value;
+        when REG16_DE =>
+          we_e_r <= '1';
+          din_e_r <= value;
+        when REG16_HL =>
+          we_l_r <= '1';
+          din_l_r <= value;
+        when REG16_AF =>
+          we_f_r <= '1';
+          din_flags_r <= unpack_flags(value);
         when others =>
           null;
       end case;
@@ -280,6 +409,11 @@ begin
         pending_mem_after_imm <= '0';
         pending_write_value <= (others => '0');
         pending_addr16 <= (others => '0');
+        pending_reg16_load <= REG16_NONE;
+        pending_mem16_write <= '0';
+        pending_mem16_value <= (others => '0');
+        pending_stack_reg <= REG16_NONE;
+        pending_stack_value <= (others => '0');
       else
         -- defaults a cada ciclo
         data_out_r <= (others => '0');
@@ -374,11 +508,29 @@ begin
             pending_mem_action <= MEM_ACT_NONE;
             pending_hl_update <= HL_UPDATE_NONE;
             pending_mem_after_imm <= '0';
+            pending_reg16_load <= REG16_NONE;
+            pending_mem16_write <= '0';
             case q_ir is
               when x"00" =>
                 st <= S_IRQ_CHECK; -- NOP
+              when x"01" =>
+                pending_reg16_load <= REG16_BC;
+                st <= S_READ_IMM16_LO;
+              when x"08" =>
+                pending_mem16_write <= '1';
+                pending_mem16_value <= q_sp;
+                st <= S_READ_IMM16_LO;
               when x"76" =>
                 st <= S_HALT;
+              when x"11" =>
+                pending_reg16_load <= REG16_DE;
+                st <= S_READ_IMM16_LO;
+              when x"21" =>
+                pending_reg16_load <= REG16_HL;
+                st <= S_READ_IMM16_LO;
+              when x"31" =>
+                pending_reg16_load <= REG16_SP;
+                st <= S_READ_IMM16_LO;
               when x"3E" =>
                 pending_reg_imm <= REG_A;
                 st <= S_READ_IMM;
@@ -563,6 +715,15 @@ begin
                 pending_mem_action <= MEM_ACT_READ;
                 pending_hl_update <= HL_UPDATE_NONE;
                 st <= S_READ_IMM16_LO;
+              when x"F9" =>
+                we_sp_r <= '1';
+                din_sp_r <= q_h & q_l;
+                idu_load_sp_r <= '1';
+                idu_sp_value_r <= q_h & q_l;
+                st <= S_IRQ_CHECK;
+              when x"F8" =>
+                current_op <= EXEC_LD_HL_SP_E8;
+                st <= S_READ_IMM;
               when x"E0" =>
                 pending_mem_mode <= MEM_MODE_IO_IMM;
                 pending_mem_action <= MEM_ACT_WRITE;
@@ -589,6 +750,34 @@ begin
                 pending_mem_action <= MEM_ACT_READ;
                 pending_hl_update <= HL_UPDATE_NONE;
                 st <= S_MEM_READ;
+              when x"C5" =>
+                pending_stack_reg <= REG16_BC;
+                pending_stack_value <= get_reg16_value(REG16_BC, q_a, q_b, q_c, q_d, q_e, q_h, q_l, q_sp, q_flags);
+                st <= S_PUSH_WRITE_HI;
+              when x"D5" =>
+                pending_stack_reg <= REG16_DE;
+                pending_stack_value <= get_reg16_value(REG16_DE, q_a, q_b, q_c, q_d, q_e, q_h, q_l, q_sp, q_flags);
+                st <= S_PUSH_WRITE_HI;
+              when x"E5" =>
+                pending_stack_reg <= REG16_HL;
+                pending_stack_value <= get_reg16_value(REG16_HL, q_a, q_b, q_c, q_d, q_e, q_h, q_l, q_sp, q_flags);
+                st <= S_PUSH_WRITE_HI;
+              when x"F5" =>
+                pending_stack_reg <= REG16_AF;
+                pending_stack_value <= get_reg16_value(REG16_AF, q_a, q_b, q_c, q_d, q_e, q_h, q_l, q_sp, q_flags);
+                st <= S_PUSH_WRITE_HI;
+              when x"C1" =>
+                pending_stack_reg <= REG16_BC;
+                st <= S_POP_READ_LO;
+              when x"D1" =>
+                pending_stack_reg <= REG16_DE;
+                st <= S_POP_READ_LO;
+              when x"E1" =>
+                pending_stack_reg <= REG16_HL;
+                st <= S_POP_READ_LO;
+              when x"F1" =>
+                pending_stack_reg <= REG16_AF;
+                st <= S_POP_READ_LO;
               when others =>
                 if q_ir(7 downto 6) = "01" then
                   dest_sel := decode_reg(q_ir(5 downto 3));
@@ -671,6 +860,8 @@ begin
               else
                 st <= S_IRQ_CHECK;
               end if;
+            elsif current_op = EXEC_LD_HL_SP_E8 then
+              st <= S_MISC_OP;
             elsif current_op /= EXEC_NONE then
               st <= S_ALU_PREP;
             else
@@ -693,7 +884,13 @@ begin
             we_pc_r <= '1';
             din_pc_r <= idu_next_pc;
             pending_addr16(15 downto 8) <= data_in;
-            if pending_mem_action = MEM_ACT_WRITE then
+            if pending_reg16_load /= REG16_NONE then
+              write_reg16(pending_reg16_load, pending_addr16);
+              pending_reg16_load <= REG16_NONE;
+              st <= S_IRQ_CHECK;
+            elsif pending_mem16_write = '1' then
+              st <= S_MEM_WRITE16_LO;
+            elsif pending_mem_action = MEM_ACT_WRITE then
               st <= S_MEM_WRITE;
             elsif pending_mem_action = MEM_ACT_READ then
               st <= S_MEM_READ;
@@ -856,6 +1053,108 @@ begin
             end case;
             current_op <= EXEC_NONE;
             alu_target_r <= ALU_DEST_NONE;
+
+          when S_MISC_OP =>
+            if current_op = EXEC_LD_HL_SP_E8 then
+              sp_s := signed(q_sp);
+              offset_s := signed(operand_reg);
+              result_s := sp_s + resize(offset_s, 16);
+              result_vec := std_logic_vector(result_s);
+              sp_temp := unsigned(q_sp);
+              offset_u := unsigned(operand_reg);
+              sum_byte := ('0' & sp_temp(7 downto 0)) + ('0' & offset_u);
+              sum_nibble := ('0' & sp_temp(3 downto 0)) + ('0' & offset_u(3 downto 0));
+              we_h_r <= '1';
+              we_l_r <= '1';
+              din_h_r <= result_vec(15 downto 8);
+              din_l_r <= result_vec(7 downto 0);
+              idu_load_hl_r <= '1';
+              idu_hl_value_r <= result_vec;
+              flags_temp := (z => '0', n => '0', h => sum_nibble(4), c => sum_byte(8));
+              we_f_r <= '1';
+              din_flags_r <= flags_temp;
+            end if;
+            current_op <= EXEC_NONE;
+            st <= S_IRQ_CHECK;
+
+          when S_PUSH_WRITE_HI =>
+            if pending_stack_reg = REG16_NONE then
+              st <= S_IRQ_CHECK;
+            else
+              sp_temp := unsigned(q_sp) - 1;
+              we_sp_r <= '1';
+              din_sp_r <= std_logic_vector(sp_temp);
+              idu_load_sp_r <= '1';
+              idu_sp_value_r <= std_logic_vector(sp_temp);
+              addr_r <= std_logic_vector(sp_temp);
+              data_out_r <= pending_stack_value(15 downto 8);
+              wr_r <= '1';
+              st <= S_PUSH_WRITE_LO;
+            end if;
+
+          when S_PUSH_WRITE_LO =>
+            if pending_stack_reg = REG16_NONE then
+              st <= S_IRQ_CHECK;
+            else
+              sp_temp := unsigned(q_sp) - 1;
+              we_sp_r <= '1';
+              din_sp_r <= std_logic_vector(sp_temp);
+              idu_load_sp_r <= '1';
+              idu_sp_value_r <= std_logic_vector(sp_temp);
+              addr_r <= std_logic_vector(sp_temp);
+              data_out_r <= pending_stack_value(7 downto 0);
+              wr_r <= '1';
+              pending_stack_reg <= REG16_NONE;
+              pending_stack_value <= (others => '0');
+              st <= S_IRQ_CHECK;
+            end if;
+
+          when S_POP_READ_LO =>
+            if pending_stack_reg = REG16_NONE then
+              st <= S_IRQ_CHECK;
+            else
+              addr_r <= q_sp;
+              rd_r <= '1';
+              write_reg16_low(pending_stack_reg, data_in);
+              sp_temp := unsigned(q_sp) + 1;
+              we_sp_r <= '1';
+              din_sp_r <= std_logic_vector(sp_temp);
+              idu_load_sp_r <= '1';
+              idu_sp_value_r <= std_logic_vector(sp_temp);
+              st <= S_POP_READ_HI;
+            end if;
+
+          when S_POP_READ_HI =>
+            if pending_stack_reg = REG16_NONE then
+              st <= S_IRQ_CHECK;
+            else
+              addr_r <= q_sp;
+              rd_r <= '1';
+              write_reg16_high(pending_stack_reg, data_in);
+              sp_temp := unsigned(q_sp) + 1;
+              we_sp_r <= '1';
+              din_sp_r <= std_logic_vector(sp_temp);
+              idu_load_sp_r <= '1';
+              idu_sp_value_r <= std_logic_vector(sp_temp);
+              pending_stack_reg <= REG16_NONE;
+              pending_stack_value <= (others => '0');
+              st <= S_IRQ_CHECK;
+            end if;
+
+          when S_MEM_WRITE16_LO =>
+            addr_r <= pending_addr16;
+            data_out_r <= pending_mem16_value(7 downto 0);
+            wr_r <= '1';
+            st <= S_MEM_WRITE16_HI;
+
+          when S_MEM_WRITE16_HI =>
+            addr_temp := unsigned(pending_addr16) + 1;
+            addr_r <= std_logic_vector(addr_temp);
+            data_out_r <= pending_mem16_value(15 downto 8);
+            wr_r <= '1';
+            pending_mem16_write <= '0';
+            pending_mem16_value <= (others => '0');
+            st <= S_IRQ_CHECK;
 
           when S_HALT =>
             halted_r <= '1';

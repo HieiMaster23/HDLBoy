@@ -12,6 +12,7 @@
 - Unidade de endereços (`idu.vhd`) refeita como bloco combinacional, provendo incrementos/decrementos de `PC/SP/HL` e seleção de endereço centralizada para a control unit.
 - FSM ampliada para loads imediatos (`LD r,d8`), transferências simples (`LD A,B`, `LD B,A`) e acessos indiretos via `(HL)` incluindo `INC/DEC (HL)`.
 - Cobertura estendida para as instruções de carga de 8 bits: tabela completa `LD r,r'` (0x40–0x7F), `LD (HL),d8`, acessos `A↔(BC/DE/HL±/nn)` e modos `LDH/LD (C),A` mapeados na FSM.
+- Cargas de 16 bits e fluxo de pilha conectados (`LD rr,d16`, `LD (nn),SP`, `LD HL,SP+e8`, `LD SP,HL`, `PUSH/POP rr`), incluindo atualização consistente de flags e do `SP`.
 
 ## Etapas implícitas no processo até aqui
 1. **Definição do objetivo**: estabelecer o escopo do projeto e a plataforma alvo (Cyclone IV EP4CE6).
@@ -23,8 +24,8 @@
    - Registrar convenções de codificação VHDL, padrões de reset, clock e estilo de FSM.
    - Expandir a documentação técnica com mapas de memória e cronogramas de instruções.
 2. **Evolução da CPU**
-   - Validar e ajustar os tempos/ciclos das rotas de load recém-implementadas e avançar para operações de pilha (`PUSH/POP`) e manipulação completa de `SP`.
-   - Introduzir manipulação completa da pilha e do ponteiro de stack (`PUSH/POP`, `LD (nn),SP`, autoincrementos/decrementos controlados).
+   - Validar em simulação todas as rotas de carga (8 e 16 bits), garantindo que `PUSH/POP`, `LD (nn),SP`, `LD HL,SP+e8` e `LD SP,HL` atualizem `SP`, `HL` e flags conforme o LR35902.
+   - Estender a FSM para operações de 16 bits (`ADD HL,rr`, `INC/DEC rr`, `ADD SP,e8`) e preparar o fluxo de empilhamento automático do `PC` usado em interrupções e `CALL/RET`.
    - Implementar saltos, chamadas e retornos (`JR`, `JP`, `CALL`, `RET`) com temporização aproximada aos ciclos oficiais.
    - Completar a cobertura da ALU com rotações, shifts e operações bit a bit (`CB xx`) validando flags remanescentes.
    - Evoluir o bloco de interrupções com suporte às instruções `EI`/`DI`, empilhamento automático do `PC` e desbloqueio condicional do `IME`.
@@ -36,7 +37,7 @@
    - Avaliar requisitos específicos da placa (pinos, clock base, memória interna) e preparar um projeto Quartus inicial.
 
 ## Próximas ações imediatas sugeridas
-- Criar testbenches direcionados para validar o caminho de loads indiretos (`LD A,(HL)`, `LD (HL),A`, `INC/DEC (HL)`), as variantes `LDH/LD (C),A` e confirmar as atualizações de flags correspondentes.
-- Planejar a etapa de simulações completas dos loads de 8 bits antes de seguir para pilha/saltos.
-- Prototipar o fluxo de pilha (push/pop) e definir como o `SP` será manipulado via `idu.vhd`.
+- Criar testbenches cobrindo cargas de 8/16 bits e operações de pilha (`LD r,r'`, indiretos via `(HL)`, `LD (nn),SP`, `PUSH/POP`, `LD HL,SP+e8`) confirmando flags e evolução do `SP`.
+- Planejar a etapa de simulações completas das rotas recém-adicionadas antes de avançar para aritmética de 16 bits e saltos.
+- Mapear os requisitos para empilhamento automático do `PC` (interrupções e `CALL/RET`) a partir das infraestruturas já existentes na `control_unit` e `int_ctrl`.
 - Continuar alimentando a documentação conforme novos blocos forem implementados.
