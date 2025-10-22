@@ -920,7 +920,7 @@ begin
             if pending_mem_load /= REG_NONE then
               write_reg(pending_mem_load, data_in);
               pending_mem_load <= REG_NONE;
-              apply_hl_update(pending_hl_update);
+              apply_hl(pending_hl_update);
               pending_mem_mode <= MEM_MODE_NONE;
               pending_mem_action <= MEM_ACT_NONE;
               pending_hl_update <= HL_UPDATE_NONE;
@@ -928,7 +928,7 @@ begin
             elsif current_op /= EXEC_NONE then
               st <= S_ALU_PREP;
             else
-              apply_hl_update(pending_hl_update);
+              apply_hl(pending_hl_update);
               pending_mem_mode <= MEM_MODE_NONE;
               pending_mem_action <= MEM_ACT_NONE;
               pending_hl_update <= HL_UPDATE_NONE;
@@ -954,7 +954,7 @@ begin
             end case;
             data_out_r <= pending_write_value;
             wr_r <= '1';
-            apply_hl_update(pending_hl_update);
+            apply_hl(pending_hl_update);
             pending_mem_mode <= MEM_MODE_NONE;
             pending_mem_action <= MEM_ACT_NONE;
             pending_hl_update <= HL_UPDATE_NONE;
