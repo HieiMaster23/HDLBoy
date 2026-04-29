@@ -1,0 +1,66 @@
+# =============================================================================
+# Quartus II Generated Files
+# =============================================================================
+db/
+incremental_db/
+output_files/
+simulation/
+greybox_tmp/
+hps_isw_handoff/
+
+# Quartus temporary/backup files
+*.bak
+*.qws
+*.qdf
+*.ppf
+*.ddb
+*.csv
+*.cmp
+*.sip
+*.spd
+*.bsf
+*.f
+*.sopcinfo
+*.orig
+*.smsg
+*.summary
+*.done
+*.pin
+*.jdi
+*.rpt
+PLLJ_PLLSPE_INFO.txt
+quartus/vhdlboy.qpf
+quartus/vhdlboy.qsf
+
+# JTAG/programming temp
+*.jic
+*.sof
+*.pof
+*.jam
+*.jbc
+
+# ModelSim generated files
+sim/modelsim/work/
+sim/modelsim/transcript
+sim/modelsim/*.wlf
+sim/modelsim/*.vstf
+sim/modelsim/*.ucdb
+sim/modelsim/vsim.wlf
+sim/modelsim/wlf*
+quartus/simulation/
+
+# Editor/OS files
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python bytecode (for scripts/)
+__pycache__/
+*.pyc
+
+# IDE files
+.vscode/
+.idea/

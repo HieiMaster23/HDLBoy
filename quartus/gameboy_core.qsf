@@ -1,0 +1,57 @@
+# =============================================================================
+# Quartus II Project Settings - Game Boy FPGA Core
+# Target: Altera Cyclone IV EP4CE6 E22C8N (OMDAZZ RZ-EasyFPGA A2.2)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Device Settings
+# -----------------------------------------------------------------------------
+set_global_assignment -name FAMILY "Cyclone IV E"
+set_global_assignment -name DEVICE EP4CE6E22C8
+set_global_assignment -name TOP_LEVEL_ENTITY framebuffer_test_top
+set_global_assignment -name ORIGINAL_QUARTUS_VERSION "13.0 SP1"
+set_global_assignment -name PROJECT_CREATION_TIME_DATE "2026-03-18"
+set_global_assignment -name LAST_QUARTUS_VERSION "13.0 SP1"
+set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
+
+# -----------------------------------------------------------------------------
+# Compilation Settings
+# -----------------------------------------------------------------------------
+set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
+set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
+set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 1
+set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
+set_global_assignment -name USE_CONFIGURATION_DEVICE OFF
+set_global_assignment -name CRC_ERROR_OPEN_DRAIN OFF
+set_global_assignment -name CYCLONEII_RESERVE_NCEO_AFTER_CONFIGURATION "USE AS REGULAR IO"
+set_global_assignment -name RESERVE_ALL_UNUSED_PINS "AS INPUT TRI-STATED"
+set_global_assignment -name OUTPUT_IO_TIMING_NEAR_END_VMEAS "HALF VCCIO" -rise
+set_global_assignment -name OUTPUT_IO_TIMING_NEAR_END_VMEAS "HALF VCCIO" -fall
+set_global_assignment -name OUTPUT_IO_TIMING_FAR_END_VMEAS "HALF SIGNAL SWING" -rise
+set_global_assignment -name OUTPUT_IO_TIMING_FAR_END_VMEAS "HALF SIGNAL SWING" -fall
+
+# -----------------------------------------------------------------------------
+# Source Files
+# -----------------------------------------------------------------------------
+set_global_assignment -name VHDL_FILE ../rtl/common/gb_types_pkg.vhd
+set_global_assignment -name VHDL_FILE ../rtl/top/blink_led.vhd
+set_global_assignment -name VHDL_FILE ../rtl/top/pll_core.vhd
+set_global_assignment -name VHDL_FILE ../rtl/video/vga_controller.vhd
+set_global_assignment -name VHDL_FILE ../rtl/video/vga_color_bar.vhd
+set_global_assignment -name VHDL_FILE ../rtl/video/vga_pixel_pipeline.vhd
+set_global_assignment -name VHDL_FILE ../rtl/video/test_pattern_writer.vhd
+set_global_assignment -name VHDL_FILE ../rtl/memory/framebuffer.vhd
+set_global_assignment -name VHDL_FILE ../rtl/top/vga_test_top.vhd
+set_global_assignment -name VHDL_FILE ../rtl/top/framebuffer_test_top.vhd
+
+# -----------------------------------------------------------------------------
+# Constraint Files
+# -----------------------------------------------------------------------------
+set_global_assignment -name SDC_FILE ../constraints/timing.sdc
+
+# -----------------------------------------------------------------------------
+# Pin Assignments (included from constraints file)
+# -----------------------------------------------------------------------------
+source ../constraints/pin_assignments.qsf
+
+set_global_assignment -name RESERVE_ALL_UNUSED_PINS_NO_OUTPUT_GND "AS INPUT TRI-STATED"

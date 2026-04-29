@@ -1,0 +1,4 @@
+QUARTUS_VERSION = "13.0"
+DATE = "2026-03-18"
+
+PROJECT_REVISION = "gameboy_core"

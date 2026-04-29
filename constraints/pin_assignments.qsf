@@ -1,0 +1,125 @@
+# =============================================================================
+# Pin Assignments - OMDAZZ RZ-EasyFPGA A2.2
+# Target: Altera Cyclone IV EP4CE6 E22C8N (EQFP-144)
+# =============================================================================
+# Public RZ-EasyFPGA A2.2 references agree on the clock, reset, LED, key,
+# UART, PS/2, VGA, and SDRAM pins below. Verify against the exact board
+# schematic before connecting external hardware.
+#
+# Current canonical top: framebuffer_test_top
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Clock and Reset
+# -----------------------------------------------------------------------------
+set_location_assignment PIN_23 -to clk_50mhz
+set_location_assignment PIN_25 -to reset_n
+
+# -----------------------------------------------------------------------------
+# LEDs (active-low on typical RZ-EasyFPGA A2.2 boards)
+# -----------------------------------------------------------------------------
+set_location_assignment PIN_87 -to led[0]
+set_location_assignment PIN_86 -to led[1]
+set_location_assignment PIN_85 -to led[2]
+set_location_assignment PIN_84 -to led[3]
+
+# -----------------------------------------------------------------------------
+# VGA
+# -----------------------------------------------------------------------------
+# The board exposes one digital/resistor-DAC pin per color channel.
+set_location_assignment PIN_106 -to vga_r
+set_location_assignment PIN_105 -to vga_g
+set_location_assignment PIN_104 -to vga_b
+set_location_assignment PIN_101 -to vga_hsync
+set_location_assignment PIN_103 -to vga_vsync
+
+# -----------------------------------------------------------------------------
+# Push-button Keys
+# -----------------------------------------------------------------------------
+# Used by blink_led and future joypad tests. Keep commented while the canonical
+# top-level entity does not expose key_n ports, otherwise Quartus reports
+# ignored assignments.
+# set_location_assignment PIN_88 -to key_n[0]
+# set_location_assignment PIN_89 -to key_n[1]
+# set_location_assignment PIN_90 -to key_n[2]
+# set_location_assignment PIN_91 -to key_n[3]
+
+# -----------------------------------------------------------------------------
+# DIP Switches
+# -----------------------------------------------------------------------------
+# Public references indicate the small key/DIP inputs share the same four FPGA
+# pins on this board revision. Do not add independent dip_sw assignments until
+# the schematic for the exact board revision confirms them.
+
+# -----------------------------------------------------------------------------
+# Future UART (RS-232 via SP3232)
+# -----------------------------------------------------------------------------
+# set_location_assignment PIN_114 -to uart_tx
+# set_location_assignment PIN_115 -to uart_rx
+
+# -----------------------------------------------------------------------------
+# Future PS/2
+# -----------------------------------------------------------------------------
+# set_location_assignment PIN_119 -to ps2_clk
+# set_location_assignment PIN_120 -to ps2_data
+
+# -----------------------------------------------------------------------------
+# Future SDRAM (64 Mbit HY57V641620F-family on common boards)
+# -----------------------------------------------------------------------------
+# set_location_assignment PIN_43 -to sdram_clk
+# set_location_assignment PIN_58 -to sdram_cke
+# set_location_assignment PIN_72 -to sdram_cs_n
+# set_location_assignment PIN_71 -to sdram_ras_n
+# set_location_assignment PIN_70 -to sdram_cas_n
+# set_location_assignment PIN_69 -to sdram_we_n
+# set_location_assignment PIN_42 -to sdram_dqm[0]
+# set_location_assignment PIN_55 -to sdram_dqm[1]
+# set_location_assignment PIN_73 -to sdram_ba[0]
+# set_location_assignment PIN_74 -to sdram_ba[1]
+# set_location_assignment PIN_76 -to sdram_addr[0]
+# set_location_assignment PIN_77 -to sdram_addr[1]
+# set_location_assignment PIN_80 -to sdram_addr[2]
+# set_location_assignment PIN_83 -to sdram_addr[3]
+# set_location_assignment PIN_68 -to sdram_addr[4]
+# set_location_assignment PIN_67 -to sdram_addr[5]
+# set_location_assignment PIN_66 -to sdram_addr[6]
+# set_location_assignment PIN_65 -to sdram_addr[7]
+# set_location_assignment PIN_64 -to sdram_addr[8]
+# set_location_assignment PIN_60 -to sdram_addr[9]
+# set_location_assignment PIN_75 -to sdram_addr[10]
+# set_location_assignment PIN_59 -to sdram_addr[11]
+# set_location_assignment PIN_28 -to sdram_dq[0]
+# set_location_assignment PIN_30 -to sdram_dq[1]
+# set_location_assignment PIN_31 -to sdram_dq[2]
+# set_location_assignment PIN_32 -to sdram_dq[3]
+# set_location_assignment PIN_33 -to sdram_dq[4]
+# set_location_assignment PIN_34 -to sdram_dq[5]
+# set_location_assignment PIN_38 -to sdram_dq[6]
+# set_location_assignment PIN_39 -to sdram_dq[7]
+# set_location_assignment PIN_54 -to sdram_dq[8]
+# set_location_assignment PIN_53 -to sdram_dq[9]
+# set_location_assignment PIN_52 -to sdram_dq[10]
+# set_location_assignment PIN_51 -to sdram_dq[11]
+# set_location_assignment PIN_50 -to sdram_dq[12]
+# set_location_assignment PIN_49 -to sdram_dq[13]
+# set_location_assignment PIN_46 -to sdram_dq[14]
+# set_location_assignment PIN_44 -to sdram_dq[15]
+
+# -----------------------------------------------------------------------------
+# I/O Standards
+# -----------------------------------------------------------------------------
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to clk_50mhz
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to reset_n
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to led[*]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_r
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_g
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_b
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_hsync
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_vsync
+
+set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to led[*]
+set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to vga_r
+set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to vga_g
+set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to vga_b
+set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to vga_hsync
+set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to vga_vsync
