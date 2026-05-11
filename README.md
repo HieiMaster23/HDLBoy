@@ -25,9 +25,9 @@ logic that runs directly on the FPGA fabric.
 
 | Milestone | Description | Status |
 | --- | --- | --- |
-| M0 | Infrastructure and environment setup | Mostly complete |
-| M1 | VGA controller 640x480 at 60 Hz | RTL and simulation complete |
-| M2 | Framebuffer and pixel pipeline | RTL, simulation, and Quartus build complete; hardware test pending |
+| M0 | Infrastructure and environment setup | RTL, simulation, Quartus build, and JTAG programming complete |
+| M1 | VGA controller 640x480 at 60 Hz | RTL, simulation, Quartus build, and JTAG programming complete |
+| M2 | Framebuffer and pixel pipeline | RTL, simulation, Quartus build, and JTAG programming complete; visual hardware observation pending |
 | M3 | CPU core - Sharp LR35902 | Not started |
 | M4 | Memory map and bus controller | Not started |
 | M5 | PPU | Not started |
@@ -92,6 +92,7 @@ vsim -c -do run_framebuffer_top.do
 
 - [Architecture](docs/architecture.md)
 - [Design decisions](docs/design_decisions.md)
+- [Hardware bring-up](docs/hardware_bringup.md)
 - [Resource utilization](docs/resource_utilization.md)
 - [Pinout notes](docs/pinout_sources.md)
 

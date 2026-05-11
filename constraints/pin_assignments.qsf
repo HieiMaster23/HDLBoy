@@ -36,13 +36,12 @@ set_location_assignment PIN_103 -to vga_vsync
 # -----------------------------------------------------------------------------
 # Push-button Keys
 # -----------------------------------------------------------------------------
-# Used by blink_led and future joypad tests. Keep commented while the canonical
-# top-level entity does not expose key_n ports, otherwise Quartus reports
-# ignored assignments.
-# set_location_assignment PIN_88 -to key_n[0]
-# set_location_assignment PIN_89 -to key_n[1]
-# set_location_assignment PIN_90 -to key_n[2]
-# set_location_assignment PIN_91 -to key_n[3]
+# Used by blink_led and future joypad tests. These assignments are ignored by
+# Quartus when the selected top-level entity does not expose key_n ports.
+set_location_assignment PIN_88 -to key_n[0]
+set_location_assignment PIN_89 -to key_n[1]
+set_location_assignment PIN_90 -to key_n[2]
+set_location_assignment PIN_91 -to key_n[3]
 
 # -----------------------------------------------------------------------------
 # DIP Switches
@@ -111,6 +110,7 @@ set_location_assignment PIN_103 -to vga_vsync
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to clk_50mhz
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to reset_n
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to led[*]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to key_n[*]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_r
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_g
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_b

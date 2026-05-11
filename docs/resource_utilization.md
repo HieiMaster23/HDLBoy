@@ -29,12 +29,12 @@ Canonical project: `gameboy_core`
 
 Top-level entity: `framebuffer_test_top`
 
-Report date: 2026-04-29
+Report date: 2026-05-11
 
 | Resource | Used | Available | Utilization |
 | --- | ---: | ---: | ---: |
-| Logic elements | 271 | 6,272 | 4% |
-| Registers | 127 | 6,272 | 2% |
+| Logic elements | 278 | 6,272 | 4% |
+| Registers | 134 | 6,272 | 2% |
 | Pins | 11 | 92 | 12% |
 | Memory bits | 46,080 | 276,480 | 17% |
 | 9-bit multiplier elements | 0 | 30 | 0% |
