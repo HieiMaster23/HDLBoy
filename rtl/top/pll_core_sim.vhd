@@ -34,8 +34,8 @@ begin
 
     -- Pass input clock directly as VGA clock (testbench provides correct frequency)
     c0     <= inclk0;
-    -- CPU clock not used in M1/M2 tests
-    c1     <= '0';
+    -- Pass input clock directly as CPU clock for simulation-only integration tests.
+    c1     <= inclk0;
     -- Locked after a short delay (simulate PLL lock time)
     locked <= '0' when areset = '1' else '1';
 

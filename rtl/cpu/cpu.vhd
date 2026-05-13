@@ -1,0 +1,656 @@
+-- =============================================================================
+-- Module:      cpu
+-- Description: Incremental Sharp LR35902 CPU core for M3 bring-up
+-- Author:      Rafael Siqueira de Oliveira
+-- Created:     2026-05-11
+-- Target:      Altera Cyclone IV EP4CE6 E22C8N (OMDAZZ RZ-EasyFPGA A2.2)
+-- Tool:        Quartus II 13.0 SP1
+-- =============================================================================
+-- Revision History:
+-- 2026-05-11 - Initial multi-cycle CPU subset with memory bus and stack support
+-- =============================================================================
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+library work;
+use work.gb_types_pkg.all;
+
+entity cpu is
+    port (
+        clk                : in  std_logic;
+        reset              : in  std_logic;
+
+        mem_addr           : out std_logic_vector(15 downto 0);
+        mem_data_in        : in  std_logic_vector(7 downto 0);
+        mem_data_out       : out std_logic_vector(7 downto 0);
+        mem_read           : out std_logic;
+        mem_write          : out std_logic;
+
+        interrupt_enable   : in  std_logic_vector(4 downto 0);
+        interrupt_flags    : in  std_logic_vector(4 downto 0);
+        interrupt_ack      : out std_logic;
+        interrupt_vector   : out std_logic_vector(2 downto 0);
+
+        halted             : out std_logic;
+        ime_out            : out std_logic;
+        interrupt_pending  : out std_logic;
+        unsupported_opcode : out std_logic;
+
+        debug_a            : out std_logic_vector(7 downto 0);
+        debug_f            : out std_logic_vector(7 downto 0);
+        debug_b            : out std_logic_vector(7 downto 0);
+        debug_c            : out std_logic_vector(7 downto 0);
+        debug_d            : out std_logic_vector(7 downto 0);
+        debug_e            : out std_logic_vector(7 downto 0);
+        debug_h            : out std_logic_vector(7 downto 0);
+        debug_l            : out std_logic_vector(7 downto 0);
+        debug_pc           : out std_logic_vector(15 downto 0);
+        debug_sp           : out std_logic_vector(15 downto 0);
+        debug_state        : out std_logic_vector(4 downto 0)
+    );
+end entity cpu;
+
+architecture rtl of cpu is
+
+    type cpu_state_t is (
+        S_FETCH,
+        S_DECODE,
+        S_READ_IMM_LO,
+        S_READ_IMM_HI,
+        S_MEM_READ_HL,
+        S_MEM_WRITE_HL,
+        S_PUSH_HI,
+        S_PUSH_LO,
+        S_POP_LO,
+        S_POP_HI,
+        S_CALL_PUSH_HI,
+        S_CALL_PUSH_LO,
+        S_RET_READ_LO,
+        S_RET_READ_HI,
+        S_HALT
+    );
+
+    signal state_reg : cpu_state_t;
+    signal state_next : cpu_state_t;
+
+    signal opcode_reg : std_logic_vector(7 downto 0);
+    signal imm_lo_reg : std_logic_vector(7 downto 0);
+    signal addr_tmp_reg : std_logic_vector(15 downto 0);
+    signal stack_lo_reg : std_logic_vector(7 downto 0);
+    signal unsupported_reg : std_logic;
+    signal ime_reg : std_logic;
+    signal ei_pending_reg : std_logic;
+    signal halted_reg : std_logic;
+
+    signal dec_valid : std_logic;
+    signal dec_class : std_logic_vector(3 downto 0);
+    signal dec_dst : std_logic_vector(2 downto 0);
+    signal dec_src : std_logic_vector(2 downto 0);
+    signal dec_pair : std_logic_vector(1 downto 0);
+    signal dec_alu_op : std_logic_vector(3 downto 0);
+    signal dec_imm_bytes : std_logic_vector(1 downto 0);
+    signal dec_reads_memory : std_logic;
+    signal dec_writes_memory : std_logic;
+    signal dec_writes_register : std_logic;
+    signal dec_writes_flags : std_logic;
+
+    signal reg_read_sel_a : std_logic_vector(2 downto 0);
+    signal reg_read_sel_b : std_logic_vector(2 downto 0);
+    signal reg_read_data_a : std_logic_vector(7 downto 0);
+    signal reg_read_data_b : std_logic_vector(7 downto 0);
+    signal reg_write_enable : std_logic;
+    signal reg_write_sel : std_logic_vector(2 downto 0);
+    signal reg_write_data : std_logic_vector(7 downto 0);
+    signal pair_write_enable : std_logic;
+    signal pair_write_sel : std_logic_vector(1 downto 0);
+    signal pair_write_data : std_logic_vector(15 downto 0);
+    signal flags_write_enable : std_logic;
+    signal flags_in_sig : std_logic_vector(3 downto 0);
+    signal pc_write_enable : std_logic;
+    signal pc_in_sig : std_logic_vector(15 downto 0);
+    signal pc_out_sig : std_logic_vector(15 downto 0);
+    signal sp_write_enable : std_logic;
+    signal sp_in_sig : std_logic_vector(15 downto 0);
+    signal sp_out_sig : std_logic_vector(15 downto 0);
+    signal a_sig : std_logic_vector(7 downto 0);
+    signal f_sig : std_logic_vector(7 downto 0);
+    signal b_sig : std_logic_vector(7 downto 0);
+    signal c_sig : std_logic_vector(7 downto 0);
+    signal d_sig : std_logic_vector(7 downto 0);
+    signal e_sig : std_logic_vector(7 downto 0);
+    signal h_sig : std_logic_vector(7 downto 0);
+    signal l_sig : std_logic_vector(7 downto 0);
+    signal hl_sig : std_logic_vector(15 downto 0);
+    signal flags_sig : std_logic_vector(3 downto 0);
+
+    signal alu_a_sig : std_logic_vector(7 downto 0);
+    signal alu_b_sig : std_logic_vector(7 downto 0);
+    signal alu_result_sig : std_logic_vector(7 downto 0);
+    signal alu_flags_sig : std_logic_vector(3 downto 0);
+    signal alu_op_sig : std_logic_vector(3 downto 0);
+
+    signal instr_complete : std_logic;
+    signal pending_interrupt_sig : std_logic;
+
+    function inc16(value_in : std_logic_vector(15 downto 0)) return std_logic_vector is
+    begin
+        return std_logic_vector(unsigned(value_in) + 1);
+    end function inc16;
+
+    function dec16(value_in : std_logic_vector(15 downto 0)) return std_logic_vector is
+    begin
+        return std_logic_vector(unsigned(value_in) - 1);
+    end function dec16;
+
+    function add_signed8(base_in : std_logic_vector(15 downto 0);
+                         offset_in : std_logic_vector(7 downto 0)) return std_logic_vector is
+        variable base_s : signed(16 downto 0);
+        variable off_s  : signed(16 downto 0);
+        variable sum_s  : signed(16 downto 0);
+    begin
+        base_s := signed('0' & base_in);
+        off_s := resize(signed(offset_in), 17);
+        sum_s := base_s + off_s;
+        return std_logic_vector(sum_s(15 downto 0));
+    end function add_signed8;
+
+    function stack_pair_value(opcode_in : std_logic_vector(7 downto 0);
+                              a_in : std_logic_vector(7 downto 0);
+                              f_in : std_logic_vector(7 downto 0);
+                              b_in : std_logic_vector(7 downto 0);
+                              c_in : std_logic_vector(7 downto 0);
+                              d_in : std_logic_vector(7 downto 0);
+                              e_in : std_logic_vector(7 downto 0);
+                              h_in : std_logic_vector(7 downto 0);
+                              l_in : std_logic_vector(7 downto 0)) return std_logic_vector is
+        variable pair_v : std_logic_vector(15 downto 0);
+    begin
+        case opcode_in(5 downto 4) is
+            when CPU_PAIR_BC =>
+                pair_v := b_in & c_in;
+            when CPU_PAIR_DE =>
+                pair_v := d_in & e_in;
+            when CPU_PAIR_HL =>
+                pair_v := h_in & l_in;
+            when others =>
+                pair_v := a_in & (f_in(7 downto 4) & "0000");
+        end case;
+        return pair_v;
+    end function stack_pair_value;
+
+    function state_to_slv(state_in : cpu_state_t) return std_logic_vector is
+    begin
+        case state_in is
+            when S_FETCH        => return "00000";
+            when S_DECODE       => return "00001";
+            when S_READ_IMM_LO  => return "00010";
+            when S_READ_IMM_HI  => return "00011";
+            when S_MEM_READ_HL  => return "00100";
+            when S_MEM_WRITE_HL => return "00101";
+            when S_PUSH_HI      => return "00110";
+            when S_PUSH_LO      => return "00111";
+            when S_POP_LO       => return "01000";
+            when S_POP_HI       => return "01001";
+            when S_CALL_PUSH_HI => return "01010";
+            when S_CALL_PUSH_LO => return "01011";
+            when S_RET_READ_LO  => return "01100";
+            when S_RET_READ_HI  => return "01101";
+            when others         => return "01110";
+        end case;
+    end function state_to_slv;
+
+begin
+
+    u_decoder: entity work.decoder
+        port map (
+            opcode          => opcode_reg,
+            valid           => dec_valid,
+            instr_class     => dec_class,
+            dst_sel         => dec_dst,
+            src_sel         => dec_src,
+            pair_sel        => dec_pair,
+            alu_op          => dec_alu_op,
+            immediate_bytes => dec_imm_bytes,
+            reads_memory    => dec_reads_memory,
+            writes_memory   => dec_writes_memory,
+            writes_register => dec_writes_register,
+            writes_flags    => dec_writes_flags
+        );
+
+    u_registers: entity work.registers
+        port map (
+            clk                => clk,
+            reset              => reset,
+            read_sel_a         => reg_read_sel_a,
+            read_sel_b         => reg_read_sel_b,
+            read_data_a        => reg_read_data_a,
+            read_data_b        => reg_read_data_b,
+            write_enable       => reg_write_enable,
+            write_sel          => reg_write_sel,
+            write_data         => reg_write_data,
+            pair_write_enable  => pair_write_enable,
+            pair_write_sel     => pair_write_sel,
+            pair_write_data    => pair_write_data,
+            flags_write_enable => flags_write_enable,
+            flags_in           => flags_in_sig,
+            pc_write_enable    => pc_write_enable,
+            pc_in              => pc_in_sig,
+            pc_out             => pc_out_sig,
+            sp_write_enable    => sp_write_enable,
+            sp_in              => sp_in_sig,
+            sp_out             => sp_out_sig,
+            a_out              => a_sig,
+            f_out              => f_sig,
+            b_out              => b_sig,
+            c_out              => c_sig,
+            d_out              => d_sig,
+            e_out              => e_sig,
+            h_out              => h_sig,
+            l_out              => l_sig,
+            hl_out             => hl_sig,
+            flags_out          => flags_sig
+        );
+
+    u_alu: entity work.alu
+        port map (
+            op       => alu_op_sig,
+            a_in     => alu_a_sig,
+            b_in     => alu_b_sig,
+            flags_in => flags_sig,
+            result   => alu_result_sig,
+            flags    => alu_flags_sig
+        );
+
+    pending_interrupt_sig <= '1' when (interrupt_enable and interrupt_flags) /= "00000" else '0';
+
+    p_state: process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                state_reg <= S_FETCH;
+                opcode_reg <= x"00";
+                imm_lo_reg <= x"00";
+                addr_tmp_reg <= (others => '0');
+                stack_lo_reg <= x"00";
+                unsupported_reg <= '0';
+                ime_reg <= '0';
+                ei_pending_reg <= '0';
+                halted_reg <= '0';
+            else
+                state_reg <= state_next;
+
+                if instr_complete = '1' and ei_pending_reg = '1' then
+                    ime_reg <= '1';
+                    ei_pending_reg <= '0';
+                end if;
+
+                case state_reg is
+                    when S_FETCH =>
+                        opcode_reg <= mem_data_in;
+
+                    when S_DECODE =>
+                        if dec_valid = '0' then
+                            unsupported_reg <= '1';
+                        end if;
+                        if opcode_reg = x"F3" then
+                            ime_reg <= '0';
+                            ei_pending_reg <= '0';
+                        elsif opcode_reg = x"FB" then
+                            ei_pending_reg <= '1';
+                        elsif opcode_reg = x"76" then
+                            halted_reg <= '1';
+                        end if;
+
+                    when S_READ_IMM_LO =>
+                        imm_lo_reg <= mem_data_in;
+
+                    when S_READ_IMM_HI =>
+                        if opcode_reg = x"C3" or opcode_reg = x"CD" then
+                            addr_tmp_reg <= mem_data_in & imm_lo_reg;
+                        end if;
+
+                    when S_POP_LO | S_RET_READ_LO =>
+                        stack_lo_reg <= mem_data_in;
+
+                    when S_HALT =>
+                        if pending_interrupt_sig = '1' then
+                            halted_reg <= '0';
+                        end if;
+
+                    when others =>
+                        null;
+                end case;
+            end if;
+        end if;
+    end process p_state;
+
+    p_control: process(state_reg, opcode_reg, imm_lo_reg, addr_tmp_reg, stack_lo_reg,
+                       mem_data_in,
+                       dec_valid, dec_class, dec_dst, dec_src, dec_pair, dec_alu_op,
+                       dec_reads_memory,
+                       reg_read_data_b, pc_out_sig, sp_out_sig, a_sig, f_sig,
+                       b_sig, c_sig, d_sig, e_sig, h_sig, l_sig, hl_sig,
+                       flags_sig, alu_result_sig, alu_flags_sig,
+                       pending_interrupt_sig)
+        variable opcode_pair_v : std_logic_vector(1 downto 0);
+        variable jr_base_v     : std_logic_vector(15 downto 0);
+        variable push_value_v  : std_logic_vector(15 downto 0);
+    begin
+        state_next <= S_FETCH;
+        mem_addr <= (others => '0');
+        mem_data_out <= (others => '0');
+        mem_read <= '0';
+        mem_write <= '0';
+        interrupt_ack <= '0';
+        interrupt_vector <= "000";
+
+        reg_read_sel_a <= CPU_REG_A;
+        reg_read_sel_b <= dec_src;
+        reg_write_enable <= '0';
+        reg_write_sel <= dec_dst;
+        reg_write_data <= reg_read_data_b;
+        pair_write_enable <= '0';
+        pair_write_sel <= dec_pair;
+        pair_write_data <= (others => '0');
+        flags_write_enable <= '0';
+        flags_in_sig <= flags_sig;
+        pc_write_enable <= '0';
+        pc_in_sig <= pc_out_sig;
+        sp_write_enable <= '0';
+        sp_in_sig <= sp_out_sig;
+
+        alu_a_sig <= a_sig;
+        alu_b_sig <= reg_read_data_b;
+        alu_op_sig <= dec_alu_op;
+        instr_complete <= '0';
+
+        opcode_pair_v := opcode_reg(5 downto 4);
+        jr_base_v := inc16(pc_out_sig);
+        push_value_v := stack_pair_value(opcode_reg, a_sig, f_sig, b_sig, c_sig,
+                                         d_sig, e_sig, h_sig, l_sig);
+
+        case state_reg is
+            when S_FETCH =>
+                mem_addr <= pc_out_sig;
+                mem_read <= '1';
+                pc_write_enable <= '1';
+                pc_in_sig <= inc16(pc_out_sig);
+                state_next <= S_DECODE;
+
+            when S_DECODE =>
+                state_next <= S_FETCH;
+                instr_complete <= '1';
+
+                if dec_valid = '0' then
+                    state_next <= S_FETCH;
+
+                elsif dec_class = DEC_CLASS_NOP then
+                    state_next <= S_FETCH;
+
+                elsif dec_class = DEC_CLASS_LD_R_N then
+                    instr_complete <= '0';
+                    state_next <= S_READ_IMM_LO;
+
+                elsif dec_class = DEC_CLASS_LD_R_R then
+                    if opcode_reg = x"7E" then
+                        instr_complete <= '0';
+                        state_next <= S_MEM_READ_HL;
+                    elsif opcode_reg = x"77" then
+                        instr_complete <= '0';
+                        state_next <= S_MEM_WRITE_HL;
+                    elsif dec_src /= CPU_REG_HL_MEM and dec_dst /= CPU_REG_HL_MEM then
+                        reg_write_enable <= '1';
+                        reg_write_sel <= dec_dst;
+                        reg_write_data <= reg_read_data_b;
+                    else
+                        -- TODO: implement the remaining LD r,(HL) and LD (HL),r forms.
+                        state_next <= S_FETCH;
+                    end if;
+
+                elsif dec_class = DEC_CLASS_LD_16_N then
+                    instr_complete <= '0';
+                    state_next <= S_READ_IMM_LO;
+
+                elsif dec_class = DEC_CLASS_INC_R or dec_class = DEC_CLASS_DEC_R then
+                    reg_read_sel_b <= dec_src;
+                    alu_a_sig <= reg_read_data_b;
+                    alu_b_sig <= x"01";
+                    alu_op_sig <= dec_alu_op;
+                    reg_write_enable <= '1';
+                    reg_write_sel <= dec_dst;
+                    reg_write_data <= alu_result_sig;
+                    flags_write_enable <= '1';
+                    flags_in_sig <= alu_flags_sig;
+
+                elsif dec_class = DEC_CLASS_ALU_R then
+                    if dec_reads_memory = '1' then
+                        -- TODO: implement ALU A,(HL) as a memory-read execute state.
+                        state_next <= S_FETCH;
+                    else
+                        reg_read_sel_b <= dec_src;
+                        alu_a_sig <= a_sig;
+                        alu_b_sig <= reg_read_data_b;
+                        alu_op_sig <= dec_alu_op;
+                        if dec_alu_op /= ALU_OP_CP then
+                            reg_write_enable <= '1';
+                            reg_write_sel <= CPU_REG_A;
+                            reg_write_data <= alu_result_sig;
+                        end if;
+                        flags_write_enable <= '1';
+                        flags_in_sig <= alu_flags_sig;
+                    end if;
+
+                elsif dec_class = DEC_CLASS_JUMP then
+                    if opcode_reg = x"C3" or opcode_reg = x"CD" then
+                        instr_complete <= '0';
+                        state_next <= S_READ_IMM_LO;
+                    elsif opcode_reg = x"18" then
+                        instr_complete <= '0';
+                        state_next <= S_READ_IMM_LO;
+                    elsif opcode_reg = x"C9" then
+                        instr_complete <= '0';
+                        state_next <= S_RET_READ_LO;
+                    else
+                        state_next <= S_FETCH;
+                    end if;
+
+                elsif dec_class = DEC_CLASS_STACK then
+                    instr_complete <= '0';
+                    if opcode_reg(2) = '0' then
+                        state_next <= S_POP_LO;
+                    else
+                        state_next <= S_PUSH_HI;
+                    end if;
+
+                elsif dec_class = DEC_CLASS_CONTROL then
+                    if opcode_reg = x"76" then
+                        instr_complete <= '0';
+                        state_next <= S_HALT;
+                    else
+                        -- DI/EI bookkeeping is handled by the sequential process.
+                        -- TODO: implement CB-prefixed decoding in the next M3 slice.
+                        state_next <= S_FETCH;
+                    end if;
+
+                else
+                    state_next <= S_FETCH;
+                end if;
+
+            when S_READ_IMM_LO =>
+                mem_addr <= pc_out_sig;
+                mem_read <= '1';
+
+                if opcode_reg = x"18" then
+                    pc_write_enable <= '1';
+                    jr_base_v := inc16(pc_out_sig);
+                    pc_in_sig <= add_signed8(jr_base_v, mem_data_in);
+                    instr_complete <= '1';
+                    state_next <= S_FETCH;
+                elsif dec_class = DEC_CLASS_LD_R_N then
+                    pc_write_enable <= '1';
+                    pc_in_sig <= inc16(pc_out_sig);
+                    reg_write_enable <= '1';
+                    reg_write_sel <= dec_dst;
+                    reg_write_data <= mem_data_in;
+                    instr_complete <= '1';
+                    state_next <= S_FETCH;
+                else
+                    pc_write_enable <= '1';
+                    pc_in_sig <= inc16(pc_out_sig);
+                    state_next <= S_READ_IMM_HI;
+                end if;
+
+            when S_READ_IMM_HI =>
+                mem_addr <= pc_out_sig;
+                mem_read <= '1';
+
+                if opcode_reg = x"21" then
+                    pair_write_enable <= '1';
+                    pair_write_sel <= CPU_PAIR_HL;
+                    pair_write_data <= mem_data_in & imm_lo_reg;
+                    pc_write_enable <= '1';
+                    pc_in_sig <= inc16(pc_out_sig);
+                    instr_complete <= '1';
+                    state_next <= S_FETCH;
+                elsif opcode_reg = x"31" then
+                    sp_write_enable <= '1';
+                    sp_in_sig <= mem_data_in & imm_lo_reg;
+                    pc_write_enable <= '1';
+                    pc_in_sig <= inc16(pc_out_sig);
+                    instr_complete <= '1';
+                    state_next <= S_FETCH;
+                elsif opcode_reg = x"C3" then
+                    pc_write_enable <= '1';
+                    pc_in_sig <= mem_data_in & imm_lo_reg;
+                    instr_complete <= '1';
+                    state_next <= S_FETCH;
+                elsif opcode_reg = x"CD" then
+                    pc_write_enable <= '1';
+                    pc_in_sig <= inc16(pc_out_sig);
+                    state_next <= S_CALL_PUSH_HI;
+                else
+                    pc_write_enable <= '1';
+                    pc_in_sig <= inc16(pc_out_sig);
+                    instr_complete <= '1';
+                    state_next <= S_FETCH;
+                end if;
+
+            when S_MEM_READ_HL =>
+                mem_addr <= hl_sig;
+                mem_read <= '1';
+                reg_write_enable <= '1';
+                reg_write_sel <= CPU_REG_A;
+                reg_write_data <= mem_data_in;
+                instr_complete <= '1';
+                state_next <= S_FETCH;
+
+            when S_MEM_WRITE_HL =>
+                mem_addr <= hl_sig;
+                mem_data_out <= a_sig;
+                mem_write <= '1';
+                instr_complete <= '1';
+                state_next <= S_FETCH;
+
+            when S_PUSH_HI =>
+                mem_addr <= dec16(sp_out_sig);
+                mem_data_out <= push_value_v(15 downto 8);
+                mem_write <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= dec16(sp_out_sig);
+                state_next <= S_PUSH_LO;
+
+            when S_PUSH_LO =>
+                mem_addr <= dec16(sp_out_sig);
+                mem_data_out <= push_value_v(7 downto 0);
+                mem_write <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= dec16(sp_out_sig);
+                instr_complete <= '1';
+                state_next <= S_FETCH;
+
+            when S_POP_LO =>
+                mem_addr <= sp_out_sig;
+                mem_read <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= inc16(sp_out_sig);
+                state_next <= S_POP_HI;
+
+            when S_POP_HI =>
+                mem_addr <= sp_out_sig;
+                mem_read <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= inc16(sp_out_sig);
+                pair_write_enable <= '1';
+                pair_write_sel <= opcode_pair_v;
+                pair_write_data <= mem_data_in & stack_lo_reg;
+                instr_complete <= '1';
+                state_next <= S_FETCH;
+
+            when S_CALL_PUSH_HI =>
+                mem_addr <= dec16(sp_out_sig);
+                mem_data_out <= pc_out_sig(15 downto 8);
+                mem_write <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= dec16(sp_out_sig);
+                state_next <= S_CALL_PUSH_LO;
+
+            when S_CALL_PUSH_LO =>
+                mem_addr <= dec16(sp_out_sig);
+                mem_data_out <= pc_out_sig(7 downto 0);
+                mem_write <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= dec16(sp_out_sig);
+                pc_write_enable <= '1';
+                pc_in_sig <= addr_tmp_reg;
+                instr_complete <= '1';
+                state_next <= S_FETCH;
+
+            when S_RET_READ_LO =>
+                mem_addr <= sp_out_sig;
+                mem_read <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= inc16(sp_out_sig);
+                state_next <= S_RET_READ_HI;
+
+            when S_RET_READ_HI =>
+                mem_addr <= sp_out_sig;
+                mem_read <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= inc16(sp_out_sig);
+                pc_write_enable <= '1';
+                pc_in_sig <= mem_data_in & stack_lo_reg;
+                instr_complete <= '1';
+                state_next <= S_FETCH;
+
+            when S_HALT =>
+                if pending_interrupt_sig = '1' then
+                    state_next <= S_FETCH;
+                else
+                    state_next <= S_HALT;
+                end if;
+
+            when others =>
+                state_next <= S_FETCH;
+        end case;
+    end process p_control;
+
+    halted <= halted_reg;
+    ime_out <= ime_reg;
+    interrupt_pending <= pending_interrupt_sig;
+    unsupported_opcode <= unsupported_reg;
+
+    debug_a <= a_sig;
+    debug_f <= f_sig;
+    debug_b <= b_sig;
+    debug_c <= c_sig;
+    debug_d <= d_sig;
+    debug_e <= e_sig;
+    debug_h <= h_sig;
+    debug_l <= l_sig;
+    debug_pc <= pc_out_sig;
+    debug_sp <= sp_out_sig;
+    debug_state <= state_to_slv(state_reg);
+
+end architecture rtl;

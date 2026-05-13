@@ -27,8 +27,8 @@ logic that runs directly on the FPGA fabric.
 | --- | --- | --- |
 | M0 | Infrastructure and environment setup | RTL, simulation, Quartus build, and JTAG programming complete |
 | M1 | VGA controller 640x480 at 60 Hz | RTL, simulation, Quartus build, and JTAG programming complete |
-| M2 | Framebuffer and pixel pipeline | RTL, simulation, Quartus build, and JTAG programming complete; visual hardware observation pending |
-| M3 | CPU core - Sharp LR35902 | Not started |
+| M2 | Framebuffer and pixel pipeline | RTL, simulation, Quartus build, JTAG programming, and VGA-HDMI visual hardware validation complete |
+| M3 | CPU core - Sharp LR35902 | First incremental multi-cycle subset implemented and simulated |
 | M4 | Memory map and bus controller | Not started |
 | M5 | PPU | Not started |
 | M6 | Timer, joypad, and I/O | Not started |
@@ -40,11 +40,13 @@ logic that runs directly on the FPGA fabric.
 Current canonical Quartus top-level:
 
 ```text
-framebuffer_test_top
+cpu_video_smoke_top
 ```
 
-The current build displays a generated Game Boy-sized framebuffer test pattern
-through the VGA pipeline with 3x scaling.
+The current build runs a CPU-to-framebuffer smoke test program from a small
+internal ROM. The CPU writes directly into a framebuffer-mapped address window,
+VGA displays the result, and the four-digit seven-segment display shows `1234`
+when the monitored integration checks pass.
 
 ## Building
 
@@ -86,6 +88,9 @@ vsim -c -do run_vga_controller.do
 vsim -c -do run_framebuffer.do
 vsim -c -do run_pixel_pipeline.do
 vsim -c -do run_framebuffer_top.do
+vsim -c -do run_cpu_all.do
+vsim -c -do run_cpu_integration_top.do
+vsim -c -do run_cpu_video_smoke_top.do
 ```
 
 ## Documentation
@@ -93,6 +98,9 @@ vsim -c -do run_framebuffer_top.do
 - [Architecture](docs/architecture.md)
 - [Design decisions](docs/design_decisions.md)
 - [Hardware bring-up](docs/hardware_bringup.md)
+- [M3 CPU implementation](docs/m3_cpu.md)
+- [M3/M4 checkpoint process](docs/m3_m4_checkpoint.md)
+- [M3/M4 visual checkpoint report](docs/html/m3_m4_checkpoint.html)
 - [Resource utilization](docs/resource_utilization.md)
 - [Pinout notes](docs/pinout_sources.md)
 

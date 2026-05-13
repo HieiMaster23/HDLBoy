@@ -75,4 +75,55 @@ package gb_types_pkg is
     constant ADDR_HRAM_END     : unsigned(15 downto 0) := x"FFFE";
     constant ADDR_IE           : unsigned(15 downto 0) := x"FFFF";
 
+    -- =========================================================================
+    -- CPU register and flag encodings
+    -- =========================================================================
+    constant CPU_REG_B      : std_logic_vector(2 downto 0) := "000";
+    constant CPU_REG_C      : std_logic_vector(2 downto 0) := "001";
+    constant CPU_REG_D      : std_logic_vector(2 downto 0) := "010";
+    constant CPU_REG_E      : std_logic_vector(2 downto 0) := "011";
+    constant CPU_REG_H      : std_logic_vector(2 downto 0) := "100";
+    constant CPU_REG_L      : std_logic_vector(2 downto 0) := "101";
+    constant CPU_REG_HL_MEM : std_logic_vector(2 downto 0) := "110";
+    constant CPU_REG_A      : std_logic_vector(2 downto 0) := "111";
+
+    constant CPU_PAIR_BC    : std_logic_vector(1 downto 0) := "00";
+    constant CPU_PAIR_DE    : std_logic_vector(1 downto 0) := "01";
+    constant CPU_PAIR_HL    : std_logic_vector(1 downto 0) := "10";
+    constant CPU_PAIR_AF    : std_logic_vector(1 downto 0) := "11";
+
+    constant CPU_FLAG_Z_BIT : integer := 3;
+    constant CPU_FLAG_N_BIT : integer := 2;
+    constant CPU_FLAG_H_BIT : integer := 1;
+    constant CPU_FLAG_C_BIT : integer := 0;
+
+    -- =========================================================================
+    -- ALU operation encoding
+    -- =========================================================================
+    constant ALU_OP_ADD  : std_logic_vector(3 downto 0) := x"0";
+    constant ALU_OP_SUB  : std_logic_vector(3 downto 0) := x"1";
+    constant ALU_OP_AND  : std_logic_vector(3 downto 0) := x"2";
+    constant ALU_OP_OR   : std_logic_vector(3 downto 0) := x"3";
+    constant ALU_OP_XOR  : std_logic_vector(3 downto 0) := x"4";
+    constant ALU_OP_CP   : std_logic_vector(3 downto 0) := x"5";
+    constant ALU_OP_INC  : std_logic_vector(3 downto 0) := x"6";
+    constant ALU_OP_DEC  : std_logic_vector(3 downto 0) := x"7";
+    constant ALU_OP_PASS : std_logic_vector(3 downto 0) := x"F";
+
+    -- =========================================================================
+    -- Decoder instruction classes
+    -- =========================================================================
+    constant DEC_CLASS_NOP     : std_logic_vector(3 downto 0) := x"0";
+    constant DEC_CLASS_LD_R_N  : std_logic_vector(3 downto 0) := x"1";
+    constant DEC_CLASS_LD_R_R  : std_logic_vector(3 downto 0) := x"2";
+    constant DEC_CLASS_LD_16_N : std_logic_vector(3 downto 0) := x"3";
+    constant DEC_CLASS_ALU_R   : std_logic_vector(3 downto 0) := x"4";
+    constant DEC_CLASS_INC_R   : std_logic_vector(3 downto 0) := x"5";
+    constant DEC_CLASS_DEC_R   : std_logic_vector(3 downto 0) := x"6";
+    constant DEC_CLASS_MEM_HL  : std_logic_vector(3 downto 0) := x"7";
+    constant DEC_CLASS_JUMP    : std_logic_vector(3 downto 0) := x"8";
+    constant DEC_CLASS_STACK   : std_logic_vector(3 downto 0) := x"9";
+    constant DEC_CLASS_CONTROL : std_logic_vector(3 downto 0) := x"A";
+    constant DEC_CLASS_UNKNOWN : std_logic_vector(3 downto 0) := x"F";
+
 end package gb_types_pkg;

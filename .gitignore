@@ -49,6 +49,10 @@ sim/modelsim/vsim.wlf
 sim/modelsim/wlf*
 quartus/simulation/
 
+# Local SignalTap captures/configurations
+debug/signaltap/local/
+debug/signaltap/**/*.stp
+
 # Editor/OS files
 *.swp
 *.swo

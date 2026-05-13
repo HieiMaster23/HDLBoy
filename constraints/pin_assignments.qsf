@@ -6,7 +6,7 @@
 # UART, PS/2, VGA, and SDRAM pins below. Verify against the exact board
 # schematic before connecting external hardware.
 #
-# Current canonical top: framebuffer_test_top
+# Current canonical top: cpu_video_smoke_top
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -34,10 +34,31 @@ set_location_assignment PIN_101 -to vga_hsync
 set_location_assignment PIN_103 -to vga_vsync
 
 # -----------------------------------------------------------------------------
+# Seven-segment Display (active-low on common RZ-EasyFPGA A2.2 boards)
+# -----------------------------------------------------------------------------
+# Public board references map the display as follows. Verify against the exact
+# board schematic before relying on the seven-segment display for final tests.
+set_location_assignment PIN_128 -to seg[0]
+set_location_assignment PIN_121 -to seg[1]
+set_location_assignment PIN_125 -to seg[2]
+set_location_assignment PIN_129 -to seg[3]
+set_location_assignment PIN_132 -to seg[4]
+set_location_assignment PIN_126 -to seg[5]
+set_location_assignment PIN_124 -to seg[6]
+set_location_assignment PIN_127 -to seg[7]
+
+# Hardware observation on this board showed the digit order is reversed from
+# the public left-to-right reference: an intended 1234 appeared as 4321.
+set_location_assignment PIN_137 -to digit_n[0]
+set_location_assignment PIN_136 -to digit_n[1]
+set_location_assignment PIN_135 -to digit_n[2]
+set_location_assignment PIN_133 -to digit_n[3]
+
+# -----------------------------------------------------------------------------
 # Push-button Keys
 # -----------------------------------------------------------------------------
-# Used by blink_led and future joypad tests. These assignments are ignored by
-# Quartus when the selected top-level entity does not expose key_n ports.
+# In cpu_integration_test_top, pressing any key_n button asserts the internal
+# CPU/debug reset so SignalTap can be armed before restarting the M3 program.
 set_location_assignment PIN_88 -to key_n[0]
 set_location_assignment PIN_89 -to key_n[1]
 set_location_assignment PIN_90 -to key_n[2]
@@ -110,6 +131,8 @@ set_location_assignment PIN_91 -to key_n[3]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to clk_50mhz
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to reset_n
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to led[*]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to seg[*]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to digit_n[*]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to key_n[*]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_r
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_g
@@ -118,6 +141,8 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_hsync
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_vsync
 
 set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to led[*]
+set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to seg[*]
+set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to digit_n[*]
 set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to vga_r
 set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to vga_g
 set_instance_assignment -name CURRENT_STRENGTH_NEW "8MA" -to vga_b

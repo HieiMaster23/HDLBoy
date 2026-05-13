@@ -33,6 +33,11 @@ if {[get_collection_size $led_ports] > 0} {
     set_false_path -to $led_ports
 }
 
+set seven_seg_ports [get_ports -nowarn {seg[*] digit_n[*]}]
+if {[get_collection_size $seven_seg_ports] > 0} {
+    set_false_path -to $seven_seg_ports
+}
+
 set vga_ports [get_ports -nowarn {vga_*}]
 if {[get_collection_size $vga_ports] > 0} {
     set_false_path -to $vga_ports

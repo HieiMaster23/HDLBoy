@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M3/M4 Checkpoint - Game Boy FPGA Core</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1d2430;
+      --muted: #5d6878;
+      --line: #d9dee7;
+      --panel: #ffffff;
+      --soft: #f4f7fb;
+      --cpu: #e9f2ff;
+      --bus: #eef8ee;
+      --video: #fff5df;
+      --debug: #f6ecff;
+      --ok: #236b3a;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--soft);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.15;
+    }
+
+    h1 {
+      font-size: 34px;
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin: 28px 0 12px;
+    }
+
+    p {
+      margin: 8px 0;
+      color: var(--muted);
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: #eef1f6;
+      padding: 2px 5px;
+      border-radius: 4px;
+      color: #172033;
+    }
+
+    .hero {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px;
+    }
+
+    .badge {
+      display: inline-block;
+      border: 1px solid #b7d7bf;
+      background: #ecf8ef;
+      color: var(--ok);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(120px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+      margin: 16px 0;
+    }
+
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 74px;
+      background: var(--panel);
+    }
+
+    .node.cpu { background: var(--cpu); }
+    .node.bus { background: var(--bus); }
+    .node.video { background: var(--video); }
+    .node.debug { background: var(--debug); }
+
+    .node .title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .node .detail {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef1f6;
+      color: #273142;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .num {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #25324a;
+      color: white;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+    }
+
+    .checks {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .check {
+      border-left: 5px solid var(--ok);
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 14px 16px;
+      border-top: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    @media (max-width: 760px) {
+      .flow {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="badge">Hardware checkpoint functional</div>
+      <h1>M3/M4 Checkpoint</h1>
+      <p>
+        This report documents the transition from the hardware-validated
+        <code>cpu_video_smoke_top</code> to the first dedicated CPU memory-map
+        module for the Game Boy FPGA core.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <strong>Validated top</strong>
+          <code>cpu_video_smoke_top</code>
+          <p>CPU writes visible pixels to the VGA framebuffer and displays <code>1234</code>. Current SOF checksum: <code>0x00169AF4</code>.</p>
+        </div>
+        <div class="card">
+          <strong>New module</strong>
+          <code>rtl/memory/bus_controller.vhd</code>
+          <p>Owns ROM decode, debug I/O, framebuffer write mapping, and pass/fail checks.</p>
+        </div>
+        <div class="card">
+          <strong>Regression</strong>
+          <code>run_cpu_video_smoke_top.do</code>
+          <p>Runs exact framebuffer-write checks plus the full top-level VGA smoke test.</p>
+        </div>
+      </div>
+    </section>
+
+    <h2>Integration Flow</h2>
+    <section class="flow" aria-label="Integration flow">
+      <div class="node cpu">
+        <div class="title">CPU</div>
+        <div class="detail">Sharp LR35902 subset fetches smoke ROM instructions.</div>
+      </div>
+      <div class="node bus">
+        <div class="title">Bus Controller</div>
+        <div class="detail">Maps ROM, framebuffer window, and debug I/O.</div>
+      </div>
+      <div class="node video">
+        <div class="title">Framebuffer</div>
+        <div class="detail">Stores 160x144 two-bit pixels in M9K RAM.</div>
+      </div>
+      <div class="node video">
+        <div class="title">VGA Path</div>
+        <div class="detail">Reads pixels, scales 3x, drives 640x480 timing.</div>
+      </div>
+      <div class="node debug">
+        <div class="title">Debug Output</div>
+        <div class="detail">LED checkpoint and seven-segment <code>1234</code>.</div>
+      </div>
+    </section>
+
+    <h2>Memory Map</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Range</th>
+          <th>Current behavior</th>
+          <th>Next step</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>0x0000..0x0118</code></td>
+          <td>Internal smoke-test ROM bytes.</td>
+          <td>Replace with a cleaner ROM loader or generated ROM image flow.</td>
+        </tr>
+        <tr>
+          <td><code>0x8000..0xD9FF</code></td>
+          <td>Experimental direct framebuffer write window.</td>
+          <td>Split into VRAM and future PPU-owned framebuffer path.</td>
+        </tr>
+        <tr>
+          <td><code>0xFF80</code></td>
+          <td>Debug LED checkpoint register.</td>
+          <td>Become part of HRAM/debug overlay only for smoke tests.</td>
+        </tr>
+        <tr>
+          <td><code>0xFF81</code></td>
+          <td>Debug pass-code register.</td>
+          <td>Reserve proper HRAM and add serial-style test output later.</td>
+        </tr>
+        <tr>
+          <td><code>0xFF0F</code>, <code>0xFFFF</code></td>
+          <td>Reserved only.</td>
+          <td>Add IF and IE registers for interrupt work.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Process Steps</h2>
+    <section class="timeline">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <h3>Close the checkpoint</h3>
+          <p>Record the working CPU-to-framebuffer hardware test and keep the current top as the known-good integration target.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <h3>Organize debug artifacts</h3>
+          <p>Move local SignalTap files to <code>debug/signaltap/local/</code> and keep only documentation in source control.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <h3>Add regression</h3>
+          <p>Validate the exact 64 framebuffer writes, final pass code, display value, and active VGA output in ModelSim.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <div>
+          <h3>Extract the bus</h3>
+          <p>Move temporary ROM, I/O, and framebuffer decode into <code>bus_controller.vhd</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">5</div>
+        <div>
+          <h3>Prepare M4</h3>
+          <p>Add HRAM, IE, IF, and a cleaner ROM path in small test-covered slices.</p>
+        </div>
+      </div>
+    </section>
+
+    <h2>Regression Checks</h2>
+    <section class="checks">
+      <div class="check">CPU writes exactly 64 framebuffer pixels.</div>
+      <div class="check">Every framebuffer address matches the expected smoke pattern.</div>
+      <div class="check">Framebuffer data value is black pixel value <code>3</code>.</div>
+      <div class="check">Debug pass state drives seven-segment value <code>1234</code>.</div>
+      <div class="check">Full top-level simulation produces black and white VGA output.</div>
+    </section>
+  </main>
+</body>
+</html>

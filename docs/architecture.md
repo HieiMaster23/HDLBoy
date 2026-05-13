@@ -7,8 +7,8 @@ each subsystem can be simulated independently before top-level integration.
 
 ## Current Architecture
 
-The current repository contains the M0 infrastructure plus early M1/M2 video
-building blocks:
+The current repository contains the M0 infrastructure, early M1/M2 video
+building blocks, and the first M3 CPU-to-video integration harness:
 
 - `rtl/top/blink_led.vhd`: M0 hardware sanity test for clock, reset, keys, and LEDs.
 - `rtl/top/pll_core.vhd`: Quartus ALTPLL wrapper for 50 MHz input clock.
@@ -18,6 +18,13 @@ building blocks:
 - `rtl/video/vga_pixel_pipeline.vhd`: 3x upscaling and palette mapping.
 - `rtl/video/test_pattern_writer.vhd`: M2 framebuffer fill pattern.
 - `rtl/top/framebuffer_test_top.vhd`: M2 integration test top.
+- `rtl/cpu/cpu.vhd`: incremental multi-cycle Sharp LR35902 CPU subset.
+- `rtl/top/cpu_integration_test_top.vhd`: CPU-only hardware integration test
+  with LEDs and seven-segment pass/fail output.
+- `rtl/top/cpu_video_smoke_top.vhd`: CPU-to-framebuffer smoke test that writes
+  visible pixels into the VGA framebuffer.
+- `rtl/memory/bus_controller.vhd`: first CPU-facing memory map for smoke ROM,
+  experimental framebuffer writes, debug I/O, and future M4 expansion.
 
 ## Clock Domains
 
@@ -27,8 +34,10 @@ building blocks:
 
 The framebuffer is the first intentional clock-domain boundary. Port A is
 intended for the future PPU/CPU-side writer; Port B is read by the VGA pipeline.
-The current M2 test top drives both ports with `clk_vga` for a simple static
-image demo.
+The M2 test top drives both ports with `clk_vga` for a simple static image
+demo. The current CPU video smoke top writes the framebuffer from `clk_cpu` and
+reads it from `clk_vga`, exercising the intended dual-clock boundary on real
+hardware.
 
 ## Video Path
 
@@ -46,13 +55,13 @@ The Game Boy image is centered in VGA visible space with black borders:
 - Vertical offset: 24 pixels.
 - Display area: 480x432 pixels.
 
-## Future Integration
+## Near-Term Integration
 
-The next major architectural step after M2 is to introduce the CPU-facing
-memory/bus structure:
+The next architectural step is to extract the temporary top-level memory decode
+into a CPU-facing memory/bus structure:
 
-- CPU register file, ALU, decoder, and control FSM.
-- Memory map decoder for ROM, VRAM, WRAM, OAM, I/O, HRAM, and IE.
+- Memory map decoder for ROM, experimental VRAM/framebuffer, WRAM, OAM, I/O,
+  HRAM, IF, and IE.
 - Timer, interrupt controller, and joypad register.
 - PPU write path into the framebuffer.
 
