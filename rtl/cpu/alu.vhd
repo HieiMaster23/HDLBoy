@@ -42,6 +42,9 @@ begin
         variable carry1_v   : unsigned(0 downto 0);
         variable carry5_v   : unsigned(4 downto 0);
         variable carry9_v   : unsigned(8 downto 0);
+        variable daa_adjust  : unsigned(7 downto 0);
+        variable daa_temp    : unsigned(8 downto 0);
+        variable daa_carry   : std_logic;
     begin
         a_u := unsigned(a_in);
         b_u := unsigned(b_in);
@@ -57,8 +60,11 @@ begin
         else
             carry1_v := "0";
             carry5_v := to_unsigned(0, 5);
-            carry9_v := to_unsigned(0, 9);
+        carry9_v := to_unsigned(0, 9);
         end if;
+        daa_adjust := (others => '0');
+        daa_temp := (others => '0');
+        daa_carry := flags_in(CPU_FLAG_C_BIT);
 
         case op is
             when ALU_OP_ADD =>
@@ -194,6 +200,35 @@ begin
                     flags_v(CPU_FLAG_H_BIT) := '0';
                 end if;
                 flags_v(CPU_FLAG_C_BIT) := flags_in(CPU_FLAG_C_BIT);
+
+            when ALU_OP_DAA =>
+                if flags_in(CPU_FLAG_N_BIT) = '0' then
+                    if flags_in(CPU_FLAG_H_BIT) = '1' or unsigned(a_in(3 downto 0)) > to_unsigned(9, 4) then
+                        daa_adjust := daa_adjust + x"06";
+                    end if;
+                    if flags_in(CPU_FLAG_C_BIT) = '1' or a_u > x"99" then
+                        daa_adjust := daa_adjust + x"60";
+                        daa_carry := '1';
+                    end if;
+                    daa_temp := ('0' & a_u) + ('0' & daa_adjust);
+                    res_v := daa_temp(7 downto 0);
+                else
+                    if flags_in(CPU_FLAG_H_BIT) = '1' then
+                        daa_adjust := daa_adjust + x"06";
+                    end if;
+                    if flags_in(CPU_FLAG_C_BIT) = '1' then
+                        daa_adjust := daa_adjust + x"60";
+                    end if;
+                    res_v := a_u - daa_adjust;
+                end if;
+                if res_v = x"00" then
+                    flags_v(CPU_FLAG_Z_BIT) := '1';
+                else
+                    flags_v(CPU_FLAG_Z_BIT) := '0';
+                end if;
+                flags_v(CPU_FLAG_N_BIT) := flags_in(CPU_FLAG_N_BIT);
+                flags_v(CPU_FLAG_H_BIT) := '0';
+                flags_v(CPU_FLAG_C_BIT) := daa_carry;
 
             when others =>
                 res_v := a_u;

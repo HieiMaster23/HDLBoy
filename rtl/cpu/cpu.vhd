@@ -75,6 +75,8 @@ architecture rtl of cpu is
         S_MEM_WRITE_ADDR,
         S_MEM_WRITE_SP_LO,
         S_MEM_WRITE_SP_HI,
+        S_CB_READ_HL,
+        S_CB_WRITE_HL,
         S_PUSH_HI,
         S_PUSH_LO,
         S_POP_LO,
@@ -94,6 +96,7 @@ architecture rtl of cpu is
     signal addr_tmp_reg : std_logic_vector(15 downto 0);
     signal stack_lo_reg : std_logic_vector(7 downto 0);
     signal mem_rmw_data_reg : std_logic_vector(7 downto 0);
+    signal cb_result_reg : std_logic_vector(7 downto 0);
     signal unsupported_reg : std_logic;
     signal ime_reg : std_logic;
     signal ei_pending_reg : std_logic;
@@ -242,6 +245,84 @@ architecture rtl of cpu is
         end if;
     end function is_rst_opcode;
 
+    function cb_exec_result(opcode_in : std_logic_vector(7 downto 0);
+                            value_in : std_logic_vector(7 downto 0);
+                            carry_in : std_logic) return std_logic_vector is
+        variable result_v : std_logic_vector(7 downto 0);
+        variable bit_v    : integer range 0 to 7;
+    begin
+        result_v := value_in;
+        bit_v := to_integer(unsigned(opcode_in(5 downto 3)));
+
+        if opcode_in(7 downto 6) = "00" then
+            case opcode_in(5 downto 3) is
+                when "000" =>
+                    result_v := value_in(6 downto 0) & value_in(7);
+                when "001" =>
+                    result_v := value_in(0) & value_in(7 downto 1);
+                when "010" =>
+                    result_v := value_in(6 downto 0) & carry_in;
+                when "011" =>
+                    result_v := carry_in & value_in(7 downto 1);
+                when "100" =>
+                    result_v := value_in(6 downto 0) & '0';
+                when "101" =>
+                    result_v := value_in(7) & value_in(7 downto 1);
+                when "110" =>
+                    result_v := value_in(3 downto 0) & value_in(7 downto 4);
+                when others =>
+                    result_v := '0' & value_in(7 downto 1);
+            end case;
+        elsif opcode_in(7 downto 6) = "10" then
+            result_v(bit_v) := '0';
+        elsif opcode_in(7 downto 6) = "11" then
+            result_v(bit_v) := '1';
+        else
+            result_v := value_in;
+        end if;
+
+        return result_v;
+    end function cb_exec_result;
+
+    function cb_exec_flags(opcode_in : std_logic_vector(7 downto 0);
+                           value_in : std_logic_vector(7 downto 0);
+                           result_in : std_logic_vector(7 downto 0);
+                           flags_in : std_logic_vector(3 downto 0)) return std_logic_vector is
+        variable flags_v : std_logic_vector(3 downto 0);
+        variable bit_v   : integer range 0 to 7;
+    begin
+        flags_v := flags_in;
+        bit_v := to_integer(unsigned(opcode_in(5 downto 3)));
+
+        if opcode_in(7 downto 6) = "00" then
+            if result_in = x"00" then
+                flags_v(CPU_FLAG_Z_BIT) := '1';
+            else
+                flags_v(CPU_FLAG_Z_BIT) := '0';
+            end if;
+            flags_v(CPU_FLAG_N_BIT) := '0';
+            flags_v(CPU_FLAG_H_BIT) := '0';
+            if opcode_in(5 downto 3) = "000" or opcode_in(5 downto 3) = "010" or
+               opcode_in(5 downto 3) = "100" then
+                flags_v(CPU_FLAG_C_BIT) := value_in(7);
+            elsif opcode_in(5 downto 3) = "110" then
+                flags_v(CPU_FLAG_C_BIT) := '0';
+            else
+                flags_v(CPU_FLAG_C_BIT) := value_in(0);
+            end if;
+        elsif opcode_in(7 downto 6) = "01" then
+            if value_in(bit_v) = '0' then
+                flags_v(CPU_FLAG_Z_BIT) := '1';
+            else
+                flags_v(CPU_FLAG_Z_BIT) := '0';
+            end if;
+            flags_v(CPU_FLAG_N_BIT) := '0';
+            flags_v(CPU_FLAG_H_BIT) := '1';
+        end if;
+
+        return flags_v;
+    end function cb_exec_flags;
+
     function stack_pair_value(opcode_in : std_logic_vector(7 downto 0);
                               a_in : std_logic_vector(7 downto 0);
                               f_in : std_logic_vector(7 downto 0);
@@ -282,15 +363,17 @@ architecture rtl of cpu is
             when S_MEM_WRITE_ADDR => return "01010";
             when S_MEM_WRITE_SP_LO => return "01011";
             when S_MEM_WRITE_SP_HI => return "01100";
-            when S_PUSH_HI      => return "01101";
-            when S_PUSH_LO      => return "01110";
-            when S_POP_LO       => return "01111";
-            when S_POP_HI       => return "10000";
-            when S_CALL_PUSH_HI => return "10001";
-            when S_CALL_PUSH_LO => return "10010";
-            when S_RET_READ_LO  => return "10011";
-            when S_RET_READ_HI  => return "10100";
-            when others         => return "10101";
+            when S_CB_READ_HL   => return "01101";
+            when S_CB_WRITE_HL  => return "01110";
+            when S_PUSH_HI      => return "01111";
+            when S_PUSH_LO      => return "10000";
+            when S_POP_LO       => return "10001";
+            when S_POP_HI       => return "10010";
+            when S_CALL_PUSH_HI => return "10011";
+            when S_CALL_PUSH_LO => return "10100";
+            when S_RET_READ_LO  => return "10101";
+            when S_RET_READ_HI  => return "10110";
+            when others         => return "10111";
         end case;
     end function state_to_slv;
 
@@ -368,6 +451,7 @@ begin
                 addr_tmp_reg <= (others => '0');
                 stack_lo_reg <= x"00";
                 mem_rmw_data_reg <= x"00";
+                cb_result_reg <= x"00";
                 unsupported_reg <= '0';
                 ime_reg <= '0';
                 ei_pending_reg <= '0';
@@ -435,6 +519,12 @@ begin
                         end if;
                         end if;
 
+                    when S_CB_READ_HL =>
+                        if mem_ready = '1' then
+                            cb_result_reg <= cb_exec_result(imm_lo_reg, mem_data_in,
+                                                            flags_sig(CPU_FLAG_C_BIT));
+                        end if;
+
                     when S_HALT =>
                         if pending_interrupt_sig = '1' then
                             halted_reg <= '0';
@@ -448,7 +538,7 @@ begin
     end process p_state;
 
     p_control: process(state_reg, opcode_reg, imm_lo_reg, addr_tmp_reg, stack_lo_reg,
-                       mem_data_in, mem_rmw_data_reg,
+                       mem_data_in, mem_rmw_data_reg, cb_result_reg,
                        dec_valid, dec_class, dec_dst, dec_src, dec_pair, dec_alu_op,
                        dec_reads_memory, dec_writes_memory,
                        reg_read_data_b, pc_out_sig, sp_out_sig, a_sig, f_sig,
@@ -463,7 +553,6 @@ begin
         variable cb_value_v    : std_logic_vector(7 downto 0);
         variable cb_result_v   : std_logic_vector(7 downto 0);
         variable cb_flags_v    : std_logic_vector(3 downto 0);
-        variable cb_bit_v      : integer range 0 to 7;
         variable add17_v       : unsigned(16 downto 0);
         variable add13_v       : unsigned(12 downto 0);
         variable sp_low_sum_v  : unsigned(8 downto 0);
@@ -508,7 +597,6 @@ begin
         cb_value_v := x"00";
         cb_result_v := x"00";
         cb_flags_v := flags_sig;
-        cb_bit_v := 0;
         add17_v := (others => '0');
         add13_v := (others => '0');
         sp_low_sum_v := (others => '0');
@@ -700,6 +788,15 @@ begin
                     elsif opcode_reg = x"F9" then
                         sp_write_enable <= '1';
                         sp_in_sig <= hl_sig;
+                    elsif opcode_reg = x"27" then
+                        alu_a_sig <= a_sig;
+                        alu_b_sig <= x"00";
+                        alu_op_sig <= ALU_OP_DAA;
+                        reg_write_enable <= '1';
+                        reg_write_sel <= CPU_REG_A;
+                        reg_write_data <= alu_result_sig;
+                        flags_write_enable <= '1';
+                        flags_in_sig <= alu_flags_sig;
                     elsif opcode_reg = x"2F" then
                         reg_write_enable <= '1';
                         reg_write_sel <= CPU_REG_A;
@@ -761,92 +858,45 @@ begin
                 if opcode_reg = x"CB" then
                     pc_write_enable <= '1';
                     pc_in_sig <= inc16(pc_out_sig);
-                    cb_flags_v := flags_sig;
-                    cb_bit_v := to_integer(unsigned(mem_data_in(5 downto 3)));
-
-                    case mem_data_in(2 downto 0) is
-                        when CPU_REG_A =>
-                            cb_value_v := a_sig;
-                        when CPU_REG_B =>
-                            cb_value_v := b_sig;
-                        when CPU_REG_C =>
-                            cb_value_v := c_sig;
-                        when CPU_REG_D =>
-                            cb_value_v := d_sig;
-                        when CPU_REG_E =>
-                            cb_value_v := e_sig;
-                        when CPU_REG_H =>
-                            cb_value_v := h_sig;
-                        when CPU_REG_L =>
-                            cb_value_v := l_sig;
-                        when others =>
-                            cb_value_v := x"00";
-                    end case;
-
-                    cb_result_v := cb_value_v;
-                    if mem_data_in(7 downto 6) = "00" then
-                        case mem_data_in(5 downto 3) is
-                            when "000" =>
-                                cb_result_v := cb_value_v(6 downto 0) & cb_value_v(7);
-                                cb_flags_v(CPU_FLAG_C_BIT) := cb_value_v(7);
-                            when "001" =>
-                                cb_result_v := cb_value_v(0) & cb_value_v(7 downto 1);
-                                cb_flags_v(CPU_FLAG_C_BIT) := cb_value_v(0);
-                            when "010" =>
-                                cb_result_v := cb_value_v(6 downto 0) & flags_sig(CPU_FLAG_C_BIT);
-                                cb_flags_v(CPU_FLAG_C_BIT) := cb_value_v(7);
-                            when "011" =>
-                                cb_result_v := flags_sig(CPU_FLAG_C_BIT) & cb_value_v(7 downto 1);
-                                cb_flags_v(CPU_FLAG_C_BIT) := cb_value_v(0);
-                            when "100" =>
-                                cb_result_v := cb_value_v(6 downto 0) & '0';
-                                cb_flags_v(CPU_FLAG_C_BIT) := cb_value_v(7);
-                            when "101" =>
-                                cb_result_v := cb_value_v(7) & cb_value_v(7 downto 1);
-                                cb_flags_v(CPU_FLAG_C_BIT) := cb_value_v(0);
-                            when "110" =>
-                                cb_result_v := cb_value_v(3 downto 0) & cb_value_v(7 downto 4);
-                                cb_flags_v(CPU_FLAG_C_BIT) := '0';
+                    if mem_data_in(2 downto 0) = CPU_REG_HL_MEM then
+                        instr_complete <= '0';
+                        state_next <= S_CB_READ_HL;
+                    else
+                        case mem_data_in(2 downto 0) is
+                            when CPU_REG_A =>
+                                cb_value_v := a_sig;
+                            when CPU_REG_B =>
+                                cb_value_v := b_sig;
+                            when CPU_REG_C =>
+                                cb_value_v := c_sig;
+                            when CPU_REG_D =>
+                                cb_value_v := d_sig;
+                            when CPU_REG_E =>
+                                cb_value_v := e_sig;
+                            when CPU_REG_H =>
+                                cb_value_v := h_sig;
+                            when CPU_REG_L =>
+                                cb_value_v := l_sig;
                             when others =>
-                                cb_result_v := '0' & cb_value_v(7 downto 1);
-                                cb_flags_v(CPU_FLAG_C_BIT) := cb_value_v(0);
+                                cb_value_v := x"00";
                         end case;
-                        if cb_result_v = x"00" then
-                            cb_flags_v(CPU_FLAG_Z_BIT) := '1';
-                        else
-                            cb_flags_v(CPU_FLAG_Z_BIT) := '0';
-                        end if;
-                        cb_flags_v(CPU_FLAG_N_BIT) := '0';
-                        cb_flags_v(CPU_FLAG_H_BIT) := '0';
-                        if mem_data_in(2 downto 0) /= CPU_REG_HL_MEM then
+
+                        cb_result_v := cb_exec_result(mem_data_in, cb_value_v,
+                                                      flags_sig(CPU_FLAG_C_BIT));
+                        cb_flags_v := cb_exec_flags(mem_data_in, cb_value_v,
+                                                    cb_result_v, flags_sig);
+                        if mem_data_in(7 downto 6) /= "01" then
                             reg_write_enable <= '1';
                             reg_write_sel <= mem_data_in(2 downto 0);
                             reg_write_data <= cb_result_v;
                         end if;
-                        flags_write_enable <= '1';
-                        flags_in_sig <= cb_flags_v;
-                    elsif mem_data_in(7 downto 6) = "01" then
-                        if cb_value_v(cb_bit_v) = '0' then
-                            cb_flags_v(CPU_FLAG_Z_BIT) := '1';
-                        else
-                            cb_flags_v(CPU_FLAG_Z_BIT) := '0';
+                        if mem_data_in(7 downto 6) /= "10" and mem_data_in(7 downto 6) /= "11" then
+                            flags_write_enable <= '1';
+                            flags_in_sig <= cb_flags_v;
                         end if;
-                        cb_flags_v(CPU_FLAG_N_BIT) := '0';
-                        cb_flags_v(CPU_FLAG_H_BIT) := '1';
-                        flags_write_enable <= '1';
-                        flags_in_sig <= cb_flags_v;
-                    elsif mem_data_in(2 downto 0) /= CPU_REG_HL_MEM then
-                        if mem_data_in(7 downto 6) = "10" then
-                            cb_result_v(cb_bit_v) := '0';
-                        else
-                            cb_result_v(cb_bit_v) := '1';
-                        end if;
-                        reg_write_enable <= '1';
-                        reg_write_sel <= mem_data_in(2 downto 0);
-                        reg_write_data <= cb_result_v;
+                        instr_complete <= '1';
+                        state_next <= S_FETCH;
                     end if;
-                    instr_complete <= '1';
-                    state_next <= S_FETCH;
                 elsif opcode_reg = x"E8" or opcode_reg = x"F8" then
                     pc_write_enable <= '1';
                     pc_in_sig <= inc16(pc_out_sig);
@@ -1052,6 +1102,35 @@ begin
             when S_MEM_RMW_WRITE_HL =>
                 mem_addr <= hl_sig;
                 mem_data_out <= mem_rmw_data_reg;
+                mem_write <= '1';
+                instr_complete <= '1';
+                state_next <= S_FETCH;
+
+            when S_CB_READ_HL =>
+                mem_addr <= hl_sig;
+                mem_read <= '1';
+                if mem_ready = '0' then
+                    state_next <= S_CB_READ_HL;
+                else
+                    cb_result_v := cb_exec_result(imm_lo_reg, mem_data_in,
+                                                  flags_sig(CPU_FLAG_C_BIT));
+                    cb_flags_v := cb_exec_flags(imm_lo_reg, mem_data_in,
+                                                cb_result_v, flags_sig);
+                    if imm_lo_reg(7 downto 6) /= "10" and imm_lo_reg(7 downto 6) /= "11" then
+                        flags_write_enable <= '1';
+                        flags_in_sig <= cb_flags_v;
+                    end if;
+                    if imm_lo_reg(7 downto 6) = "01" then
+                        instr_complete <= '1';
+                        state_next <= S_FETCH;
+                    else
+                        state_next <= S_CB_WRITE_HL;
+                    end if;
+                end if;
+
+            when S_CB_WRITE_HL =>
+                mem_addr <= hl_sig;
+                mem_data_out <= cb_result_reg;
                 mem_write <= '1';
                 instr_complete <= '1';
                 state_next <= S_FETCH;

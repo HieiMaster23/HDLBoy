@@ -65,7 +65,8 @@ O projeto já possui:
 - runner de ROM em simulação carregando ROMs `.gb` reais e emitindo `Passed`
   via serial;
 - pacote local de ROMs Blargg baixado em `gb-test-roms-master`;
-- Blargg `cpu_instrs` individuais `03`, `04`, `05`, `06`, `07`, `08` e `09`
+- Blargg `cpu_instrs` individuais `03`, `04`, `05`, `06`, `07`, `08`, `09`,
+  `10` e `11`
   passando via transcript serial.
 
 ## 4. Checkpoints Confiáveis
@@ -76,7 +77,15 @@ Checkpoint conhecido:
 - Mensagem: `Checkpoint M3 CPU video smoke and initial bus`
 - Significado: checkpoint funcional de CPU + vídeo smoke + barramento inicial.
 
-Depois desse checkpoint, foram feitas expansões importantes ainda em andamento:
+Checkpoint atual:
+
+- Commit: ver o commit `Checkpoint M3 DAA and CB HL Blargg tests` no histórico Git.
+- Mensagem: `Checkpoint M3 DAA and CB HL Blargg tests`
+- Significado: checkpoint funcional de M3 com `DAA`, CB-prefix em `(HL)`,
+  Blargg `10-bit ops.gb` e `11-op a,(hl).gb` passando em simulação.
+
+Depois do checkpoint `202fa47`, foram feitas expansões importantes agora
+consolidadas no checkpoint atual:
 
 - WRAM inicial e I/O stubs;
 - expansão de opcodes da CPU;
@@ -91,11 +100,12 @@ Depois desse checkpoint, foram feitas expansões importantes ainda em andamento:
 - máscara de boot em simulação para permitir ROMs com handlers em
   `0x0000..0x00FF`;
 - timeout parametrizável para ROMs Blargg longas;
-- scripts dedicados de wave e do teste longo `09-op r,r`;
+- scripts dedicados de wave e dos testes longos `09-op r,r`, `10-bit ops` e
+  `11-op a,(hl)`;
 - documentação de progressão e plano Blargg.
 
-Antes de qualquer nova tag ou milestone formal, revisar o estado do Git e criar
-um novo checkpoint limpo.
+Antes de qualquer nova tag ou milestone formal, revisar novamente o estado do
+Git e decidir se este checkpoint já deve receber uma tag parcial.
 
 ## 5. Estado Atual por Área
 
@@ -145,11 +155,14 @@ Implementado:
 - `CP r`
 - ALU imediata: `ADD/ADC/SUB/SBC/AND/XOR/OR/CP A,n`
 - `ADD A,(HL)`
+- `ADC A,(HL)`
 - `SUB (HL)`
+- `SBC A,(HL)`
 - `AND A,(HL)`
 - `OR A,(HL)`
 - `XOR A,(HL)`
 - `CP (HL)`
+- `DAA`
 - `JP nn`
 - `JP cc,nn`
 - `JP HL`
@@ -172,14 +185,13 @@ Implementado:
 - `CCF`
 - CB-prefix em registradores para RLC/RRC/RL/RR/SLA/SRA/SWAP/SRL, BIT, RES e
   SET
+- CB-prefix em `(HL)` para RLC/RRC/RL/RR/SLA/SRA/SWAP/SRL, BIT, RES e SET
 - `DI`
 - `EI` com atraso básico
 - `HALT` básico, ainda incompleto para compatibilidade total
 
 Ainda pendente:
 
-- `DAA`;
-- CB-prefix em `(HL)`;
 - interrupções completas;
 - temporização exata de instruções;
 - timer real;
@@ -245,7 +257,7 @@ Implementado:
 - teste direto do `bus_controller`;
 - runner de ROM real imprimindo `Passed` por serial;
 - wave setup dedicado para visualizar o runner;
-- script longo para Blargg `09-op r,r`.
+- scripts longos para Blargg `09-op r,r`, `10-bit ops` e `11-op a,(hl)`.
 
 Blargg `cpu_instrs` individuais passando:
 
@@ -256,13 +268,14 @@ Blargg `cpu_instrs` individuais passando:
 - `03-op sp,hl.gb`
 - `07-jr,jp,call,ret,rst.gb`
 - `09-op r,r.gb`
+- `10-bit ops.gb`
+- `11-op a,(hl).gb`
 
 Próximo alvo de teste:
 
-- rodar `gb-test-roms-master\cpu_instrs\individual\11-op a,(hl).gb`;
-- implementar a menor fatia necessária para passar esse teste;
-- expectativa principal: ALU via `(HL)` já existe em parte, mas `DAA` e/ou CB em
-  `(HL)` podem ser exigidos;
+- rodar `gb-test-roms-master\cpu_instrs\individual\01-special.gb`;
+- validar se `DAA`, `POP AF`, saltos especiais e casos de controle permanecem
+  corretos em uma ROM Blargg real;
 - manter captura serial e timeout controlado.
 
 ## 6. Linha de Evolução do Projeto
@@ -302,9 +315,9 @@ Ordem prática, considerando o estado atual do core:
 5. `03-op sp,hl.gb` — Passed
 6. `07-jr,jp,call,ret,rst.gb` — Passed
 7. `09-op r,r.gb` — Passed com timeout longo parametrizado
-8. `11-op a,(hl).gb` — próximo alvo
-9. `10-bit ops.gb`
-10. `01-special.gb`
+8. `11-op a,(hl).gb` — Passed com timeout longo parametrizado
+9. `10-bit ops.gb` — Passed com timeout longo parametrizado
+10. `01-special.gb` — próximo alvo
 11. `02-interrupts.gb`
 
 Não começar por:
@@ -513,7 +526,7 @@ Alvo concreto:
 O próximo alvo oficial do projeto é:
 
 ```text
-Executar gb-test-roms-master\cpu_instrs\individual\11-op a,(hl).gb no
+Executar gb-test-roms-master\cpu_instrs\individual\01-special.gb no
 tb_cpu_rom_runner, capturando a saída serial via 0xFF01/0xFF02 até obter Passed,
 Failed ou a primeira falha útil.
 ```
@@ -524,7 +537,7 @@ Esse alvo deve guiar a próxima conversa de implementação.
 
 O alvo será considerado bem-sucedido se:
 
-- o runner carregar os bytes reais da ROM `11-op a,(hl).gb`;
+- o runner carregar os bytes reais da ROM `01-special.gb`;
 - a CPU executar o shell Blargg e chegar ao teste principal;
 - a simulação tiver timeout controlado e, se necessário, parametrizado;
 - a saída serial for capturada;

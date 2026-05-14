@@ -110,6 +110,7 @@ package gb_types_pkg is
     constant ALU_OP_DEC  : std_logic_vector(3 downto 0) := x"7";
     constant ALU_OP_ADC  : std_logic_vector(3 downto 0) := x"8";
     constant ALU_OP_SBC  : std_logic_vector(3 downto 0) := x"9";
+    constant ALU_OP_DAA  : std_logic_vector(3 downto 0) := x"A";
     constant ALU_OP_PASS : std_logic_vector(3 downto 0) := x"F";
 
     -- =========================================================================

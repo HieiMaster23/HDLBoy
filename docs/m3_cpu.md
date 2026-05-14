@@ -62,15 +62,20 @@ ALU and flag instructions:
 - `SBC A,r`
 - `ADD/ADC/SUB/SBC/AND/XOR/OR/CP A,n`
 - `ADD A,(HL)`
+- `ADC A,(HL)`
 - `SUB (HL)`
+- `SBC A,(HL)`
 - `AND A,(HL)`
 - `OR A,(HL)`
 - `XOR A,(HL)`
 - `CP (HL)`
+- `DAA`
 - `RLCA`, `RRCA`, `RLA`, `RRA`
 - `CPL`, `SCF`, `CCF`
 - CB-prefixed register operations for RLC/RRC/RL/RR/SLA/SRA/SWAP/SRL,
-  BIT, RES, and SET. CB operations on `(HL)` remain TODO.
+  BIT, RES, and SET.
+- CB-prefixed `(HL)` operations for RLC/RRC/RL/RR/SLA/SRA/SWAP/SRL,
+  BIT, RES, and SET.
 - `INC rr`, `DEC rr`, and `ADD HL,rr`
 - `ADD SP,e`
 
@@ -98,15 +103,11 @@ Control base:
 
 ## Current Limitations
 
-- CB-prefixed `(HL)` operations are not implemented yet.
-- `DAA` remains TODO.
-- CB-prefixed register operations are implemented, but they still need broader
-  Blargg coverage because the long `09-op r,r` run currently exceeds the short
-  runner timeout.
 - Interrupt servicing does not yet push PC or jump to vectors. The first version
   exposes IME, pending interrupt detection, and HALT wake-up behavior only.
-- The memory interface assumes combinational read data and one-cycle write
-  strobes. A later bus controller should add wait-state support.
+- Instruction timing is still an incremental approximation. The CPU has a
+  `mem_ready` input for registered memory and wait-state integration, but it is
+  not yet fully cycle-accurate against the LR35902.
 
 ## Flags
 
@@ -120,9 +121,8 @@ bits in `F[7:4]`; `F[3:0]` is always written as zero.
 - C is set on 8-bit carry for ADD and 8-bit borrow for SUB/CP.
 - INC and DEC preserve C.
 - CP updates flags like SUB but does not write A.
-
-DAA remains a dedicated TODO because it depends on the previous arithmetic
-operation and flag state; it should not be approximated.
+- DAA adjusts A after BCD add/subtract using the previous N/H/C flags, clears H,
+  preserves N, updates Z, and sets C when the decimal correction crosses 0x99.
 
 ## Tests
 
@@ -133,7 +133,9 @@ Current ModelSim scripts:
 - `sim/modelsim/run_cpu_decoder.do`
 - `sim/modelsim/run_cpu_smoke.do`
 - `sim/modelsim/run_cpu_rom_runner.do`
+- `sim/modelsim/run_cpu_blargg_10.do`
 - `sim/modelsim/run_cpu_blargg_09.do`
+- `sim/modelsim/run_cpu_blargg_11.do`
 - `sim/modelsim/run_cpu_all.do`
 - `sim/modelsim/run_cpu_integration_top.do`
 - `sim/modelsim/run_cpu_video_smoke_top.do`
@@ -164,6 +166,10 @@ Current Blargg bring-up result:
 - `cpu_instrs/individual/07-jr,jp,call,ret,rst.gb`: `Passed` via serial transcript.
 - `cpu_instrs/individual/09-op r,r.gb`: `Passed` via serial transcript using
   `G_TIMEOUT_CYCLES=25000000`.
+- `cpu_instrs/individual/10-bit ops.gb`: `Passed` via serial transcript using
+  `G_TIMEOUT_CYCLES=50000000`.
+- `cpu_instrs/individual/11-op a,(hl).gb`: `Passed` via serial transcript using
+  `G_TIMEOUT_CYCLES=50000000`.
 
 ## Hardware Integration Harness
 
@@ -263,18 +269,18 @@ Blargg-style output capture before implementing the real serial link timing.
 
 ## Blargg Preparation
 
-To prepare for Blargg CPU test ROMs, the next implementation slices should:
+The ROM runner is now the primary CPU validation path. The next implementation
+slices should:
 
-1. Complete all base opcodes in decoder/execute form.
-2. Add CB-prefix decode and execution.
-3. Add interrupt vector servicing and exact EI/HALT behavior.
-4. Connect the CPU to a memory-map/bus-controller test harness.
-5. Replace the embedded ROM runner program with converted external ROM bytes as
-   opcode coverage grows.
+1. Run `01-special.gb` with the completed DAA and CB support.
+2. Add interrupt vector servicing and exact EI/HALT behavior before
+   `02-interrupts.gb`.
+3. Keep the memory-map/bus-controller harness aligned with registered memory
+   reads and future wait states.
 
 ## Next Code Step
 
-Use the ROM runner to drive the next CPU opcode slices. The immediate priority
-is `11-op a,(hl).gb` to implement `(HL)` ALU coverage and `DAA`. The runner
-should stay self-checking, with each new ROM-style test emitting a serial
-transcript.
+Use the ROM runner to drive the next CPU opcode slice. The immediate priority is
+`01-special.gb`, because `10-bit ops.gb` and `11-op a,(hl).gb` now pass and the
+remaining high-risk CPU work is special instruction behavior plus the path
+toward interrupt correctness.

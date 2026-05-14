@@ -10,7 +10,7 @@
 --   LD SP,nn; LD HL,nn; LD r,n; LD (HL),r; LD r,(HL);
 --   LDH (n),A; LDH A,(n); LD (nn),A; LD A,(nn);
 --   ADD/SUB/AND/OR/XOR/CP A,r; ADD/SUB/AND/OR/XOR/CP A,(HL);
---   INC/DEC r; INC/DEC (HL); JP nn; PUSH; POP; CALL; RET; JR e.
+--   INC/DEC r; INC/DEC (HL); CB-prefix (HL); JP nn; PUSH; POP; CALL; RET; JR e.
 -- =============================================================================
 
 library ieee;
@@ -254,8 +254,24 @@ architecture sim of tb_cpu_smoke is
         16#00C6# => x"09",
         16#00C7# => x"C0",
         16#00C8# => x"6E", -- LD L,(HL) -> final HL $C00A
-        16#00C9# => x"18", -- JR -2
-        16#00CA# => x"FE",
+        16#00C9# => x"21", -- LD HL,$C017
+        16#00CA# => x"17",
+        16#00CB# => x"C0",
+        16#00CC# => x"36", -- LD (HL),$80
+        16#00CD# => x"80",
+        16#00CE# => x"CB", -- RLC (HL) -> $01, C set
+        16#00CF# => x"06",
+        16#00D0# => x"CB", -- BIT 0,(HL) -> Z clear, H set, C preserved
+        16#00D1# => x"46",
+        16#00D2# => x"CB", -- RES 0,(HL) -> $00
+        16#00D3# => x"86",
+        16#00D4# => x"CB", -- SET 0,(HL) -> $01
+        16#00D5# => x"C6",
+        16#00D6# => x"21", -- LD HL,$C00A
+        16#00D7# => x"0A",
+        16#00D8# => x"C0",
+        16#00D9# => x"18", -- JR -2
+        16#00DA# => x"FE",
         others => x"00"
     );
 
@@ -324,7 +340,7 @@ begin
         wait for CLK_PERIOD * 4;
         reset <= '0';
 
-        for i in 0 to 720 loop
+        for i in 0 to 900 loop
             wait until rising_edge(clk);
             if debug_pc = x"0066" and debug_h = x"C1" then
                 saw_h_load := true;
@@ -371,6 +387,10 @@ begin
             report "FAIL: LD (nn),A / LD A,(nn) / LDH A,(n) did not transfer expected bytes"
             severity failure;
 
+        assert mem(16#C017#) = x"01"
+            report "FAIL: CB-prefix (HL) operations did not leave the expected memory value"
+            severity failure;
+
         assert saw_h_load
             report "FAIL: LD H,(HL) did not load the expected high byte"
             severity failure;
@@ -379,8 +399,8 @@ begin
             report "FAIL: final A register value is incorrect"
             severity failure;
 
-        assert debug_f = x"C0"
-            report "FAIL: final CP (HL) flags are incorrect"
+        assert debug_f = x"30"
+            report "FAIL: final CB (HL) flags are incorrect"
             severity failure;
 
         assert debug_b = x"80" and debug_c = x"9F"

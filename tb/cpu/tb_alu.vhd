@@ -109,6 +109,42 @@ begin
             report "FAIL: CP equality flags are incorrect"
             severity failure;
 
+        flags_in <= "0000";
+        op <= ALU_OP_DAA;
+        a_in <= x"0A";
+        b_in <= x"00";
+        wait for 10 ns;
+        assert result = x"10" and flags = "0000"
+            report "FAIL: DAA after addition did not adjust low BCD digit"
+            severity failure;
+
+        flags_in <= "0010";
+        op <= ALU_OP_DAA;
+        a_in <= x"3C";
+        b_in <= x"00";
+        wait for 10 ns;
+        assert result = x"42" and flags = "0000"
+            report "FAIL: DAA after half-carry addition is incorrect"
+            severity failure;
+
+        flags_in <= "0001";
+        op <= ALU_OP_DAA;
+        a_in <= x"A0";
+        b_in <= x"00";
+        wait for 10 ns;
+        assert result = x"00" and flags = "1001"
+            report "FAIL: DAA after carry addition is incorrect"
+            severity failure;
+
+        flags_in <= "0110";
+        op <= ALU_OP_DAA;
+        a_in <= x"0F";
+        b_in <= x"00";
+        wait for 10 ns;
+        assert result = x"09" and flags = "0100"
+            report "FAIL: DAA after subtraction is incorrect"
+            severity failure;
+
         report "=== tb_alu: ALL TESTS PASSED ===" severity note;
         wait;
     end process p_stimulus;

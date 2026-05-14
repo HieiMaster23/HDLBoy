@@ -176,11 +176,11 @@ Depois de `06-ld r,r.gb`, a ordem mais racional é:
 6. `09-op r,r.gb`
    - testa ALU entre registradores, `ADC`, `SBC`, `CPL`, `SCF`, `CCF`,
      rotates e parte de CB.
-7. `11-op a,(hl).gb`
+7. `11-op a,(hl).gb` — Passed
    - testa acessos indiretos via `HL`, ALU com `(HL)`, `DAA` e CB em `(HL)`.
-8. `10-bit ops.gb`
+8. `10-bit ops.gb` — Passed
    - testa `BIT`, `RES` e `SET` em registradores.
-9. `01-special.gb`
+9. `01-special.gb` — próximo alvo
    - inclui casos especiais como `JR`, `JP HL`, `POP AF` e `DAA`.
 10. `02-interrupts.gb`
    - deve ficar para depois do timer e do controlador de interrupções.
@@ -216,34 +216,29 @@ Esses testes são valiosos, mas pertencem a fases posteriores.
 
 O próximo passo de implementação deve ser:
 
-1. Criar uma ferramenta simples para converter uma ROM `.gb` individual em um
-   pacote VHDL de simulação ou em um arquivo de memória carregável pelo
-   testbench.
-2. Expandir `tb_cpu_rom_runner` para usar bytes reais de uma ROM Blargg.
-3. Começar com `cpu_instrs\individual\06-ld r,r.gb`.
-4. Rodar até encontrar o primeiro opcode não suportado ou o primeiro ponto de
-   travamento.
-5. Implementar a menor fatia necessária.
-6. Repetir.
+1. Rodar `cpu_instrs\individual\01-special.gb` no `tb_cpu_rom_runner`.
+2. Capturar `Passed`, `Failed` ou a primeira falha útil via serial.
+3. Se falhar, implementar apenas a menor correção necessária.
+4. Repetir os testes curtos de CPU e as ROMs `10-bit ops`/`11-op a,(hl)`.
+5. Atualizar este plano e o controle central.
 
 Esse ciclo deve guiar a expansão da CPU a partir de agora.
 
-## 8. Critério de Sucesso da Primeira Fase
+## 8. Critério de Sucesso da Fase Atual
 
-A primeira fase estará concluída quando:
+A fase atual estará concluída quando:
 
-- o runner conseguir carregar uma ROM individual real do Blargg;
-- a CPU conseguir executar o shell inicial;
-- a simulação capturar texto vindo de `0xFF01/0xFF02`;
-- o teste `06-ld r,r.gb` chegar a `Passed` ou, no mínimo, falhar com uma mensagem
-  serial compreensível.
+- `01-special.gb` chegar a `Passed` ou falhar com uma mensagem serial
+  compreensível;
+- `10-bit ops.gb` e `11-op a,(hl).gb` continuarem passando depois das mudanças;
+- `DAA` continuar coberto por teste unitário de ALU;
+- CB `(HL)` continuar coberto por smoke test de CPU e por Blargg.
 
-Antes disso, qualquer falha ainda deve ser tratada como falha de infraestrutura
-ou de cobertura mínima do shell, não como falha definitiva do grupo de
-instruções testado.
+Falhas em `02-interrupts.gb` ainda pertencem à fase seguinte, porque dependem
+de interrupções completas, timer e comportamento exato de `EI`/`HALT`.
 ## 9. Progresso em 2026-05-14
 
-O primeiro alvo Blargg real passou em simulacao:
+O primeiro alvo Blargg real passou em simulação:
 
 - ROM: `gb-test-roms-master/cpu_instrs/individual/06-ld r,r.gb`
 - Runner: `tb/cpu/tb_cpu_rom_runner.vhd`
@@ -252,10 +247,10 @@ O primeiro alvo Blargg real passou em simulacao:
 
 Fatia implementada para isso:
 
-- carga binaria direta de ROM `.gb` no testbench;
-- memoria completa de simulacao com escrita em WRAM/VRAM/HRAM;
+- carga binária direta de ROM `.gb` no testbench;
+- memória completa de simulação com escrita em WRAM/VRAM/HRAM;
 - captura serial por `FF01/FF02`;
-- stubs de I/O suficientes para o shell, incluindo `LY`/`DIV` de simulacao;
+- stubs de I/O suficientes para o shell, incluindo `LY`/`DIV` de simulação;
 - `LD rr,nn` para BC/DE/HL/SP;
 - loads indiretos por BC/DE e HL com incremento/decremento;
 - `INC rr`, `DEC rr`, `ADD HL,rr`;
@@ -264,15 +259,15 @@ Fatia implementada para isso:
 - ALU imediata;
 - `ADC`/`SBC`;
 - rotates de A;
-- CB-prefix para operacoes em registradores.
+- CB-prefix para operações em registradores.
 
-Proximo alvo recomendado:
+Próximo alvo recomendado:
 
 `cpu_instrs/individual/04-op r,imm.gb`
 
-Motivo: depois de `06-ld r,r`, o proximo ganho natural e consolidar operacoes
-imediatas e `LD (HL),n`. A infraestrutura do runner ja esta pronta; daqui em
-diante o ciclo deve ser rodar a ROM, observar o primeiro opcode ou divergencia
+Motivo: depois de `06-ld r,r`, o próximo ganho natural é consolidar operações
+imediatas e `LD (HL),n`. A infraestrutura do runner já está pronta; daqui em
+diante o ciclo deve ser rodar a ROM, observar o primeiro opcode ou divergência
 real e implementar a menor fatia correta.
 
 ## 10. Progresso adicional em 2026-05-14
@@ -296,35 +291,64 @@ Fatia adicional implementada:
 - `RETI`;
 - `RST` para todos os vetores de `00h` a `38h`;
 - `CPL`, `SCF`, `CCF`;
-- mascara de boot no runner: antes de chegar a `0x0100`, o testbench entrega
+- máscara de boot no runner: antes de chegar a `0x0100`, o testbench entrega
   `NOP` em `0x0000..0x00FF`; depois disso os vetores reais da ROM ficam
-  visiveis. Isso e necessario para ROMs como `07-jr,jp,call,ret,rst.gb`, que
-  colocam handlers `RST` na pagina zero.
+  visíveis. Isso é necessário para ROMs como `07-jr,jp,call,ret,rst.gb`, que
+  colocam handlers `RST` na página zero.
 
 ## 11. Resultado do teste `09-op r,r.gb`
 
 O teste `09-op r,r.gb` tambem passou via transcript serial.
 
-Diagnostico:
+Diagnóstico:
 
-- com `10_000_000` ciclos, o runner nao estava travado; ele ja tinha avancado
-  ate a instrucao temporaria `CB 15` (`RL L`) em `instr=$DEF8`;
-- isso mostrou que era um problema de orcamento de simulacao, nao uma falha
+- com `10_000_000` ciclos, o runner não estava travado; ele já tinha avançado
+  até a instrução temporária `CB 15` (`RL L`) em `instr=$DEF8`;
+- isso mostrou que era um problema de orçamento de simulação, não uma falha
   funcional imediata;
-- a propria fonte desse teste informa que ele leva cerca de 10 segundos no Game
-  Boy, logo ele e naturalmente muito mais longo que `06`, `04`, `08`, `05`,
+- a própria fonte desse teste informa que ele leva cerca de 10 segundos no Game
+  Boy, logo ele é naturalmente muito mais longo que `06`, `04`, `08`, `05`,
   `03` e `07`.
 
-Solucao:
+Solução:
 
 - `tb_cpu_rom_runner` agora tem o generic `G_TIMEOUT_CYCLES`;
 - o script `sim/modelsim/run_cpu_blargg_09.do` roda a ROM com
   `G_TIMEOUT_CYCLES=25000000`;
 - resultado observado: `09-op r,r`, linha em branco, `Passed`.
 
-Proximo alvo recomendado:
+Próximo alvo recomendado:
 
-`cpu_instrs/individual/11-op a,(hl).gb`
+`cpu_instrs/individual/01-special.gb`
 
-Motivo: esse alvo deve exercitar ALU via `(HL)` e provavelmente forcar `DAA`,
-que ainda e a principal instrucao aritmetica pendente.
+Motivo: `11-op a,(hl).gb` e `10-bit ops.gb` já passaram. O próximo risco
+comportamental de CPU está nas instruções especiais restantes antes de entrar em
+interrupções.
+
+## 12. Resultado dos testes `10-bit ops.gb` e `11-op a,(hl).gb`
+
+Os testes `10-bit ops.gb` e `11-op a,(hl).gb` passaram via transcript serial.
+
+Fatia implementada para isso:
+
+- `DAA` na ALU, com cobertura unitária;
+- execução de `DAA` no controle da CPU;
+- CB-prefix em `(HL)` com leitura de memória, cálculo, escrita de volta e flags;
+- smoke test de CPU cobrindo `RLC (HL)`, `BIT 0,(HL)`, `RES 0,(HL)` e
+  `SET 0,(HL)`;
+- scripts dedicados:
+  - `sim/modelsim/run_cpu_blargg_10.do`;
+  - `sim/modelsim/run_cpu_blargg_11.do`.
+
+Resultados observados:
+
+- `10-bit ops.gb`: `Passed`, com `G_TIMEOUT_CYCLES=50000000`;
+- `11-op a,(hl).gb`: `Passed`, com `G_TIMEOUT_CYCLES=50000000`.
+
+Próximo alvo recomendado:
+
+`cpu_instrs/individual/01-special.gb`
+
+Motivo: esse teste deve consolidar o comportamento das instruções especiais
+antes de entrarmos em `02-interrupts.gb`, que pertence à fase de timer e
+interrupções reais.
