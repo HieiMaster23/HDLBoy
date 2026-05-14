@@ -207,6 +207,8 @@ begin
             display_digits       => display_digits,
             checker_failed       => checker_failed,
             final_passed         => open,
+            interrupt_ack        => interrupt_ack,
+            interrupt_vector     => interrupt_vector,
             interrupt_enable     => interrupt_enable,
             interrupt_flags      => interrupt_flags,
             serial_debug_valid   => open,

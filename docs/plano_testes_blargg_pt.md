@@ -100,9 +100,10 @@ rodar uma ROM Blargg sem adaptação:
   - CB-prefix completo
 - O timer ainda não é funcional o suficiente para `instr_timing`,
   `mem_timing`, `interrupt_time` e `halt_bug`.
-- Interrupções ainda não fazem push de PC nem salto para vetores.
-- O comportamento completo de `HALT`, `EI`, `DI` e `RETI` ainda está
-  incompleto.
+- Interrupções iniciais já fazem prioridade, push de PC, salto para vetor,
+  `interrupt_ack` e `RETI`.
+- O comportamento completo de temporização de `HALT`, `EI`, `DI`, `RETI` e o
+  bug de `HALT` ainda pertence a uma fase posterior.
 
 ## 5. Ordem Recomendada dos Testes
 
@@ -182,8 +183,9 @@ Depois de `06-ld r,r.gb`, a ordem mais racional é:
    - testa `BIT`, `RES` e `SET` em registradores.
 9. `01-special.gb` — Passed
    - inclui casos especiais como `JR`, `JP HL`, `POP AF` e `DAA`.
-10. `02-interrupts.gb` — próximo alvo
-   - deve ficar para depois do timer e do controlador de interrupções.
+10. `02-interrupts.gb` — Passed
+   - validou a base de IME, IE/IF, prioridade, push de PC, vetor, `RETI`,
+     `EI`, `HALT` básico e timer stub.
 
 Essa ordem não é a ordem numérica original. É a ordem mais adequada para o
 estado atual do nosso core.
@@ -216,13 +218,14 @@ Esses testes são valiosos, mas pertencem a fases posteriores.
 
 O próximo passo de implementação deve ser:
 
-1. Preparar o núcleo para `cpu_instrs\individual\02-interrupts.gb`.
-2. Implementar despacho real de interrupções: IME, IE/IF, prioridade, push de
-   PC, salto para vetor, `interrupt_ack` e `RETI`.
-3. Refinar `EI` e `HALT` apenas até o nível exigido pelo teste.
-4. Rodar `02-interrupts.gb` até `Passed`, `Failed` ou primeira falha útil.
-5. Repetir os testes curtos de CPU e as ROMs `01-special`, `10-bit ops` e
-   `11-op a,(hl)`.
+1. Consolidar que todas as ROMs individuais `01..11` continuam passando.
+2. Tentar a ROM agregada `cpu_instrs.gb` se o tempo de simulação for aceitável.
+3. Se a ROM agregada for impraticável, registrar esse limite e avançar para
+   timer real.
+4. Implementar o timer DMG com frequências TAC, DIV/TIMA/TMA, overflow e IF bit
+   2 mais fiéis.
+5. Só então começar `instr_timing`, `mem_timing`, `interrupt_time` e
+   `halt_bug.gb`.
 
 Esse ciclo deve guiar a expansão da CPU a partir de agora.
 
@@ -230,8 +233,7 @@ Esse ciclo deve guiar a expansão da CPU a partir de agora.
 
 A fase atual estará concluída quando:
 
-- `02-interrupts.gb` chegar a `Passed` ou falhar com uma mensagem serial
-  compreensível;
+- `02-interrupts.gb` chegar a `Passed`;
 - `01-special.gb` continuar passando;
 - `10-bit ops.gb` e `11-op a,(hl).gb` continuarem passando depois das mudanças;
 - `DAA` continuar coberto por teste unitário de ALU;
@@ -384,3 +386,43 @@ Motivo: todos os testes comportamentais de CPU não-interruptivos desta sequênc
 agora passam. O próximo avanço real exige implementar interrupções de forma mais
 fiel, incluindo IME, IE/IF, prioridade, push de PC, vetor, `RETI`, `EI` e
 `HALT`.
+
+## 14. Resultado do teste `02-interrupts.gb`
+
+O teste `02-interrupts.gb` passou via transcript serial.
+
+Comportamentos validados por essa etapa:
+
+- `IME` habilitando o atendimento de interrupções;
+- `IE` e `IF` conectados ao núcleo da CPU;
+- prioridade de interrupções na ordem VBlank, STAT, Timer, Serial e Joypad;
+- push do PC atual na stack antes do salto para o vetor;
+- salto para o vetor de Timer em `0x0050` no caso testado;
+- limpeza do bit de IF por `interrupt_ack`;
+- `RETI` reativando `IME`;
+- `EI` com atraso básico;
+- `DI` impedindo atendimento;
+- `HALT` saindo quando uma interrupção fica pendente;
+- timer stub gerando IF bit 2 para o teste.
+
+Resultado observado:
+
+- ROM: `gb-test-roms-master/cpu_instrs/individual/02-interrupts.gb`;
+- script dedicado: `sim/modelsim/run_cpu_blargg_02.do`;
+- timeout: `G_TIMEOUT_CYCLES=30000000`;
+- transcript serial: `02-interrupts`, linha em branco, `Passed`.
+
+Limitações que continuam abertas:
+
+- o timer ainda não implementa todas as frequências TAC reais;
+- o atraso exato de overflow TIMA ainda não está fiel;
+- a temporização exata de aceitação de interrupções ainda precisa ser refinada;
+- o bug de `HALT` ainda não foi implementado;
+- os testes `instr_timing`, `mem_timing`, `interrupt_time` e `halt_bug.gb`
+  continuam fora do escopo desta etapa.
+
+Próximo alvo recomendado:
+
+Consolidar a suíte `cpu_instrs` completa. Se a ROM agregada `cpu_instrs.gb` for
+pesada demais para simulação, registrar que as ROMs individuais `01..11`
+passaram e iniciar a implementação do timer real antes dos testes de timing.

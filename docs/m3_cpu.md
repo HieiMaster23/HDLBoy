@@ -10,7 +10,7 @@ coverage without being rewritten.
 The CPU is split into four RTL modules:
 
 - `rtl/cpu/cpu.vhd`: top-level CPU sequencer, memory bus control, PC/SP updates,
-  stack sequencing, HALT bookkeeping, and interrupt state placeholders.
+  stack sequencing, interrupt dispatch, and HALT bookkeeping.
 - `rtl/cpu/alu.vhd`: combinational 8-bit ALU for the first arithmetic and logic
   subset, including Z/N/H/C flag generation.
 - `rtl/cpu/registers.vhd`: synchronous A/F/B/C/D/E/H/L, SP, and PC register
@@ -100,14 +100,21 @@ Control base:
 - `HALT` enters a halt state and exits when an interrupt is pending.
 - `DI` clears IME.
 - `EI` uses delayed IME enable after the following completed instruction.
+- Initial interrupt servicing accepts pending `IE & IF` bits when IME is set,
+  clears IME, pushes PC, jumps to the selected vector, and emits
+  `interrupt_ack`.
 
 ## Current Limitations
 
-- Interrupt servicing does not yet push PC or jump to vectors. The first version
-  exposes IME, pending interrupt detection, and HALT wake-up behavior only.
+- Interrupt servicing is functional enough for `02-interrupts.gb`, but the
+  exact LR35902 interrupt timing still needs refinement.
 - Instruction timing is still an incremental approximation. The CPU has a
   `mem_ready` input for registered memory and wait-state integration, but it is
   not yet fully cycle-accurate against the LR35902.
+- The timer used by the ROM runner and initial bus controller is a minimal test
+  stub. It raises the Timer IF bit, but it does not yet implement all TAC
+  frequencies, DIV edge behavior, or the real TIMA overflow delay.
+- The exact HALT bug behavior is not implemented yet.
 
 ## Flags
 
@@ -134,6 +141,7 @@ Current ModelSim scripts:
 - `sim/modelsim/run_cpu_smoke.do`
 - `sim/modelsim/run_cpu_rom_runner.do`
 - `sim/modelsim/run_cpu_blargg_01.do`
+- `sim/modelsim/run_cpu_blargg_02.do`
 - `sim/modelsim/run_cpu_blargg_10.do`
 - `sim/modelsim/run_cpu_blargg_09.do`
 - `sim/modelsim/run_cpu_blargg_11.do`
@@ -161,6 +169,8 @@ Current Blargg bring-up result:
 
 - `cpu_instrs/individual/01-special.gb`: `Passed` via serial transcript using
   `G_TIMEOUT_CYCLES=50000000`.
+- `cpu_instrs/individual/02-interrupts.gb`: `Passed` via serial transcript
+  using `G_TIMEOUT_CYCLES=30000000`.
 - `cpu_instrs/individual/06-ld r,r.gb`: `Passed` via serial transcript.
 - `cpu_instrs/individual/04-op r,imm.gb`: `Passed` via serial transcript.
 - `cpu_instrs/individual/08-misc instrs.gb`: `Passed` via serial transcript.
@@ -234,6 +244,10 @@ the CPU subset connected to the M2 framebuffer and VGA path:
   overlay for the smoke test.
 - IF is present at `0xFF0F`, and IE is present at `0xFFFF`; their lower five
   bits feed the CPU interrupt input ports.
+- The CPU `interrupt_ack` and `interrupt_vector` outputs feed the bus
+  controller so the serviced IF bit can be cleared.
+- A minimal timer stub can raise the Timer IF bit for the interrupt bring-up
+  path. This is not the final DMG timer implementation.
 - Basic I/O stubs are present for JOYP, Serial, Timer registers, LCDC/STAT,
   scroll/window registers, DMA, and palette registers. They are placeholders
   for future timer, joypad, and PPU ownership.
@@ -275,15 +289,16 @@ Blargg-style output capture before implementing the real serial link timing.
 The ROM runner is now the primary CPU validation path. The next implementation
 slices should:
 
-1. Add interrupt vector servicing and exact EI/HALT behavior before
-   `02-interrupts.gb`.
-2. Add or refine timer/IF/IE behavior required by the interrupt test ROM.
-3. Keep the memory-map/bus-controller harness aligned with registered memory
+1. Consolidate the full `cpu_instrs` suite, either by running the aggregate ROM
+   or by documenting the individual `01..11` pass set.
+2. Replace the timer stub with a real DMG timer before `instr_timing`,
+   `mem_timing`, `interrupt_time`, and `halt_bug.gb`.
+3. Refine exact interrupt timing, EI/HALT edge cases, and the HALT bug.
+4. Keep the memory-map/bus-controller harness aligned with registered memory
    reads and future wait states.
 
 ## Next Code Step
 
-Use the ROM runner to drive the next CPU slice. The immediate priority is
-preparing `02-interrupts.gb`, because `01-special.gb`, `10-bit ops.gb`, and
-`11-op a,(hl).gb` now pass. The remaining high-risk CPU work is real interrupt
-dispatch, EI/HALT timing behavior, and timer/IF/IE interaction.
+Use the ROM runner to consolidate the CPU test suite, then start the real timer
+slice. The remaining high-risk CPU work is exact timing behavior: timer edges,
+interrupt entry timing, `EI`/`HALT` edge cases, and the HALT bug.

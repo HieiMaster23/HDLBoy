@@ -424,3 +424,44 @@ Notes:
 - The fitter result is lower than the previous slice because Quartus changed
   logic packing during the full compile. This should be treated as equivalent
   resource class, not as a meaningful optimization win.
+
+## M3 Interrupt Bring-Up Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_video_smoke_top`
+
+Report date: 2026-05-14
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,087 | 6,272 | 65% |
+| Registers | 1,500 | 6,272 | 24% |
+| Pins | 27 | 92 | 29% |
+| Memory bits | 111,616 | 276,480 | 40% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, `clk_50mhz` | 17.071 ns |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.589 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 196.004 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.501 ns |
+| Hold, slow 1200 mV 85 C, `clk_50mhz` | 0.735 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- This slice adds initial real interrupt entry in the CPU: priority selection,
+  PC push, vector jump, IME clear, `interrupt_ack`, and `RETI` IME restore.
+- The bus controller now clears the serviced IF bit on `interrupt_ack` and has
+  a minimal Timer IF stub for interrupt bring-up.
+- The fitter result remains below the 80% warning threshold, but the design is
+  already resource-sensitive at 65% logic element usage. Future timer, PPU, and
+  SDRAM work should continue to prefer registered RAM templates, shared CPU
+  states, and small incremental synthesis checks.

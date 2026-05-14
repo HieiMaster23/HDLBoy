@@ -36,6 +36,8 @@ architecture sim of tb_bus_controller is
     signal display_digits       : std_logic_vector(15 downto 0);
     signal checker_failed       : std_logic;
     signal final_passed         : std_logic;
+    signal interrupt_ack        : std_logic := '0';
+    signal interrupt_vector     : std_logic_vector(2 downto 0) := "000";
     signal interrupt_enable     : std_logic_vector(4 downto 0);
     signal interrupt_flags      : std_logic_vector(4 downto 0);
     signal serial_debug_valid   : std_logic;
@@ -76,6 +78,8 @@ begin
             display_digits       => display_digits,
             checker_failed       => checker_failed,
             final_passed         => final_passed,
+            interrupt_ack        => interrupt_ack,
+            interrupt_vector     => interrupt_vector,
             interrupt_enable     => interrupt_enable,
             interrupt_flags      => interrupt_flags,
             serial_debug_valid   => serial_debug_valid,
@@ -140,6 +144,16 @@ begin
         bus_read_check(x"FFFF", x"1F", "FAIL: IE should read back the written value");
         assert interrupt_enable = "11111"
             report "FAIL: interrupt_enable output should mirror IE lower five bits"
+            severity failure;
+
+        interrupt_vector <= "010";
+        interrupt_ack <= '1';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        interrupt_ack <= '0';
+        bus_read_check(x"FF0F", x"F1", "FAIL: interrupt acknowledge should clear the selected IF bit");
+        assert interrupt_flags = "10001"
+            report "FAIL: interrupt_flags should clear the acknowledged timer bit"
             severity failure;
 
         bus_write(x"C000", x"34");

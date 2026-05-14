@@ -77,6 +77,8 @@ architecture rtl of cpu is
         S_MEM_WRITE_SP_HI,
         S_CB_READ_HL,
         S_CB_WRITE_HL,
+        S_INT_PUSH_HI,
+        S_INT_PUSH_LO,
         S_PUSH_HI,
         S_PUSH_LO,
         S_POP_LO,
@@ -101,6 +103,7 @@ architecture rtl of cpu is
     signal ime_reg : std_logic;
     signal ei_pending_reg : std_logic;
     signal halted_reg : std_logic;
+    signal interrupt_vector_reg : std_logic_vector(2 downto 0);
 
     signal dec_valid : std_logic;
     signal dec_class : std_logic_vector(3 downto 0);
@@ -151,6 +154,37 @@ architecture rtl of cpu is
 
     signal instr_complete : std_logic;
     signal pending_interrupt_sig : std_logic;
+
+    function priority_vector(pending_in : std_logic_vector(4 downto 0)) return std_logic_vector is
+    begin
+        if pending_in(0) = '1' then
+            return "000";
+        elsif pending_in(1) = '1' then
+            return "001";
+        elsif pending_in(2) = '1' then
+            return "010";
+        elsif pending_in(3) = '1' then
+            return "011";
+        else
+            return "100";
+        end if;
+    end function priority_vector;
+
+    function interrupt_address(vector_in : std_logic_vector(2 downto 0)) return std_logic_vector is
+    begin
+        case vector_in is
+            when "000" =>
+                return x"0040";
+            when "001" =>
+                return x"0048";
+            when "010" =>
+                return x"0050";
+            when "011" =>
+                return x"0058";
+            when others =>
+                return x"0060";
+        end case;
+    end function interrupt_address;
 
     function inc16(value_in : std_logic_vector(15 downto 0)) return std_logic_vector is
     begin
@@ -365,15 +399,17 @@ architecture rtl of cpu is
             when S_MEM_WRITE_SP_HI => return "01100";
             when S_CB_READ_HL   => return "01101";
             when S_CB_WRITE_HL  => return "01110";
-            when S_PUSH_HI      => return "01111";
-            when S_PUSH_LO      => return "10000";
-            when S_POP_LO       => return "10001";
-            when S_POP_HI       => return "10010";
-            when S_CALL_PUSH_HI => return "10011";
-            when S_CALL_PUSH_LO => return "10100";
-            when S_RET_READ_LO  => return "10101";
-            when S_RET_READ_HI  => return "10110";
-            when others         => return "10111";
+            when S_INT_PUSH_HI  => return "01111";
+            when S_INT_PUSH_LO  => return "10000";
+            when S_PUSH_HI      => return "10001";
+            when S_PUSH_LO      => return "10010";
+            when S_POP_LO       => return "10011";
+            when S_POP_HI       => return "10100";
+            when S_CALL_PUSH_HI => return "10101";
+            when S_CALL_PUSH_LO => return "10110";
+            when S_RET_READ_LO  => return "10111";
+            when S_RET_READ_HI  => return "11000";
+            when others         => return "11001";
         end case;
     end function state_to_slv;
 
@@ -456,6 +492,7 @@ begin
                 ime_reg <= '0';
                 ei_pending_reg <= '0';
                 halted_reg <= '0';
+                interrupt_vector_reg <= "000";
             else
                 state_reg <= state_next;
 
@@ -466,8 +503,15 @@ begin
 
                 case state_reg is
                     when S_FETCH =>
-                        if mem_ready = '1' then
-                        opcode_reg <= mem_data_in;
+                        if ime_reg = '1' and pending_interrupt_sig = '1' then
+                            interrupt_vector_reg <= priority_vector(interrupt_enable and interrupt_flags);
+                            ime_reg <= '0';
+                            ei_pending_reg <= '0';
+                            halted_reg <= '0';
+                        else
+                            if mem_ready = '1' then
+                                opcode_reg <= mem_data_in;
+                            end if;
                         end if;
 
                     when S_DECODE =>
@@ -544,7 +588,7 @@ begin
                        reg_read_data_b, pc_out_sig, sp_out_sig, a_sig, f_sig,
                        b_sig, c_sig, d_sig, e_sig, h_sig, l_sig, hl_sig,
                        flags_sig, alu_result_sig, alu_flags_sig,
-                       pending_interrupt_sig, mem_ready)
+                       pending_interrupt_sig, ime_reg, interrupt_vector_reg, mem_ready)
         variable opcode_pair_v : std_logic_vector(1 downto 0);
         variable jr_base_v     : std_logic_vector(15 downto 0);
         variable push_value_v  : std_logic_vector(15 downto 0);
@@ -564,7 +608,7 @@ begin
         mem_read <= '0';
         mem_write <= '0';
         interrupt_ack <= '0';
-        interrupt_vector <= "000";
+        interrupt_vector <= interrupt_vector_reg;
 
         reg_read_sel_a <= CPU_REG_A;
         reg_read_sel_b <= dec_src;
@@ -604,14 +648,18 @@ begin
 
         case state_reg is
             when S_FETCH =>
-                mem_addr <= pc_out_sig;
-                mem_read <= '1';
-                if mem_ready = '1' then
-                pc_write_enable <= '1';
-                pc_in_sig <= inc16(pc_out_sig);
-                state_next <= S_DECODE;
+                if ime_reg = '1' and pending_interrupt_sig = '1' then
+                    state_next <= S_INT_PUSH_HI;
                 else
-                    state_next <= S_FETCH;
+                    mem_addr <= pc_out_sig;
+                    mem_read <= '1';
+                    if mem_ready = '1' then
+                        pc_write_enable <= '1';
+                        pc_in_sig <= inc16(pc_out_sig);
+                        state_next <= S_DECODE;
+                    else
+                        state_next <= S_FETCH;
+                    end if;
                 end if;
 
             when S_DECODE =>
@@ -1204,6 +1252,26 @@ begin
                 mem_data_out <= sp_out_sig(15 downto 8);
                 mem_write <= '1';
                 instr_complete <= '1';
+                state_next <= S_FETCH;
+
+            when S_INT_PUSH_HI =>
+                mem_addr <= dec16(sp_out_sig);
+                mem_data_out <= pc_out_sig(15 downto 8);
+                mem_write <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= dec16(sp_out_sig);
+                state_next <= S_INT_PUSH_LO;
+
+            when S_INT_PUSH_LO =>
+                mem_addr <= dec16(sp_out_sig);
+                mem_data_out <= pc_out_sig(7 downto 0);
+                mem_write <= '1';
+                sp_write_enable <= '1';
+                sp_in_sig <= dec16(sp_out_sig);
+                pc_write_enable <= '1';
+                pc_in_sig <= interrupt_address(interrupt_vector_reg);
+                interrupt_ack <= '1';
+                interrupt_vector <= interrupt_vector_reg;
                 state_next <= S_FETCH;
 
             when S_PUSH_HI =>

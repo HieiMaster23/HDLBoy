@@ -147,6 +147,7 @@ architecture sim of tb_cpu_rom_runner is
     signal io_wy_reg : std_logic_vector(7 downto 0) := x"00";
     signal io_wx_reg : std_logic_vector(7 downto 0) := x"00";
     signal ie_reg : std_logic_vector(7 downto 0) := x"00";
+    signal timer_div_reg : unsigned(1 downto 0) := "00";
     signal mem : memory_t := load_rom(G_ROM_PATH);
 
 begin
@@ -192,6 +193,9 @@ begin
             debug_sp => debug_sp,
             debug_state => debug_state
         );
+
+    interrupt_enable <= ie_reg(4 downto 0);
+    interrupt_flags <= io_if_reg(4 downto 0);
 
     p_memory_read: process(mem_addr, mem, serial_sb_reg, serial_sc_reg,
                            boot_header_reached,
@@ -274,6 +278,7 @@ begin
                 io_wy_reg <= x"00";
                 io_wx_reg <= x"00";
                 ie_reg <= x"00";
+                timer_div_reg <= "00";
             else
                 io_div_reg <= std_logic_vector(unsigned(io_div_reg) + 1);
                 if io_ly_reg = x"99" then
@@ -284,6 +289,37 @@ begin
 
                 if mem_read = '1' and mem_addr = x"0100" then
                     boot_header_reached <= '1';
+                end if;
+
+                if io_tac_reg(2) = '1' then
+                    if timer_div_reg = "11" then
+                        timer_div_reg <= "00";
+                        if io_tima_reg = x"FF" then
+                            io_tima_reg <= io_tma_reg;
+                            io_if_reg(2) <= '1';
+                        else
+                            io_tima_reg <= std_logic_vector(unsigned(io_tima_reg) + 1);
+                        end if;
+                    else
+                        timer_div_reg <= timer_div_reg + 1;
+                    end if;
+                else
+                    timer_div_reg <= "00";
+                end if;
+
+                if interrupt_ack = '1' then
+                    case interrupt_vector is
+                        when "000" =>
+                            io_if_reg(0) <= '0';
+                        when "001" =>
+                            io_if_reg(1) <= '0';
+                        when "010" =>
+                            io_if_reg(2) <= '0';
+                        when "011" =>
+                            io_if_reg(3) <= '0';
+                        when others =>
+                            io_if_reg(4) <= '0';
+                    end case;
                 end if;
 
                 if mem_write = '1' then

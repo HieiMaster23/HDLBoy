@@ -65,9 +65,8 @@ O projeto já possui:
 - runner de ROM em simulação carregando ROMs `.gb` reais e emitindo `Passed`
   via serial;
 - pacote local de ROMs Blargg baixado em `gb-test-roms-master`;
-- Blargg `cpu_instrs` individuais `01`, `03`, `04`, `05`, `06`, `07`, `08`,
-  `09`, `10` e `11`
-  passando via transcript serial.
+- Blargg `cpu_instrs` individuais `01`, `02`, `03`, `04`, `05`, `06`, `07`,
+  `08`, `09`, `10` e `11` passando via transcript serial.
 
 ## 4. Checkpoints Confiáveis
 
@@ -79,11 +78,11 @@ Checkpoint conhecido:
 
 Checkpoint atual:
 
-- Commit: ver o commit `Checkpoint M3 DAA and CB HL Blargg tests` no histórico Git.
-- Mensagem: `Checkpoint M3 DAA and CB HL Blargg tests`
-- Significado: checkpoint funcional de M3 com `DAA`, CB-prefix em `(HL)`,
-  Blargg `10-bit ops.gb`, `11-op a,(hl).gb` e `01-special.gb` passando em
-  simulação.
+- Commit: ver o commit `Checkpoint M3 interrupt Blargg test` no histórico Git.
+- Mensagem: `Checkpoint M3 interrupt Blargg test`
+- Significado: checkpoint funcional de M3 com despacho inicial real de
+  interrupções, Blargg `02-interrupts.gb` passando em simulação, regressões
+  principais preservadas e build Quartus completo sem erros.
 
 Depois do checkpoint `202fa47`, foram feitas expansões importantes agora
 consolidadas no checkpoint atual:
@@ -164,6 +163,8 @@ Implementado:
 - `XOR A,(HL)`
 - `CP (HL)`
 - `DAA`
+- despacho inicial real de interrupções com IME, IE/IF, prioridade, push de PC,
+  salto para vetor, `interrupt_ack` e `RETI`
 - `JP nn`
 - `JP cc,nn`
 - `JP HL`
@@ -189,14 +190,14 @@ Implementado:
 - CB-prefix em `(HL)` para RLC/RRC/RL/RR/SLA/SRA/SWAP/SRL, BIT, RES e SET
 - `DI`
 - `EI` com atraso básico
-- `HALT` básico, ainda incompleto para compatibilidade total
+- `HALT` básico com saída por interrupção pendente
 
 Ainda pendente:
 
-- interrupções completas;
+- temporização exata de aceitação de interrupções;
 - temporização exata de instruções;
-- timer real;
-- comportamento completo de `HALT`, `EI`, `DI` e `RETI` sob interrupções reais.
+- timer real com frequências TAC, atraso de overflow e bordas fiéis ao DMG;
+- comportamento completo do bug de `HALT`.
 
 ### Barramento e Memória
 
@@ -212,7 +213,10 @@ Implementado:
 - stubs de JOYP, serial, timer, LCD/PPU, DMA e paletas;
 - IE em `0xFFFF`;
 - IF em `0xFF0F`;
-- serial debug em `0xFF01/0xFF02`.
+- serial debug em `0xFF01/0xFF02`;
+- stub mínimo de timer capaz de gerar IF bit 2 em simulação e no barramento
+  inicial;
+- limpeza de IF por `interrupt_ack` conforme vetor atendido.
 
 Risco atual:
 
@@ -259,7 +263,8 @@ Implementado:
 - runner de ROM real imprimindo `Passed` por serial;
 - wave setup dedicado para visualizar o runner;
 - scripts para Blargg `01-special`, `09-op r,r`, `10-bit ops` e
-  `11-op a,(hl)`.
+  `11-op a,(hl)`;
+- script dedicado para Blargg `02-interrupts`.
 
 Blargg `cpu_instrs` individuais passando:
 
@@ -273,13 +278,14 @@ Blargg `cpu_instrs` individuais passando:
 - `09-op r,r.gb`
 - `10-bit ops.gb`
 - `11-op a,(hl).gb`
+- `02-interrupts.gb`
 
 Próximo alvo de teste:
 
-- preparar a CPU, o runner e os stubs mínimos para
-  `gb-test-roms-master\cpu_instrs\individual\02-interrupts.gb`;
-- implementar interrupções reais de forma incremental antes de esperar `Passed`;
-- manter captura serial e timeout controlado.
+- rodar a ROM agregada `cpu_instrs.gb` quando o tempo de simulação for
+  aceitável, para confirmar a sequência completa;
+- iniciar a próxima fase de fidelidade: timer real, timing de instruções,
+  `HALT` bug e testes `instr_timing`, `mem_timing` e `interrupt_time`.
 
 ## 6. Linha de Evolução do Projeto
 
@@ -303,9 +309,10 @@ de teste cada vez mais próximos de ROMs reais.
 
 Depois disso:
 
-1. completar os testes comportamentais restantes de `cpu_instrs`;
-2. implementar grupos de opcodes guiados por falhas reais;
-3. só então mirar timing, timer, interrupções e PPU.
+1. consolidar a ROM agregada `cpu_instrs.gb`;
+2. implementar o timer DMG real;
+3. avançar para timing, `HALT` bug, joypad, interrupções com precisão maior e
+   PPU.
 
 ## 7. Ordem Recomendada para Blargg
 
@@ -321,7 +328,7 @@ Ordem prática, considerando o estado atual do core:
 8. `11-op a,(hl).gb` — Passed com timeout longo parametrizado
 9. `10-bit ops.gb` — Passed com timeout longo parametrizado
 10. `01-special.gb` — Passed
-11. `02-interrupts.gb` — próximo alvo, depende de interrupções/timer
+11. `02-interrupts.gb` — Passed com suporte inicial real de interrupções
 
 Não começar por:
 
@@ -524,9 +531,9 @@ Alvo concreto:
 [descrever alvo verificável]
 ```
 
-## 13. Próximo Alvo Oficial
+## 13. Alvo Oficial Recém-Concluído
 
-O próximo alvo oficial do projeto é:
+O alvo oficial anterior era:
 
 ```text
 Preparar e executar gb-test-roms-master\cpu_instrs\individual\02-interrupts.gb
@@ -534,25 +541,37 @@ no tb_cpu_rom_runner, capturando a saída serial via 0xFF01/0xFF02 até obter
 Passed, Failed ou a primeira falha útil.
 ```
 
-Esse alvo deve guiar a próxima conversa de implementação.
+Resultado:
 
-## 14. Critério de Sucesso do Próximo Alvo
+- `02-interrupts.gb` chegou a `Passed`;
+- a CPU agora aceita interrupções quando `IME=1` e `IE & IF` possui bit
+  pendente;
+- a prioridade inicial segue a ordem VBlank, STAT, Timer, Serial e Joypad;
+- o atendimento empilha o PC, limpa IME, salta para `0x40/0x48/0x50/0x58/0x60`
+  e emite `interrupt_ack`;
+- `RETI` reativa IME;
+- `EI` mantém atraso básico;
+- `HALT` sai quando há interrupção pendente;
+- o runner e o barramento inicial possuem stub mínimo de timer e limpeza de IF.
 
-O alvo será considerado bem-sucedido se:
+## 14. Próximo Alvo Oficial
 
-- o runner carregar os bytes reais da ROM `02-interrupts.gb`;
-- a CPU executar o shell Blargg e chegar ao teste principal;
-- a CPU tiver suporte inicial a despacho real de interrupções, push de PC,
-  salto para vetor, `interrupt_ack`, `RETI`, e comportamento mais fiel de
-  `EI`/`HALT`;
-- a simulação tiver timeout controlado e, se necessário, parametrizado;
-- a saída serial for capturada;
-- o resultado for `Passed`, `Failed` ou uma falha claramente diagnosticável;
-- qualquer opcode novo ou divergência de flags for documentado;
-- a documentação for atualizada com o novo estado.
+O próximo alvo oficial recomendado é:
 
-Mesmo que a ROM ainda não passe, capturar a primeira falha útil já é progresso
-real, porque ela define a próxima fatia de implementação.
+```text
+Consolidar a suíte Blargg CPU completa: tentar a ROM agregada cpu_instrs.gb ou,
+se ela for pesada demais para simulação, registrar explicitamente que as ROMs
+individuais 01..11 passaram e avançar para timer real e testes de timing.
+```
+
+Critério de sucesso:
+
+- manter `01..11` passando individualmente;
+- não regredir `cpu_video_smoke_top`;
+- manter build Quartus sem erro;
+- documentar qualquer limite de simulação da ROM agregada;
+- definir a próxima fatia entre timer real, `instr_timing`, `mem_timing`,
+  `interrupt_time` e `halt_bug`.
 
 ## 15. Princípio de Engenharia do Projeto
 

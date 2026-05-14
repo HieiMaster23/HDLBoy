@@ -40,6 +40,8 @@ entity bus_controller is
         display_digits      : out std_logic_vector(15 downto 0);
         checker_failed      : out std_logic;
         final_passed        : out std_logic;
+        interrupt_ack       : in  std_logic;
+        interrupt_vector    : in  std_logic_vector(2 downto 0);
         interrupt_enable    : out std_logic_vector(4 downto 0);
         interrupt_flags     : out std_logic_vector(4 downto 0);
         serial_debug_valid  : out std_logic;
@@ -138,6 +140,7 @@ architecture rtl of bus_controller is
     signal serial_debug_valid_reg : std_logic;
     signal serial_debug_data_reg  : std_logic_vector(7 downto 0);
     signal div_counter       : unsigned(15 downto 0);
+    signal timer_divider      : unsigned(1 downto 0);
     signal tima_reg          : std_logic_vector(7 downto 0);
     signal tma_reg           : std_logic_vector(7 downto 0);
     signal tac_reg           : std_logic_vector(2 downto 0);
@@ -289,6 +292,7 @@ begin
                 serial_debug_valid_reg <= '0';
                 serial_debug_data_reg <= (others => '0');
                 div_counter <= (others => '0');
+                timer_divider <= (others => '0');
                 tima_reg <= (others => '0');
                 tma_reg <= (others => '0');
                 tac_reg <= (others => '0');
@@ -314,6 +318,38 @@ begin
             else
                 div_counter <= div_counter + 1;
                 serial_debug_valid_reg <= '0';
+
+                if tac_reg(2) = '1' then
+                    if timer_divider = "11" then
+                        timer_divider <= (others => '0');
+                        if tima_reg = x"FF" then
+                            tima_reg <= tma_reg;
+                            if_reg(2) <= '1';
+                        else
+                            tima_reg <= std_logic_vector(unsigned(tima_reg) + 1);
+                        end if;
+                    else
+                        timer_divider <= timer_divider + 1;
+                    end if;
+                else
+                    timer_divider <= (others => '0');
+                end if;
+
+                if interrupt_ack = '1' then
+                    case interrupt_vector is
+                        when "000" =>
+                            if_reg(0) <= '0';
+                        when "001" =>
+                            if_reg(1) <= '0';
+                        when "010" =>
+                            if_reg(2) <= '0';
+                        when "011" =>
+                            if_reg(3) <= '0';
+                        when others =>
+                            if_reg(4) <= '0';
+                    end case;
+                end if;
+
                 if cpu_read = '1' and sync_read_selected = '1' then
                     if sync_read_valid = '0' or sync_read_addr /= cpu_addr then
                         sync_read_addr <= cpu_addr;
