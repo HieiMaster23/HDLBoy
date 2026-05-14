@@ -24,7 +24,8 @@ building blocks, and the first M3 CPU-to-video integration harness:
 - `rtl/top/cpu_video_smoke_top.vhd`: CPU-to-framebuffer smoke test that writes
   visible pixels into the VGA framebuffer.
 - `rtl/memory/bus_controller.vhd`: first CPU-facing memory map for smoke ROM,
-  experimental framebuffer writes, debug I/O, and future M4 expansion.
+  experimental framebuffer writes, a small WRAM slice with echo mirror, HRAM,
+  IF/IE registers, basic I/O stubs, and debug I/O.
 
 ## Clock Domains
 
@@ -57,12 +58,21 @@ The Game Boy image is centered in VGA visible space with black borders:
 
 ## Near-Term Integration
 
-The next architectural step is to extract the temporary top-level memory decode
-into a CPU-facing memory/bus structure:
+The current M4 bus slice provides the first CPU-facing memory map. It includes
+full 8 KiB WRAM at `0xC000..0xDFFF`, mirrored through the implemented echo
+range at `0xE000..0xFDFF`, plus HRAM and the current I/O stubs. The CPU bus now
+has a `mem_ready` handshake so RAM-backed regions can use registered reads
+without forcing large combinational register arrays onto the EP4CE6 fabric.
 
-- Memory map decoder for ROM, experimental VRAM/framebuffer, WRAM, OAM, I/O,
-  HRAM, IF, and IE.
-- Timer, interrupt controller, and joypad register.
+WRAM is inferred by Quartus as a single-port `altsyncram`. HRAM remains small
+enough to keep as local logic in this slice, but the same ready-state path can
+be reused later if HRAM or other memory blocks need to move into embedded RAM.
+
+The next architectural step is to grow it toward the full Game Boy map:
+
+- OAM and the remaining I/O register decode.
+- Real timer, interrupt controller, and joypad behavior behind the existing
+  stubs.
 - PPU write path into the framebuffer.
 
 The design should continue to keep module-level testbenches close to each RTL

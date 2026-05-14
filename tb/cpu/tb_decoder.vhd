@@ -88,11 +88,35 @@ begin
             report "FAIL: LD (HL),A decode failed"
             severity failure;
 
+        opcode <= x"34";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_INC_R and
+               reads_memory = '1' and writes_memory = '1' and
+               writes_flags = '1' and alu_op = ALU_OP_INC
+            report "FAIL: INC (HL) decode failed"
+            severity failure;
+
+        opcode <= x"35";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_DEC_R and
+               reads_memory = '1' and writes_memory = '1' and
+               writes_flags = '1' and alu_op = ALU_OP_DEC
+            report "FAIL: DEC (HL) decode failed"
+            severity failure;
+
         opcode <= x"80";
         wait for 10 ns;
         assert valid = '1' and instr_class = DEC_CLASS_ALU_R and
                alu_op = ALU_OP_ADD and writes_flags = '1'
             report "FAIL: ADD A,B decode failed"
+            severity failure;
+
+        opcode <= x"86";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_ALU_R and
+               alu_op = ALU_OP_ADD and reads_memory = '1' and
+               src_sel = CPU_REG_HL_MEM
+            report "FAIL: ADD A,(HL) decode failed"
             severity failure;
 
         opcode <= x"B8";
@@ -108,6 +132,34 @@ begin
             report "FAIL: LD HL,nn decode failed"
             severity failure;
 
+        opcode <= x"E0";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_LD_MEM and
+               immediate_bytes = "01" and writes_memory = '1'
+            report "FAIL: LDH (n),A decode failed"
+            severity failure;
+
+        opcode <= x"F0";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_LD_MEM and
+               immediate_bytes = "01" and reads_memory = '1' and writes_register = '1'
+            report "FAIL: LDH A,(n) decode failed"
+            severity failure;
+
+        opcode <= x"EA";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_LD_MEM and
+               immediate_bytes = "10" and writes_memory = '1'
+            report "FAIL: LD (nn),A decode failed"
+            severity failure;
+
+        opcode <= x"FA";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_LD_MEM and
+               immediate_bytes = "10" and reads_memory = '1' and writes_register = '1'
+            report "FAIL: LD A,(nn) decode failed"
+            severity failure;
+
         opcode <= x"CD";
         wait for 10 ns;
         assert valid = '1' and instr_class = DEC_CLASS_JUMP and immediate_bytes = "10"
@@ -121,6 +173,26 @@ begin
             severity failure;
 
         opcode <= x"D9";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_JUMP and immediate_bytes = "00"
+            report "FAIL: RETI decode failed"
+            severity failure;
+
+        opcode <= x"E8";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_LD_16_N and
+               immediate_bytes = "01" and writes_flags = '1'
+            report "FAIL: ADD SP,e decode failed"
+            severity failure;
+
+        opcode <= x"F8";
+        wait for 10 ns;
+        assert valid = '1' and instr_class = DEC_CLASS_LD_16_N and
+               immediate_bytes = "01" and writes_flags = '1'
+            report "FAIL: LD HL,SP+e decode failed"
+            severity failure;
+
+        opcode <= x"DB";
         wait for 10 ns;
         assert valid = '0' and instr_class = DEC_CLASS_UNKNOWN
             report "FAIL: unknown opcode must be marked invalid"

@@ -88,6 +88,7 @@ vsim -c -do run_vga_controller.do
 vsim -c -do run_framebuffer.do
 vsim -c -do run_pixel_pipeline.do
 vsim -c -do run_framebuffer_top.do
+vsim -c -do run_bus_controller.do
 vsim -c -do run_cpu_all.do
 vsim -c -do run_cpu_integration_top.do
 vsim -c -do run_cpu_video_smoke_top.do

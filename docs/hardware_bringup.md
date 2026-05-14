@@ -73,6 +73,9 @@ Simulation coverage:
 
 - `sim/modelsim/run_cpu_video_smoke_top.do` compiles the simulation PLL stub,
   CPU, framebuffer, VGA path, seven-segment driver, and the smoke top.
+- `sim/modelsim/run_bus_controller.do` checks direct memory-map behavior for
+  ROM, the initial WRAM page and echo mirror, HRAM, IF, IE, I/O stubs, debug
+  overlay, and framebuffer writes.
 - `tb_cpu_video_bus_controller` checks exactly 64 CPU framebuffer writes, each
   expected address, black pixel data, final LED checkpoint, and display value
   `1234`.

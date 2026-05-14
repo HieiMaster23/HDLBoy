@@ -73,10 +73,18 @@ It owns the first temporary CPU-facing memory map:
 | --- | --- |
 | `0x0000..0x0118` | Internal smoke-test ROM bytes |
 | Other ROM addresses | Return `0x00` |
-| `0x8000..0xD9FF` | Experimental framebuffer/VRAM write window |
+| `0x8000..0xBFFF` | Experimental framebuffer/VRAM write window |
+| `0xC000..0xC03F` | Initial 64-byte WRAM page, kept small for EP4CE6 resource control |
+| `0xE000..0xE03F` | Echo mirror for the initial WRAM page |
+| `0xFF00` | JOYP stub: select bits are writable, buttons read unpressed |
+| `0xFF01..0xFF02` | Serial SB/SC stubs |
+| `0xFF04..0xFF07` | Timer register stubs; DIV has simple free-running/reset behavior |
+| `0xFF40..0xFF4B` | LCD/PPU register stubs for future PPU integration |
 | `0xFF80` | Debug LED output register |
 | `0xFF81` | Debug status/pass-code register |
-| HRAM/IE/IF areas | Reserved for the next M4 slice |
+| `0xFF80..0xFFFE` | HRAM, with `0xFF80/0xFF81` temporarily overlaid by debug registers |
+| `0xFF0F` | IF register placeholder, lower five interrupt request bits |
+| `0xFFFF` | IE register, lower five interrupt enable bits feed the CPU |
 
 The top-level entity now focuses on integration:
 
@@ -89,12 +97,16 @@ The top-level entity now focuses on integration:
 
 ## Step 5: Next Implementation Slice
 
-The next slice should turn `bus_controller.vhd` from a smoke-test map into a
-more Game Boy-shaped memory map:
+The next slice should turn the resource-limited memory map into a scalable
+Game Boy-shaped bus:
 
-1. Add a small HRAM block for `0xFF80..0xFFFE`.
-2. Add IE register at `0xFFFF`.
-3. Add IF register placeholder at `0xFF0F`.
-4. Decide whether the experimental framebuffer window remains directly mapped
-   or becomes a VRAM module.
-5. Keep each added region covered by a small self-checking test.
+1. Add a memory-ready/wait-state path to the CPU bus so RAM can use registered
+   or block-RAM-backed reads.
+2. Move WRAM and HRAM to lower-resource memory structures before expanding
+   them to full DMG size.
+3. Decide whether the experimental framebuffer window remains directly mapped
+   or becomes a VRAM module owned by the PPU path.
+4. Replace the temporary smoke-test ROM with a cleaner ROM image flow.
+5. Grow I/O stubs into real timer, joypad, interrupt, serial, and PPU modules.
+6. Keep each added region covered by a small self-checking test and track
+   Quartus resource use after each slice.

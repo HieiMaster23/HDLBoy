@@ -223,7 +223,7 @@
         <div class="card">
           <strong>New module</strong>
           <code>rtl/memory/bus_controller.vhd</code>
-          <p>Owns ROM decode, debug I/O, framebuffer write mapping, and pass/fail checks.</p>
+          <p>Owns ROM decode, initial WRAM, I/O stubs, framebuffer write mapping, and pass/fail checks.</p>
         </div>
         <div class="card">
           <strong>Regression</strong>
@@ -241,7 +241,7 @@
       </div>
       <div class="node bus">
         <div class="title">Bus Controller</div>
-        <div class="detail">Maps ROM, framebuffer window, and debug I/O.</div>
+        <div class="detail">Maps ROM, framebuffer window, WRAM, HRAM, and I/O stubs.</div>
       </div>
       <div class="node video">
         <div class="title">Framebuffer</div>
@@ -273,24 +273,44 @@
           <td>Replace with a cleaner ROM loader or generated ROM image flow.</td>
         </tr>
         <tr>
-          <td><code>0x8000..0xD9FF</code></td>
+          <td><code>0x8000..0xBFFF</code></td>
           <td>Experimental direct framebuffer write window.</td>
           <td>Split into VRAM and future PPU-owned framebuffer path.</td>
         </tr>
         <tr>
+          <td><code>0xC000..0xC03F</code></td>
+          <td>Initial 64-byte WRAM page.</td>
+          <td>Move to registered or block-RAM-backed storage before expanding.</td>
+        </tr>
+        <tr>
+          <td><code>0xE000..0xE03F</code></td>
+          <td>Echo mirror for the initial WRAM page.</td>
+          <td>Expand with WRAM when the bus supports lower-resource RAM.</td>
+        </tr>
+        <tr>
+          <td><code>0xFF00</code>, <code>0xFF01..0xFF02</code>, <code>0xFF04..0xFF07</code></td>
+          <td>Joypad, serial, and timer stubs.</td>
+          <td>Replace with real input, serial, timer, and interrupt behavior.</td>
+        </tr>
+        <tr>
+          <td><code>0xFF40..0xFF4B</code></td>
+          <td>LCD/PPU register stubs.</td>
+          <td>Move ownership to the PPU implementation.</td>
+        </tr>
+        <tr>
           <td><code>0xFF80</code></td>
-          <td>Debug LED checkpoint register.</td>
-          <td>Become part of HRAM/debug overlay only for smoke tests.</td>
+          <td>HRAM address overlaid by the debug LED checkpoint register.</td>
+          <td>Remove debug overlay when a serial/test-output path exists.</td>
         </tr>
         <tr>
           <td><code>0xFF81</code></td>
-          <td>Debug pass-code register.</td>
+          <td>HRAM address overlaid by the debug pass-code register.</td>
           <td>Reserve proper HRAM and add serial-style test output later.</td>
         </tr>
         <tr>
           <td><code>0xFF0F</code>, <code>0xFFFF</code></td>
-          <td>Reserved only.</td>
-          <td>Add IF and IE registers for interrupt work.</td>
+          <td>IF and IE registers are implemented; lower five bits feed CPU interrupt ports.</td>
+          <td>Connect interrupt dispatch once CPU servicing is implemented.</td>
         </tr>
       </tbody>
     </table>
@@ -329,7 +349,7 @@
         <div class="num">5</div>
         <div>
           <h3>Prepare M4</h3>
-          <p>Add HRAM, IE, IF, and a cleaner ROM path in small test-covered slices.</p>
+          <p>Add memory slices only when their Quartus cost is measured; full WRAM/HRAM requires registered reads or wait states.</p>
         </div>
       </div>
     </section>

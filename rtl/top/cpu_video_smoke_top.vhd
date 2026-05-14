@@ -58,6 +58,7 @@ architecture rtl of cpu_video_smoke_top is
     signal mem_data_out   : std_logic_vector(7 downto 0);
     signal mem_read       : std_logic;
     signal mem_write      : std_logic;
+    signal mem_ready      : std_logic;
 
     signal led_pattern    : std_logic_vector(3 downto 0);
     signal display_digits : std_logic_vector(15 downto 0);
@@ -65,6 +66,8 @@ architecture rtl of cpu_video_smoke_top is
 
     signal interrupt_ack      : std_logic;
     signal interrupt_vector   : std_logic_vector(2 downto 0);
+    signal interrupt_enable   : std_logic_vector(4 downto 0);
+    signal interrupt_flags    : std_logic_vector(4 downto 0);
     signal unsupported_opcode : std_logic;
 
     signal pixel_x       : unsigned(9 downto 0);
@@ -162,8 +165,9 @@ begin
             mem_data_out       => mem_data_out,
             mem_read           => mem_read,
             mem_write          => mem_write,
-            interrupt_enable   => "00000",
-            interrupt_flags    => "00000",
+            mem_ready          => mem_ready,
+            interrupt_enable   => interrupt_enable,
+            interrupt_flags    => interrupt_flags,
             interrupt_ack      => interrupt_ack,
             interrupt_vector   => interrupt_vector,
             halted             => open,
@@ -192,6 +196,7 @@ begin
             cpu_data_out         => mem_data_out,
             cpu_read             => mem_read,
             cpu_write            => mem_write,
+            cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
             fb_clear_active      => clear_active,
             fb_clear_addr        => clear_addr,
@@ -202,6 +207,10 @@ begin
             display_digits       => display_digits,
             checker_failed       => checker_failed,
             final_passed         => open,
+            interrupt_enable     => interrupt_enable,
+            interrupt_flags      => interrupt_flags,
+            serial_debug_valid   => open,
+            serial_debug_data    => open,
             debug_fb_write_count => open
         );
 

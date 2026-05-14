@@ -108,6 +108,8 @@ package gb_types_pkg is
     constant ALU_OP_CP   : std_logic_vector(3 downto 0) := x"5";
     constant ALU_OP_INC  : std_logic_vector(3 downto 0) := x"6";
     constant ALU_OP_DEC  : std_logic_vector(3 downto 0) := x"7";
+    constant ALU_OP_ADC  : std_logic_vector(3 downto 0) := x"8";
+    constant ALU_OP_SBC  : std_logic_vector(3 downto 0) := x"9";
     constant ALU_OP_PASS : std_logic_vector(3 downto 0) := x"F";
 
     -- =========================================================================
@@ -124,6 +126,10 @@ package gb_types_pkg is
     constant DEC_CLASS_JUMP    : std_logic_vector(3 downto 0) := x"8";
     constant DEC_CLASS_STACK   : std_logic_vector(3 downto 0) := x"9";
     constant DEC_CLASS_CONTROL : std_logic_vector(3 downto 0) := x"A";
+    constant DEC_CLASS_LD_MEM  : std_logic_vector(3 downto 0) := x"B";
+    constant DEC_CLASS_INC_16  : std_logic_vector(3 downto 0) := x"C";
+    constant DEC_CLASS_DEC_16  : std_logic_vector(3 downto 0) := x"D";
+    constant DEC_CLASS_ALU_N   : std_logic_vector(3 downto 0) := x"E";
     constant DEC_CLASS_UNKNOWN : std_logic_vector(3 downto 0) := x"F";
 
 end package gb_types_pkg;

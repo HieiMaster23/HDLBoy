@@ -8,6 +8,9 @@
 -- =============================================================================
 -- Revision History:
 -- 2026-05-11 - Initial M3 decoder subset
+-- 2026-05-13 - Added INC (HL) and DEC (HL) decode
+-- 2026-05-13 - Added LDH and absolute A memory transfer decode
+-- 2026-05-14 - Added Blargg shell bring-up load and conditional JR decode
 -- =============================================================================
 
 library ieee;
@@ -56,11 +59,15 @@ begin
 
         elsif opcode = x"06" or opcode = x"0E" or opcode = x"16" or
               opcode = x"1E" or opcode = x"26" or opcode = x"2E" or
-              opcode = x"3E" then
+              opcode = x"36" or opcode = x"3E" then
             instr_class     <= DEC_CLASS_LD_R_N;
             dst_sel         <= opcode(5 downto 3);
             immediate_bytes <= "01";
-            writes_register <= '1';
+            if opcode = x"36" then
+                writes_memory <= '1';
+            else
+                writes_register <= '1';
+            end if;
 
         elsif opcode >= x"40" and opcode <= x"7F" and opcode /= x"76" then
             instr_class     <= DEC_CLASS_LD_R_R;
@@ -75,13 +82,15 @@ begin
                 writes_register <= '0';
             end if;
 
-        elsif opcode = x"21" or opcode = x"31" then
+        elsif opcode = x"01" or opcode = x"11" or opcode = x"21" or
+              opcode = x"31" or opcode = x"E8" or opcode = x"F8" then
             instr_class     <= DEC_CLASS_LD_16_N;
-            immediate_bytes <= "10";
-            if opcode = x"21" then
-                pair_sel <= CPU_PAIR_HL;
+            if opcode = x"E8" or opcode = x"F8" then
+                immediate_bytes <= "01";
+                writes_flags    <= '1';
             else
-                pair_sel <= CPU_PAIR_AF;
+                immediate_bytes <= "10";
+                pair_sel        <= opcode(5 downto 4);
             end if;
 
         elsif opcode = x"04" or opcode = x"0C" or opcode = x"14" or
@@ -94,6 +103,23 @@ begin
             writes_register <= '1';
             writes_flags    <= '1';
 
+        elsif opcode = x"34" then
+            instr_class     <= DEC_CLASS_INC_R;
+            dst_sel         <= CPU_REG_HL_MEM;
+            src_sel         <= CPU_REG_HL_MEM;
+            alu_op          <= ALU_OP_INC;
+            reads_memory    <= '1';
+            writes_memory   <= '1';
+            writes_flags    <= '1';
+
+        elsif opcode = x"03" or opcode = x"13" or opcode = x"23" or opcode = x"33" then
+            instr_class <= DEC_CLASS_INC_16;
+            pair_sel    <= opcode(5 downto 4);
+
+        elsif opcode = x"09" or opcode = x"19" or opcode = x"29" or opcode = x"39" then
+            instr_class <= DEC_CLASS_MEM_HL;
+            pair_sel    <= opcode(5 downto 4);
+
         elsif opcode = x"05" or opcode = x"0D" or opcode = x"15" or
               opcode = x"1D" or opcode = x"25" or opcode = x"2D" or
               opcode = x"3D" then
@@ -104,6 +130,19 @@ begin
             writes_register <= '1';
             writes_flags    <= '1';
 
+        elsif opcode = x"35" then
+            instr_class     <= DEC_CLASS_DEC_R;
+            dst_sel         <= CPU_REG_HL_MEM;
+            src_sel         <= CPU_REG_HL_MEM;
+            alu_op          <= ALU_OP_DEC;
+            reads_memory    <= '1';
+            writes_memory   <= '1';
+            writes_flags    <= '1';
+
+        elsif opcode = x"0B" or opcode = x"1B" or opcode = x"2B" or opcode = x"3B" then
+            instr_class <= DEC_CLASS_DEC_16;
+            pair_sel    <= opcode(5 downto 4);
+
         elsif opcode >= x"80" and opcode <= x"BF" then
             instr_class     <= DEC_CLASS_ALU_R;
             dst_sel         <= CPU_REG_A;
@@ -112,8 +151,14 @@ begin
             if opcode < x"88" then
                 alu_op <= ALU_OP_ADD;
                 writes_register <= '1';
+            elsif opcode >= x"88" and opcode < x"90" then
+                alu_op <= ALU_OP_ADC;
+                writes_register <= '1';
             elsif opcode >= x"90" and opcode < x"98" then
                 alu_op <= ALU_OP_SUB;
+                writes_register <= '1';
+            elsif opcode >= x"98" and opcode < x"A0" then
+                alu_op <= ALU_OP_SBC;
                 writes_register <= '1';
             elsif opcode >= x"A0" and opcode < x"A8" then
                 alu_op <= ALU_OP_AND;
@@ -134,11 +179,58 @@ begin
                 reads_memory <= '1';
             end if;
 
-        elsif opcode = x"C3" or opcode = x"18" or opcode = x"CD" or opcode = x"C9" then
+        elsif opcode = x"C6" or opcode = x"CE" or opcode = x"D6" or opcode = x"DE" or
+              opcode = x"E6" or opcode = x"EE" or opcode = x"F6" or opcode = x"FE" then
+            instr_class     <= DEC_CLASS_ALU_N;
+            dst_sel         <= CPU_REG_A;
+            src_sel         <= CPU_REG_A;
+            immediate_bytes <= "01";
+            writes_flags    <= '1';
+            if opcode = x"C6" then
+                alu_op <= ALU_OP_ADD;
+                writes_register <= '1';
+            elsif opcode = x"CE" then
+                alu_op <= ALU_OP_ADC;
+                writes_register <= '1';
+            elsif opcode = x"D6" then
+                alu_op <= ALU_OP_SUB;
+                writes_register <= '1';
+            elsif opcode = x"DE" then
+                alu_op <= ALU_OP_SBC;
+                writes_register <= '1';
+            elsif opcode = x"E6" then
+                alu_op <= ALU_OP_AND;
+                writes_register <= '1';
+            elsif opcode = x"EE" then
+                alu_op <= ALU_OP_XOR;
+                writes_register <= '1';
+            elsif opcode = x"F6" then
+                alu_op <= ALU_OP_OR;
+                writes_register <= '1';
+            else
+                alu_op <= ALU_OP_CP;
+                writes_register <= '0';
+            end if;
+
+        elsif opcode = x"C0" or opcode = x"C2" or opcode = x"C3" or opcode = x"C4" or
+              opcode = x"C7" or opcode = x"CF" or
+              opcode = x"C8" or opcode = x"CA" or opcode = x"CC" or
+              opcode = x"D0" or opcode = x"D2" or opcode = x"D4" or opcode = x"D7" or
+              opcode = x"D8" or opcode = x"D9" or opcode = x"DA" or opcode = x"DC" or
+              opcode = x"DF" or opcode = x"E7" or opcode = x"E9" or
+              opcode = x"EF" or opcode = x"F7" or opcode = x"FF" or
+              opcode = x"18" or opcode = x"20" or
+              opcode = x"28" or opcode = x"30" or opcode = x"38" or
+              opcode = x"CD" or opcode = x"C9" then
             instr_class <= DEC_CLASS_JUMP;
-            if opcode = x"18" then
+            if opcode = x"18" or opcode = x"20" or opcode = x"28" or
+               opcode = x"30" or opcode = x"38" then
                 immediate_bytes <= "01";
-            elsif opcode = x"C9" then
+            elsif opcode = x"C0" or opcode = x"C8" or opcode = x"D0" or
+                  opcode = x"D8" or opcode = x"C9" or opcode = x"D9" or
+                  opcode = x"C7" or opcode = x"CF" or opcode = x"D7" or
+                  opcode = x"DF" or opcode = x"E7" or opcode = x"EF" or
+                  opcode = x"F7" or opcode = x"FF" then
                 immediate_bytes <= "00";
             else
                 immediate_bytes <= "10";
@@ -149,7 +241,32 @@ begin
             instr_class <= DEC_CLASS_STACK;
             pair_sel <= opcode(5 downto 4);
 
-        elsif opcode = x"F3" or opcode = x"FB" or opcode = x"76" or opcode = x"CB" then
+        elsif opcode = x"02" or opcode = x"08" or opcode = x"0A" or
+              opcode = x"12" or opcode = x"1A" or
+              opcode = x"22" or opcode = x"2A" or opcode = x"32" or opcode = x"3A" or
+              opcode = x"E0" or opcode = x"E2" or opcode = x"F0" or opcode = x"F2" or
+              opcode = x"EA" or opcode = x"FA" then
+            instr_class <= DEC_CLASS_LD_MEM;
+            dst_sel <= CPU_REG_A;
+            src_sel <= CPU_REG_A;
+            if opcode = x"E0" or opcode = x"F0" then
+                immediate_bytes <= "01";
+            elsif opcode = x"08" or opcode = x"EA" or opcode = x"FA" then
+                immediate_bytes <= "10";
+            end if;
+            if opcode = x"0A" or opcode = x"1A" or opcode = x"2A" or
+               opcode = x"3A" or opcode = x"F0" or opcode = x"F2" or
+               opcode = x"FA" then
+                reads_memory <= '1';
+                writes_register <= '1';
+            else
+                writes_memory <= '1';
+            end if;
+
+        elsif opcode = x"07" or opcode = x"0F" or opcode = x"17" or opcode = x"1F" or
+              opcode = x"2F" or opcode = x"37" or opcode = x"3F" or
+              opcode = x"F3" or opcode = x"F9" or opcode = x"FB" or
+              opcode = x"76" or opcode = x"CB" then
             instr_class <= DEC_CLASS_CONTROL;
             if opcode = x"CB" then
                 immediate_bytes <= "01";

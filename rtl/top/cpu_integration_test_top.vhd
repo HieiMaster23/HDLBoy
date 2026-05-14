@@ -387,6 +387,7 @@ begin
             mem_data_out       => mem_data_out,
             mem_read           => mem_read,
             mem_write          => mem_write,
+            mem_ready          => '1',
             interrupt_enable   => "00000",
             interrupt_flags    => "00000",
             interrupt_ack      => interrupt_ack,

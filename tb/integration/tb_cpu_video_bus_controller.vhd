@@ -27,6 +27,7 @@ architecture sim of tb_cpu_video_bus_controller is
     signal mem_data_out       : std_logic_vector(7 downto 0);
     signal mem_read           : std_logic;
     signal mem_write          : std_logic;
+    signal mem_ready          : std_logic;
     signal unsupported_opcode : std_logic;
     signal interrupt_ack      : std_logic;
     signal interrupt_vector   : std_logic_vector(2 downto 0);
@@ -38,6 +39,8 @@ architecture sim of tb_cpu_video_bus_controller is
     signal display_digits     : std_logic_vector(15 downto 0);
     signal checker_failed     : std_logic;
     signal final_passed       : std_logic;
+    signal bus_interrupt_enable : std_logic_vector(4 downto 0);
+    signal bus_interrupt_flags  : std_logic_vector(4 downto 0);
     signal fb_write_count_dbg : std_logic_vector(7 downto 0);
     signal expected_index     : unsigned(7 downto 0);
 
@@ -86,6 +89,7 @@ begin
             mem_data_out       => mem_data_out,
             mem_read           => mem_read,
             mem_write          => mem_write,
+            mem_ready          => mem_ready,
             interrupt_enable   => "00000",
             interrupt_flags    => "00000",
             interrupt_ack      => interrupt_ack,
@@ -116,6 +120,7 @@ begin
             cpu_data_out         => mem_data_out,
             cpu_read             => mem_read,
             cpu_write            => mem_write,
+            cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
             fb_clear_active      => '0',
             fb_clear_addr        => (others => '0'),
@@ -126,6 +131,10 @@ begin
             display_digits       => display_digits,
             checker_failed       => checker_failed,
             final_passed         => final_passed,
+            interrupt_enable     => bus_interrupt_enable,
+            interrupt_flags      => bus_interrupt_flags,
+            serial_debug_valid   => open,
+            serial_debug_data    => open,
             debug_fb_write_count => fb_write_count_dbg
         );
 

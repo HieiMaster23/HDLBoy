@@ -14,6 +14,7 @@ vcom -93 ../../tb/cpu/tb_alu.vhd
 vcom -93 ../../tb/cpu/tb_registers.vhd
 vcom -93 ../../tb/cpu/tb_decoder.vhd
 vcom -93 ../../tb/cpu/tb_cpu_smoke.vhd
+vcom -93 ../../tb/cpu/tb_cpu_rom_runner.vhd
 
 vsim work.tb_alu
 run -all
@@ -28,5 +29,9 @@ run -all
 quit -sim
 
 vsim work.tb_cpu_smoke
+run -all
+quit -sim
+
+vsim work.tb_cpu_rom_runner
 run -all
 quit -f

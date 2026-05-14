@@ -29,29 +29,64 @@ Basic and load instructions:
 
 - `NOP`
 - `LD r,n` for B, C, D, E, H, L, A
-- `LD r,r` for register-to-register transfers that do not involve `(HL)`
-- `LD A,(HL)`
-- `LD (HL),A`
-- `LD HL,nn`
-- `LD SP,nn`
+- `LD r,r`
+- `LD r,(HL)` for B, C, D, E, H, L, A
+- `LD (HL),r` for B, C, D, E, H, L, A
+- `LD rr,nn` for BC, DE, HL, SP
+- `LD A,(BC)`, `LD A,(DE)`, `LD (BC),A`, `LD (DE),A`
+- `LD A,(HL+)`, `LD A,(HL-)`, `LD (HL+),A`, `LD (HL-),A`
+- `LD (HL),n`
+- `LDH (n),A`
+- `LDH A,(n)`
+- `LDH (C),A`
+- `LDH A,(C)`
+- `LD (nn),A`
+- `LD A,(nn)`
+- `LD (nn),SP`
+- `LD SP,HL`
+- `LD HL,SP+e`
 
 ALU and flag instructions:
 
 - `INC r`
 - `DEC r`
+- `INC (HL)`
+- `DEC (HL)`
 - `ADD A,r`
 - `SUB r`
 - `AND A,r`
 - `OR A,r`
 - `XOR A,r`
 - `CP r`
+- `ADC A,r`
+- `SBC A,r`
+- `ADD/ADC/SUB/SBC/AND/XOR/OR/CP A,n`
+- `ADD A,(HL)`
+- `SUB (HL)`
+- `AND A,(HL)`
+- `OR A,(HL)`
+- `XOR A,(HL)`
+- `CP (HL)`
+- `RLCA`, `RRCA`, `RLA`, `RRA`
+- `CPL`, `SCF`, `CCF`
+- CB-prefixed register operations for RLC/RRC/RL/RR/SLA/SRA/SWAP/SRL,
+  BIT, RES, and SET. CB operations on `(HL)` remain TODO.
+- `INC rr`, `DEC rr`, and `ADD HL,rr`
+- `ADD SP,e`
 
 Control flow and stack:
 
 - `JP nn`
+- `JP cc,nn`
+- `JP HL`
 - `JR e`
+- `JR cc,e`
 - `CALL nn`
+- `CALL cc,nn`
 - `RET`
+- `RET cc`
+- `RETI`
+- `RST 00h/08h/10h/18h/20h/28h/30h/38h`
 - `PUSH BC/DE/HL/AF`
 - `POP BC/DE/HL/AF`
 
@@ -63,12 +98,11 @@ Control base:
 
 ## Current Limitations
 
-- CB-prefixed opcodes are decoded as a control class but not executed yet.
-- Conditional jumps, calls, returns, and relative branches are not implemented.
-- `LD r,(HL)` and `LD (HL),r` are only implemented for the A-register forms.
-- ALU operations using `(HL)` as the source are not executed yet.
-- `DAA`, `CPL`, `SCF`, `CCF`, rotate/shift, bit, reset, and set instructions are
-  still TODO.
+- CB-prefixed `(HL)` operations are not implemented yet.
+- `DAA` remains TODO.
+- CB-prefixed register operations are implemented, but they still need broader
+  Blargg coverage because the long `09-op r,r` run currently exceeds the short
+  runner timeout.
 - Interrupt servicing does not yet push PC or jump to vectors. The first version
   exposes IME, pending interrupt detection, and HALT wake-up behavior only.
 - The memory interface assumes combinational read data and one-cycle write
@@ -98,13 +132,38 @@ Current ModelSim scripts:
 - `sim/modelsim/run_cpu_registers.do`
 - `sim/modelsim/run_cpu_decoder.do`
 - `sim/modelsim/run_cpu_smoke.do`
+- `sim/modelsim/run_cpu_rom_runner.do`
+- `sim/modelsim/run_cpu_blargg_09.do`
 - `sim/modelsim/run_cpu_all.do`
 - `sim/modelsim/run_cpu_integration_top.do`
 - `sim/modelsim/run_cpu_video_smoke_top.do`
 
 The smoke program verifies a small instruction sequence covering immediate
 loads, HL memory access, ALU flags, unconditional jump, stack transfer,
-subroutine call/return, and relative branch looping.
+subroutine call/return, `(HL)` read-modify-write execution, and relative branch
+looping.
+
+`tb_cpu_rom_runner` now loads a real 32 KiB Game Boy ROM image with a VHDL
+simulation-only binary file reader. The default target is
+`gb-test-roms-master/cpu_instrs/individual/06-ld r,r.gb`.
+
+The runner provides a full 64 KiB simulation memory, captures serial output
+through the Game Boy `0xFF01`/`0xFF02` convention, stubs basic I/O registers,
+and advances `LY`/`DIV` enough for Blargg's shell delay loops to complete
+without a PPU. It stops when the serial transcript contains `Passed` or
+`Failed`, or on timeout/unsupported opcode. `G_TIMEOUT_CYCLES` can be raised for
+long ROMs without changing the default runner behavior.
+
+Current Blargg bring-up result:
+
+- `cpu_instrs/individual/06-ld r,r.gb`: `Passed` via serial transcript.
+- `cpu_instrs/individual/04-op r,imm.gb`: `Passed` via serial transcript.
+- `cpu_instrs/individual/08-misc instrs.gb`: `Passed` via serial transcript.
+- `cpu_instrs/individual/05-op rp.gb`: `Passed` via serial transcript.
+- `cpu_instrs/individual/03-op sp,hl.gb`: `Passed` via serial transcript.
+- `cpu_instrs/individual/07-jr,jp,call,ret,rst.gb`: `Passed` via serial transcript.
+- `cpu_instrs/individual/09-op r,r.gb`: `Passed` via serial transcript using
+  `G_TIMEOUT_CYCLES=25000000`.
 
 ## Hardware Integration Harness
 
@@ -156,8 +215,19 @@ the CPU subset connected to the M2 framebuffer and VGA path:
 
 - ROM is implemented in `rtl/memory/bus_controller.vhd` as a temporary internal
   smoke-test ROM.
-- A temporary framebuffer-mapped window starts at `0x8000`.
+- A temporary framebuffer-mapped window starts at `0x8000` and stops before
+  WRAM, so CPU smoke writes do not conflict with the DMG WRAM range.
+- A resource-limited WRAM bring-up page is present at `0xC000..0xC03F`, with
+  echo mirror behavior at `0xE000..0xE03F`. This is intentionally small until
+  the CPU/bus contract supports registered RAM reads or wait states.
 - Debug I/O registers at `0xFF80` and `0xFF81` drive LEDs and pass/fail status.
+- HRAM is present at `0xFF80..0xFFFE`; the two debug locations are a temporary
+  overlay for the smoke test.
+- IF is present at `0xFF0F`, and IE is present at `0xFFFF`; their lower five
+  bits feed the CPU interrupt input ports.
+- Basic I/O stubs are present for JOYP, Serial, Timer registers, LCDC/STAT,
+  scroll/window registers, DMA, and palette registers. They are placeholders
+  for future timer, joypad, and PPU ownership.
 - The CPU writes 64 black pixels into the framebuffer, then writes pass code
   `0xA5`.
 - The top-level checker shows `1234` on the seven-segment display when the
@@ -173,6 +243,24 @@ checks exactly 64 framebuffer writes, each expected framebuffer address, black
 pixel data value `3`, final LED checkpoint `D`, pass status, and display value
 `1234`.
 
+`tb_bus_controller` verifies direct memory-map behavior for ROM reads, the
+initial WRAM page, echo mirror behavior, HRAM read/write, IF, IE, I/O stub
+readbacks, the debug LED overlay, the framebuffer write port, and the serial
+debug transfer pulse.
+
+## Serial Debug Stub
+
+The bus controller includes a simulation-observable serial debug path that is
+intended to match the convention used by many Game Boy test ROMs:
+
+- Writes to `0xFF01` update the SB data register.
+- Writes to `0xFF02` update the SC control register.
+- If a write to `0xFF02` has bit 7 set, `serial_debug_valid` pulses for one
+  CPU clock and `serial_debug_data` exposes the current SB byte.
+
+This is not a complete serial peripheral. It is a low-cost test hook for
+Blargg-style output capture before implementing the real serial link timing.
+
 ## Blargg Preparation
 
 To prepare for Blargg CPU test ROMs, the next implementation slices should:
@@ -181,12 +269,12 @@ To prepare for Blargg CPU test ROMs, the next implementation slices should:
 2. Add CB-prefix decode and execution.
 3. Add interrupt vector servicing and exact EI/HALT behavior.
 4. Connect the CPU to a memory-map/bus-controller test harness.
-5. Add ROM-loaded simulation programs that expose serial output at the Game Boy
-   I/O registers used by Blargg tests.
+5. Replace the embedded ROM runner program with converted external ROM bytes as
+   opcode coverage grows.
 
 ## Next Code Step
 
-Extract the temporary ROM, debug I/O registers, framebuffer address decode, and
-pass/fail checker from `cpu_video_smoke_top` into a small memory-map module.
-That module should become the first M4-facing bus contract while preserving the
-hardware-validated top-level behavior.
+Use the ROM runner to drive the next CPU opcode slices. The immediate priority
+is `11-op a,(hl).gb` to implement `(HL)` ALU coverage and `DAA`. The runner
+should stay self-checking, with each new ROM-style test emitting a serial
+transcript.

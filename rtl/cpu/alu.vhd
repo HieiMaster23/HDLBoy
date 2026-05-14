@@ -39,6 +39,9 @@ begin
         variable flags_v   : std_logic_vector(3 downto 0);
         variable low_a     : unsigned(4 downto 0);
         variable low_b     : unsigned(4 downto 0);
+        variable carry1_v   : unsigned(0 downto 0);
+        variable carry5_v   : unsigned(4 downto 0);
+        variable carry9_v   : unsigned(8 downto 0);
     begin
         a_u := unsigned(a_in);
         b_u := unsigned(b_in);
@@ -47,6 +50,15 @@ begin
         flags_v := flags_in;
         low_a := unsigned('0' & a_in(3 downto 0));
         low_b := unsigned('0' & b_in(3 downto 0));
+        if flags_in(CPU_FLAG_C_BIT) = '1' then
+            carry1_v := "1";
+            carry5_v := to_unsigned(1, 5);
+            carry9_v := to_unsigned(1, 9);
+        else
+            carry1_v := "0";
+            carry5_v := to_unsigned(0, 5);
+            carry9_v := to_unsigned(0, 9);
+        end if;
 
         case op is
             when ALU_OP_ADD =>
@@ -59,6 +71,22 @@ begin
                 end if;
                 flags_v(CPU_FLAG_N_BIT) := '0';
                 if (low_a + low_b) > to_unsigned(15, 5) then
+                    flags_v(CPU_FLAG_H_BIT) := '1';
+                else
+                    flags_v(CPU_FLAG_H_BIT) := '0';
+                end if;
+                flags_v(CPU_FLAG_C_BIT) := temp9(8);
+
+            when ALU_OP_ADC =>
+                temp9 := ('0' & a_u) + ('0' & b_u) + carry9_v;
+                res_v := temp9(7 downto 0);
+                if temp9(7 downto 0) = x"00" then
+                    flags_v(CPU_FLAG_Z_BIT) := '1';
+                else
+                    flags_v(CPU_FLAG_Z_BIT) := '0';
+                end if;
+                flags_v(CPU_FLAG_N_BIT) := '0';
+                if (low_a + low_b + carry5_v) > to_unsigned(15, 5) then
                     flags_v(CPU_FLAG_H_BIT) := '1';
                 else
                     flags_v(CPU_FLAG_H_BIT) := '0';
@@ -79,6 +107,26 @@ begin
                     flags_v(CPU_FLAG_H_BIT) := '0';
                 end if;
                 if a_u < b_u then
+                    flags_v(CPU_FLAG_C_BIT) := '1';
+                else
+                    flags_v(CPU_FLAG_C_BIT) := '0';
+                end if;
+
+            when ALU_OP_SBC =>
+                temp9 := ('0' & a_u) - ('0' & b_u) - carry9_v;
+                res_v := temp9(7 downto 0);
+                if res_v = x"00" then
+                    flags_v(CPU_FLAG_Z_BIT) := '1';
+                else
+                    flags_v(CPU_FLAG_Z_BIT) := '0';
+                end if;
+                flags_v(CPU_FLAG_N_BIT) := '1';
+                if low_a < (low_b + carry5_v) then
+                    flags_v(CPU_FLAG_H_BIT) := '1';
+                else
+                    flags_v(CPU_FLAG_H_BIT) := '0';
+                end if;
+                if ('0' & a_u) < (('0' & b_u) + carry9_v) then
                     flags_v(CPU_FLAG_C_BIT) := '1';
                 else
                     flags_v(CPU_FLAG_C_BIT) := '0';

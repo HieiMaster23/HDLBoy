@@ -8,6 +8,9 @@
 -- =============================================================================
 -- Revision History:
 -- 2026-05-13 - Extracted ROM, debug I/O, and framebuffer write decode
+-- 2026-05-13 - Added first WRAM page, echo mirror, and basic I/O stubs
+-- 2026-05-13 - Added serial debug transfer pulse for CPU ROM test output
+-- 2026-05-14 - Added registered WRAM/HRAM reads and CPU ready signaling
 -- =============================================================================
 
 library ieee;
@@ -24,6 +27,7 @@ entity bus_controller is
         cpu_data_out        : in  std_logic_vector(7 downto 0);
         cpu_read            : in  std_logic;
         cpu_write           : in  std_logic;
+        cpu_ready           : out std_logic;
         unsupported_opcode  : in  std_logic;
 
         fb_clear_active     : in  std_logic;
@@ -36,6 +40,10 @@ entity bus_controller is
         display_digits      : out std_logic_vector(15 downto 0);
         checker_failed      : out std_logic;
         final_passed        : out std_logic;
+        interrupt_enable    : out std_logic_vector(4 downto 0);
+        interrupt_flags     : out std_logic_vector(4 downto 0);
+        serial_debug_valid  : out std_logic;
+        serial_debug_data   : out std_logic_vector(7 downto 0);
         debug_fb_write_count: out std_logic_vector(7 downto 0)
     );
 end entity bus_controller;
@@ -43,14 +51,46 @@ end entity bus_controller;
 architecture rtl of bus_controller is
 
     constant FB_BASE_ADDR       : std_logic_vector(15 downto 0) := x"8000";
-    constant FB_LAST_ADDR       : std_logic_vector(15 downto 0) := x"D9FF";
+    constant FB_LAST_ADDR       : std_logic_vector(15 downto 0) := x"BFFF";
+    constant WRAM_BASE_ADDR     : std_logic_vector(15 downto 0) := x"C000";
+    constant WRAM_LAST_ADDR     : std_logic_vector(15 downto 0) := x"DFFF";
+    constant ECHO_BASE_ADDR     : std_logic_vector(15 downto 0) := x"E000";
+    constant ECHO_LAST_ADDR     : std_logic_vector(15 downto 0) := x"FDFF";
+    constant IO_JOYP_ADDR       : std_logic_vector(15 downto 0) := x"FF00";
+    constant IO_SB_ADDR         : std_logic_vector(15 downto 0) := x"FF01";
+    constant IO_SC_ADDR         : std_logic_vector(15 downto 0) := x"FF02";
+    constant IO_DIV_ADDR        : std_logic_vector(15 downto 0) := x"FF04";
+    constant IO_TIMA_ADDR       : std_logic_vector(15 downto 0) := x"FF05";
+    constant IO_TMA_ADDR        : std_logic_vector(15 downto 0) := x"FF06";
+    constant IO_TAC_ADDR        : std_logic_vector(15 downto 0) := x"FF07";
+    constant IO_IF_ADDR         : std_logic_vector(15 downto 0) := x"FF0F";
+    constant IO_LCDC_ADDR       : std_logic_vector(15 downto 0) := x"FF40";
+    constant IO_STAT_ADDR       : std_logic_vector(15 downto 0) := x"FF41";
+    constant IO_SCY_ADDR        : std_logic_vector(15 downto 0) := x"FF42";
+    constant IO_SCX_ADDR        : std_logic_vector(15 downto 0) := x"FF43";
+    constant IO_LY_ADDR         : std_logic_vector(15 downto 0) := x"FF44";
+    constant IO_LYC_ADDR        : std_logic_vector(15 downto 0) := x"FF45";
+    constant IO_DMA_ADDR        : std_logic_vector(15 downto 0) := x"FF46";
+    constant IO_BGP_ADDR        : std_logic_vector(15 downto 0) := x"FF47";
+    constant IO_OBP0_ADDR       : std_logic_vector(15 downto 0) := x"FF48";
+    constant IO_OBP1_ADDR       : std_logic_vector(15 downto 0) := x"FF49";
+    constant IO_WY_ADDR         : std_logic_vector(15 downto 0) := x"FF4A";
+    constant IO_WX_ADDR         : std_logic_vector(15 downto 0) := x"FF4B";
+    constant IO_LAST_ADDR       : std_logic_vector(15 downto 0) := x"FF7F";
+    constant HRAM_BASE_ADDR     : std_logic_vector(15 downto 0) := x"FF80";
+    constant HRAM_LAST_ADDR     : std_logic_vector(15 downto 0) := x"FFFE";
     constant IO_LED_ADDR        : std_logic_vector(15 downto 0) := x"FF80";
     constant IO_STATUS_ADDR     : std_logic_vector(15 downto 0) := x"FF81";
+    constant IE_ADDR            : std_logic_vector(15 downto 0) := x"FFFF";
     constant PASS_CODE          : std_logic_vector(7 downto 0)  := x"A5";
     constant EXPECTED_FB_WRITES : unsigned(7 downto 0) := to_unsigned(64, 8);
     constant ROM_LAST_INDEX     : integer := 280;
+    constant WRAM_LAST_INDEX    : integer := 8191;
+    constant HRAM_LAST_INDEX    : integer := 126;
 
     type rom_t is array (0 to ROM_LAST_INDEX) of std_logic_vector(7 downto 0);
+    type wram_t is array (0 to WRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
+    type hram_t is array (0 to HRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
     constant ROM : rom_t := (
         x"31", x"FE", x"FF", x"21", x"80", x"FF", x"3E", x"01",
         x"77", x"3E", x"03", x"21", x"30", x"A3", x"77", x"21",
@@ -92,11 +132,43 @@ architecture rtl of bus_controller is
 
     signal io_led_reg        : std_logic_vector(7 downto 0);
     signal io_status_reg     : std_logic_vector(7 downto 0);
+    signal joyp_select_reg   : std_logic_vector(1 downto 0);
+    signal serial_sb_reg     : std_logic_vector(7 downto 0);
+    signal serial_sc_reg     : std_logic_vector(7 downto 0);
+    signal serial_debug_valid_reg : std_logic;
+    signal serial_debug_data_reg  : std_logic_vector(7 downto 0);
+    signal div_counter       : unsigned(15 downto 0);
+    signal tima_reg          : std_logic_vector(7 downto 0);
+    signal tma_reg           : std_logic_vector(7 downto 0);
+    signal tac_reg           : std_logic_vector(2 downto 0);
+    signal lcdc_reg          : std_logic_vector(7 downto 0);
+    signal stat_reg          : std_logic_vector(7 downto 0);
+    signal scy_reg           : std_logic_vector(7 downto 0);
+    signal scx_reg           : std_logic_vector(7 downto 0);
+    signal lyc_reg           : std_logic_vector(7 downto 0);
+    signal dma_reg           : std_logic_vector(7 downto 0);
+    signal bgp_reg           : std_logic_vector(7 downto 0);
+    signal obp0_reg          : std_logic_vector(7 downto 0);
+    signal obp1_reg          : std_logic_vector(7 downto 0);
+    signal wy_reg            : std_logic_vector(7 downto 0);
+    signal wx_reg            : std_logic_vector(7 downto 0);
+    signal if_reg            : std_logic_vector(7 downto 0);
+    signal ie_reg            : std_logic_vector(7 downto 0);
+    signal wram              : wram_t;
+    signal hram              : hram_t;
     signal led_pattern_reg   : std_logic_vector(3 downto 0);
     signal fb_write_count    : unsigned(7 downto 0);
     signal checker_failed_reg: std_logic;
     signal final_passed_reg  : std_logic;
     signal fb_selected       : std_logic;
+    signal wram_selected     : std_logic;
+    signal io_selected       : std_logic;
+    signal hram_selected     : std_logic;
+    signal sync_read_selected: std_logic;
+    signal sync_read_valid   : std_logic;
+    signal sync_read_addr    : std_logic_vector(15 downto 0);
+    signal wram_q            : std_logic_vector(7 downto 0);
+    signal hram_q            : std_logic_vector(7 downto 0);
 
     function rom_byte(addr_in : std_logic_vector(15 downto 0)) return std_logic_vector is
         variable addr_u : unsigned(15 downto 0);
@@ -116,17 +188,89 @@ begin
 
     fb_selected <= '1' when unsigned(cpu_addr) >= unsigned(FB_BASE_ADDR) and
                             unsigned(cpu_addr) <= unsigned(FB_LAST_ADDR) else '0';
+    wram_selected <= '1' when (unsigned(cpu_addr) >= unsigned(WRAM_BASE_ADDR) and
+                               unsigned(cpu_addr) <= unsigned(WRAM_LAST_ADDR)) or
+                              (unsigned(cpu_addr) >= unsigned(ECHO_BASE_ADDR) and
+                               unsigned(cpu_addr) <= unsigned(ECHO_LAST_ADDR)) else '0';
+    io_selected <= '1' when unsigned(cpu_addr) >= unsigned(IO_JOYP_ADDR) and
+                            unsigned(cpu_addr) <= unsigned(IO_LAST_ADDR) else '0';
+    hram_selected <= '1' when unsigned(cpu_addr) >= unsigned(HRAM_BASE_ADDR) and
+                              unsigned(cpu_addr) <= unsigned(HRAM_LAST_ADDR) else '0';
+    sync_read_selected <= '1' when wram_selected = '1' or
+                                   (hram_selected = '1' and
+                                    cpu_addr /= IO_LED_ADDR and
+                                    cpu_addr /= IO_STATUS_ADDR) else '0';
+    cpu_ready <= '0' when cpu_read = '1' and sync_read_selected = '1' and
+                          (sync_read_valid = '0' or sync_read_addr /= cpu_addr) else '1';
 
-    p_memory_read: process(cpu_addr, cpu_read, io_led_reg, io_status_reg)
+    p_memory_read: process(cpu_addr, cpu_read, io_led_reg, io_status_reg,
+                           joyp_select_reg, serial_sb_reg, serial_sc_reg,
+                           div_counter, tima_reg, tma_reg, tac_reg,
+                           lcdc_reg, stat_reg, scy_reg, scx_reg, lyc_reg,
+                           dma_reg, bgp_reg, obp0_reg, obp1_reg, wy_reg,
+                           wx_reg, if_reg, ie_reg, wram_selected,
+                           hram_selected, io_selected, wram_q, hram_q)
     begin
         if cpu_read = '1' then
             case cpu_addr is
+                when IO_JOYP_ADDR =>
+                    cpu_data_in <= "11" & joyp_select_reg & "1111";
+                when IO_SB_ADDR =>
+                    cpu_data_in <= serial_sb_reg;
+                when IO_SC_ADDR =>
+                    cpu_data_in <= serial_sc_reg;
+                when IO_DIV_ADDR =>
+                    cpu_data_in <= std_logic_vector(div_counter(15 downto 8));
+                when IO_TIMA_ADDR =>
+                    cpu_data_in <= tima_reg;
+                when IO_TMA_ADDR =>
+                    cpu_data_in <= tma_reg;
+                when IO_TAC_ADDR =>
+                    cpu_data_in <= "11111" & tac_reg;
+                when IO_IF_ADDR =>
+                    cpu_data_in <= "111" & if_reg(4 downto 0);
+                when IO_LCDC_ADDR =>
+                    cpu_data_in <= lcdc_reg;
+                when IO_STAT_ADDR =>
+                    cpu_data_in <= stat_reg;
+                when IO_SCY_ADDR =>
+                    cpu_data_in <= scy_reg;
+                when IO_SCX_ADDR =>
+                    cpu_data_in <= scx_reg;
+                when IO_LY_ADDR =>
+                    cpu_data_in <= x"00";
+                when IO_LYC_ADDR =>
+                    cpu_data_in <= lyc_reg;
+                when IO_DMA_ADDR =>
+                    cpu_data_in <= dma_reg;
+                when IO_BGP_ADDR =>
+                    cpu_data_in <= bgp_reg;
+                when IO_OBP0_ADDR =>
+                    cpu_data_in <= obp0_reg;
+                when IO_OBP1_ADDR =>
+                    cpu_data_in <= obp1_reg;
+                when IO_WY_ADDR =>
+                    cpu_data_in <= wy_reg;
+                when IO_WX_ADDR =>
+                    cpu_data_in <= wx_reg;
                 when IO_LED_ADDR =>
                     cpu_data_in <= io_led_reg;
                 when IO_STATUS_ADDR =>
                     cpu_data_in <= io_status_reg;
+                when IE_ADDR =>
+                    cpu_data_in <= ie_reg;
                 when others =>
-                    cpu_data_in <= rom_byte(cpu_addr);
+                    if wram_selected = '1' then
+                        cpu_data_in <= wram_q;
+                    elsif io_selected = '1' then
+                        cpu_data_in <= x"FF";
+                    elsif hram_selected = '1' then
+                        cpu_data_in <= hram_q;
+                    elsif unsigned(cpu_addr) <= x"7FFF" then
+                        cpu_data_in <= rom_byte(cpu_addr);
+                    else
+                        cpu_data_in <= x"FF";
+                    end if;
             end case;
         else
             cpu_data_in <= rom_byte(cpu_addr);
@@ -139,11 +283,46 @@ begin
             if reset = '1' then
                 io_led_reg <= (others => '0');
                 io_status_reg <= (others => '0');
+                joyp_select_reg <= "11";
+                serial_sb_reg <= (others => '0');
+                serial_sc_reg <= x"7E";
+                serial_debug_valid_reg <= '0';
+                serial_debug_data_reg <= (others => '0');
+                div_counter <= (others => '0');
+                tima_reg <= (others => '0');
+                tma_reg <= (others => '0');
+                tac_reg <= (others => '0');
+                lcdc_reg <= x"91";
+                stat_reg <= x"80";
+                scy_reg <= (others => '0');
+                scx_reg <= (others => '0');
+                lyc_reg <= (others => '0');
+                dma_reg <= x"FF";
+                bgp_reg <= x"FC";
+                obp0_reg <= x"FF";
+                obp1_reg <= x"FF";
+                wy_reg <= (others => '0');
+                wx_reg <= (others => '0');
+                if_reg <= x"E0";
+                ie_reg <= (others => '0');
+                sync_read_valid <= '0';
+                sync_read_addr <= (others => '0');
                 fb_write_count <= (others => '0');
                 led_pattern_reg <= x"0";
                 checker_failed_reg <= '0';
                 final_passed_reg <= '0';
             else
+                div_counter <= div_counter + 1;
+                serial_debug_valid_reg <= '0';
+                if cpu_read = '1' and sync_read_selected = '1' then
+                    if sync_read_valid = '0' or sync_read_addr /= cpu_addr then
+                        sync_read_addr <= cpu_addr;
+                        sync_read_valid <= '1';
+                    end if;
+                else
+                    sync_read_valid <= '0';
+                end if;
+
                 if unsupported_opcode = '1' then
                     checker_failed_reg <= '1';
                 end if;
@@ -158,6 +337,50 @@ begin
                     end if;
 
                     case cpu_addr is
+                        when IO_JOYP_ADDR =>
+                            joyp_select_reg <= cpu_data_out(5 downto 4);
+                        when IO_SB_ADDR =>
+                            serial_sb_reg <= cpu_data_out;
+                        when IO_SC_ADDR =>
+                            serial_sc_reg <= cpu_data_out;
+                            if cpu_data_out(7) = '1' then
+                                serial_debug_valid_reg <= '1';
+                                serial_debug_data_reg <= serial_sb_reg;
+                            end if;
+                        when IO_DIV_ADDR =>
+                            div_counter <= (others => '0');
+                        when IO_TIMA_ADDR =>
+                            tima_reg <= cpu_data_out;
+                        when IO_TMA_ADDR =>
+                            tma_reg <= cpu_data_out;
+                        when IO_TAC_ADDR =>
+                            tac_reg <= cpu_data_out(2 downto 0);
+                        when IO_IF_ADDR =>
+                            if_reg <= "111" & cpu_data_out(4 downto 0);
+                        when IO_LCDC_ADDR =>
+                            lcdc_reg <= cpu_data_out;
+                        when IO_STAT_ADDR =>
+                            stat_reg <= "1" & cpu_data_out(6 downto 3) & "000";
+                        when IO_SCY_ADDR =>
+                            scy_reg <= cpu_data_out;
+                        when IO_SCX_ADDR =>
+                            scx_reg <= cpu_data_out;
+                        when IO_LY_ADDR =>
+                            null;
+                        when IO_LYC_ADDR =>
+                            lyc_reg <= cpu_data_out;
+                        when IO_DMA_ADDR =>
+                            dma_reg <= cpu_data_out;
+                        when IO_BGP_ADDR =>
+                            bgp_reg <= cpu_data_out;
+                        when IO_OBP0_ADDR =>
+                            obp0_reg <= cpu_data_out;
+                        when IO_OBP1_ADDR =>
+                            obp1_reg <= cpu_data_out;
+                        when IO_WY_ADDR =>
+                            wy_reg <= cpu_data_out;
+                        when IO_WX_ADDR =>
+                            wx_reg <= cpu_data_out;
                         when IO_LED_ADDR =>
                             io_led_reg <= cpu_data_out;
                             led_pattern_reg <= cpu_data_out(3 downto 0);
@@ -170,6 +393,8 @@ begin
                             else
                                 checker_failed_reg <= '1';
                             end if;
+                        when IE_ADDR =>
+                            ie_reg <= cpu_data_out;
                         when others =>
                             null;
                     end case;
@@ -178,6 +403,30 @@ begin
         end if;
     end process p_memory_write;
 
+    p_wram: process(clk)
+    begin
+        if rising_edge(clk) then
+            if cpu_write = '1' and wram_selected = '1' then
+                wram(to_integer(unsigned(cpu_addr(12 downto 0)))) <= cpu_data_out;
+            end if;
+            wram_q <= wram(to_integer(unsigned(cpu_addr(12 downto 0))));
+        end if;
+    end process p_wram;
+
+    p_hram: process(clk)
+    begin
+        if rising_edge(clk) then
+            if cpu_write = '1' and hram_selected = '1' then
+                hram(to_integer(unsigned(cpu_addr(6 downto 0)))) <= cpu_data_out;
+            end if;
+            if hram_selected = '1' then
+                hram_q <= hram(to_integer(unsigned(cpu_addr(6 downto 0))));
+            else
+                hram_q <= x"FF";
+            end if;
+        end if;
+    end process p_hram;
+
     fb_we   <= '1' when fb_clear_active = '1' else cpu_write and fb_selected;
     fb_addr <= fb_clear_addr when fb_clear_active = '1' else unsigned(cpu_addr(14 downto 0));
     fb_data <= "00" when fb_clear_active = '1' else cpu_data_out(1 downto 0);
@@ -185,6 +434,10 @@ begin
     led_pattern <= led_pattern_reg;
     checker_failed <= checker_failed_reg;
     final_passed <= final_passed_reg;
+    interrupt_enable <= ie_reg(4 downto 0);
+    interrupt_flags <= if_reg(4 downto 0);
+    serial_debug_valid <= serial_debug_valid_reg;
+    serial_debug_data <= serial_debug_data_reg;
     debug_fb_write_count <= std_logic_vector(fb_write_count);
 
     display_digits <= x"1234" when final_passed_reg = '1' and checker_failed_reg = '0' else
