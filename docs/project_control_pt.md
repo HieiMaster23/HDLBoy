@@ -65,8 +65,8 @@ O projeto já possui:
 - runner de ROM em simulação carregando ROMs `.gb` reais e emitindo `Passed`
   via serial;
 - pacote local de ROMs Blargg baixado em `gb-test-roms-master`;
-- Blargg `cpu_instrs` individuais `03`, `04`, `05`, `06`, `07`, `08`, `09`,
-  `10` e `11`
+- Blargg `cpu_instrs` individuais `01`, `03`, `04`, `05`, `06`, `07`, `08`,
+  `09`, `10` e `11`
   passando via transcript serial.
 
 ## 4. Checkpoints Confiáveis
@@ -82,7 +82,8 @@ Checkpoint atual:
 - Commit: ver o commit `Checkpoint M3 DAA and CB HL Blargg tests` no histórico Git.
 - Mensagem: `Checkpoint M3 DAA and CB HL Blargg tests`
 - Significado: checkpoint funcional de M3 com `DAA`, CB-prefix em `(HL)`,
-  Blargg `10-bit ops.gb` e `11-op a,(hl).gb` passando em simulação.
+  Blargg `10-bit ops.gb`, `11-op a,(hl).gb` e `01-special.gb` passando em
+  simulação.
 
 Depois do checkpoint `202fa47`, foram feitas expansões importantes agora
 consolidadas no checkpoint atual:
@@ -100,8 +101,8 @@ consolidadas no checkpoint atual:
 - máscara de boot em simulação para permitir ROMs com handlers em
   `0x0000..0x00FF`;
 - timeout parametrizável para ROMs Blargg longas;
-- scripts dedicados de wave e dos testes longos `09-op r,r`, `10-bit ops` e
-  `11-op a,(hl)`;
+- scripts dedicados de wave e dos testes Blargg `01-special`, `09-op r,r`,
+  `10-bit ops` e `11-op a,(hl)`;
 - documentação de progressão e plano Blargg.
 
 Antes de qualquer nova tag ou milestone formal, revisar novamente o estado do
@@ -257,7 +258,8 @@ Implementado:
 - teste direto do `bus_controller`;
 - runner de ROM real imprimindo `Passed` por serial;
 - wave setup dedicado para visualizar o runner;
-- scripts longos para Blargg `09-op r,r`, `10-bit ops` e `11-op a,(hl)`.
+- scripts para Blargg `01-special`, `09-op r,r`, `10-bit ops` e
+  `11-op a,(hl)`.
 
 Blargg `cpu_instrs` individuais passando:
 
@@ -266,6 +268,7 @@ Blargg `cpu_instrs` individuais passando:
 - `08-misc instrs.gb`
 - `05-op rp.gb`
 - `03-op sp,hl.gb`
+- `01-special.gb`
 - `07-jr,jp,call,ret,rst.gb`
 - `09-op r,r.gb`
 - `10-bit ops.gb`
@@ -273,9 +276,9 @@ Blargg `cpu_instrs` individuais passando:
 
 Próximo alvo de teste:
 
-- rodar `gb-test-roms-master\cpu_instrs\individual\01-special.gb`;
-- validar se `DAA`, `POP AF`, saltos especiais e casos de controle permanecem
-  corretos em uma ROM Blargg real;
+- preparar a CPU, o runner e os stubs mínimos para
+  `gb-test-roms-master\cpu_instrs\individual\02-interrupts.gb`;
+- implementar interrupções reais de forma incremental antes de esperar `Passed`;
 - manter captura serial e timeout controlado.
 
 ## 6. Linha de Evolução do Projeto
@@ -317,8 +320,8 @@ Ordem prática, considerando o estado atual do core:
 7. `09-op r,r.gb` — Passed com timeout longo parametrizado
 8. `11-op a,(hl).gb` — Passed com timeout longo parametrizado
 9. `10-bit ops.gb` — Passed com timeout longo parametrizado
-10. `01-special.gb` — próximo alvo
-11. `02-interrupts.gb`
+10. `01-special.gb` — Passed
+11. `02-interrupts.gb` — próximo alvo, depende de interrupções/timer
 
 Não começar por:
 
@@ -526,9 +529,9 @@ Alvo concreto:
 O próximo alvo oficial do projeto é:
 
 ```text
-Executar gb-test-roms-master\cpu_instrs\individual\01-special.gb no
-tb_cpu_rom_runner, capturando a saída serial via 0xFF01/0xFF02 até obter Passed,
-Failed ou a primeira falha útil.
+Preparar e executar gb-test-roms-master\cpu_instrs\individual\02-interrupts.gb
+no tb_cpu_rom_runner, capturando a saída serial via 0xFF01/0xFF02 até obter
+Passed, Failed ou a primeira falha útil.
 ```
 
 Esse alvo deve guiar a próxima conversa de implementação.
@@ -537,8 +540,11 @@ Esse alvo deve guiar a próxima conversa de implementação.
 
 O alvo será considerado bem-sucedido se:
 
-- o runner carregar os bytes reais da ROM `01-special.gb`;
+- o runner carregar os bytes reais da ROM `02-interrupts.gb`;
 - a CPU executar o shell Blargg e chegar ao teste principal;
+- a CPU tiver suporte inicial a despacho real de interrupções, push de PC,
+  salto para vetor, `interrupt_ack`, `RETI`, e comportamento mais fiel de
+  `EI`/`HALT`;
 - a simulação tiver timeout controlado e, se necessário, parametrizado;
 - a saída serial for capturada;
 - o resultado for `Passed`, `Failed` ou uma falha claramente diagnosticável;

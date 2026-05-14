@@ -180,9 +180,9 @@ Depois de `06-ld r,r.gb`, a ordem mais racional é:
    - testa acessos indiretos via `HL`, ALU com `(HL)`, `DAA` e CB em `(HL)`.
 8. `10-bit ops.gb` — Passed
    - testa `BIT`, `RES` e `SET` em registradores.
-9. `01-special.gb` — próximo alvo
+9. `01-special.gb` — Passed
    - inclui casos especiais como `JR`, `JP HL`, `POP AF` e `DAA`.
-10. `02-interrupts.gb`
+10. `02-interrupts.gb` — próximo alvo
    - deve ficar para depois do timer e do controlador de interrupções.
 
 Essa ordem não é a ordem numérica original. É a ordem mais adequada para o
@@ -216,11 +216,13 @@ Esses testes são valiosos, mas pertencem a fases posteriores.
 
 O próximo passo de implementação deve ser:
 
-1. Rodar `cpu_instrs\individual\01-special.gb` no `tb_cpu_rom_runner`.
-2. Capturar `Passed`, `Failed` ou a primeira falha útil via serial.
-3. Se falhar, implementar apenas a menor correção necessária.
-4. Repetir os testes curtos de CPU e as ROMs `10-bit ops`/`11-op a,(hl)`.
-5. Atualizar este plano e o controle central.
+1. Preparar o núcleo para `cpu_instrs\individual\02-interrupts.gb`.
+2. Implementar despacho real de interrupções: IME, IE/IF, prioridade, push de
+   PC, salto para vetor, `interrupt_ack` e `RETI`.
+3. Refinar `EI` e `HALT` apenas até o nível exigido pelo teste.
+4. Rodar `02-interrupts.gb` até `Passed`, `Failed` ou primeira falha útil.
+5. Repetir os testes curtos de CPU e as ROMs `01-special`, `10-bit ops` e
+   `11-op a,(hl)`.
 
 Esse ciclo deve guiar a expansão da CPU a partir de agora.
 
@@ -228,14 +230,16 @@ Esse ciclo deve guiar a expansão da CPU a partir de agora.
 
 A fase atual estará concluída quando:
 
-- `01-special.gb` chegar a `Passed` ou falhar com uma mensagem serial
+- `02-interrupts.gb` chegar a `Passed` ou falhar com uma mensagem serial
   compreensível;
+- `01-special.gb` continuar passando;
 - `10-bit ops.gb` e `11-op a,(hl).gb` continuarem passando depois das mudanças;
 - `DAA` continuar coberto por teste unitário de ALU;
 - CB `(HL)` continuar coberto por smoke test de CPU e por Blargg.
 
-Falhas em `02-interrupts.gb` ainda pertencem à fase seguinte, porque dependem
-de interrupções completas, timer e comportamento exato de `EI`/`HALT`.
+Falhas em testes de timing, `halt_bug` e `interrupt_time` ainda pertencem a
+fases posteriores, porque exigem temporização mais exata do que o
+`02-interrupts.gb` normalmente demanda.
 ## 9. Progresso em 2026-05-14
 
 O primeiro alvo Blargg real passou em simulação:
@@ -352,3 +356,31 @@ Próximo alvo recomendado:
 Motivo: esse teste deve consolidar o comportamento das instruções especiais
 antes de entrarmos em `02-interrupts.gb`, que pertence à fase de timer e
 interrupções reais.
+
+## 13. Resultado do teste `01-special.gb`
+
+O teste `01-special.gb` passou via transcript serial.
+
+Comportamentos validados pelo teste:
+
+- `JR` com deslocamento negativo e positivo;
+- `JP HL`;
+- `POP AF` com nibble baixo de `F` zerado;
+- `DAA` com CRC exaustivo sobre combinações de `A` e flags;
+- stack, memória indireta e CB rotate/shift usados pela rotina comum de CRC.
+
+Resultado observado:
+
+- ROM: `gb-test-roms-master/cpu_instrs/individual/01-special.gb`;
+- script dedicado: `sim/modelsim/run_cpu_blargg_01.do`;
+- timeout: `G_TIMEOUT_CYCLES=50000000`;
+- transcript serial: `01-special`, linha em branco, `Passed`.
+
+Próximo alvo recomendado:
+
+`cpu_instrs/individual/02-interrupts.gb`
+
+Motivo: todos os testes comportamentais de CPU não-interruptivos desta sequência
+agora passam. O próximo avanço real exige implementar interrupções de forma mais
+fiel, incluindo IME, IE/IF, prioridade, push de PC, vetor, `RETI`, `EI` e
+`HALT`.

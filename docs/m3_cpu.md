@@ -133,6 +133,7 @@ Current ModelSim scripts:
 - `sim/modelsim/run_cpu_decoder.do`
 - `sim/modelsim/run_cpu_smoke.do`
 - `sim/modelsim/run_cpu_rom_runner.do`
+- `sim/modelsim/run_cpu_blargg_01.do`
 - `sim/modelsim/run_cpu_blargg_10.do`
 - `sim/modelsim/run_cpu_blargg_09.do`
 - `sim/modelsim/run_cpu_blargg_11.do`
@@ -158,6 +159,8 @@ long ROMs without changing the default runner behavior.
 
 Current Blargg bring-up result:
 
+- `cpu_instrs/individual/01-special.gb`: `Passed` via serial transcript using
+  `G_TIMEOUT_CYCLES=50000000`.
 - `cpu_instrs/individual/06-ld r,r.gb`: `Passed` via serial transcript.
 - `cpu_instrs/individual/04-op r,imm.gb`: `Passed` via serial transcript.
 - `cpu_instrs/individual/08-misc instrs.gb`: `Passed` via serial transcript.
@@ -272,15 +275,15 @@ Blargg-style output capture before implementing the real serial link timing.
 The ROM runner is now the primary CPU validation path. The next implementation
 slices should:
 
-1. Run `01-special.gb` with the completed DAA and CB support.
-2. Add interrupt vector servicing and exact EI/HALT behavior before
+1. Add interrupt vector servicing and exact EI/HALT behavior before
    `02-interrupts.gb`.
+2. Add or refine timer/IF/IE behavior required by the interrupt test ROM.
 3. Keep the memory-map/bus-controller harness aligned with registered memory
    reads and future wait states.
 
 ## Next Code Step
 
-Use the ROM runner to drive the next CPU opcode slice. The immediate priority is
-`01-special.gb`, because `10-bit ops.gb` and `11-op a,(hl).gb` now pass and the
-remaining high-risk CPU work is special instruction behavior plus the path
-toward interrupt correctness.
+Use the ROM runner to drive the next CPU slice. The immediate priority is
+preparing `02-interrupts.gb`, because `01-special.gb`, `10-bit ops.gb`, and
+`11-op a,(hl).gb` now pass. The remaining high-risk CPU work is real interrupt
+dispatch, EI/HALT timing behavior, and timer/IF/IE interaction.
