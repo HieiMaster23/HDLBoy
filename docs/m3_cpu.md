@@ -203,8 +203,25 @@ Current in-progress timer slice validation:
 - `run_bus_controller.do`: `Passed`.
 - `run_cpu_blargg_02.do`: `Passed` with the extracted timer block.
 - Fast individual Blargg regression rerun in this slice:
-  `03-op sp,hl.gb`, `04-op r,imm.gb`, `05-op rp.gb`, and `06-ld r,r.gb`
-  all reached `Passed`.
+  `03-op sp,hl.gb`, `04-op r,imm.gb`, `05-op rp.gb`, `06-ld r,r.gb`, and
+  `08-misc instrs.gb` all reached `Passed`.
+- Long individual regression started with `01-special.gb`, which also reached
+  `Passed` with the extracted timer block.
+- `02-interrupts.gb` also reached `Passed` again in the long regression pass,
+  confirming the extracted timer still drives the initial interrupt flow.
+- `07-jr,jp,call,ret,rst.gb` reached `Passed` again in the long regression
+  pass, keeping control-flow and stack sequencing covered after the timer work.
+- `09-op r,r.gb` reached `Passed` again in the long regression pass, keeping
+  the register-to-register ALU path covered after the timer work.
+- `10-bit ops.gb` reached `Passed` again in the long regression pass, keeping
+  CB register bit operations covered after the timer work.
+- `11-op a,(hl).gb` reached `Passed` again in the long regression pass, keeping
+  indirect `(HL)` ALU and CB memory operations covered after the timer work.
+- `run_cpu_video_smoke_top.do` reached `Passed`, keeping CPU-to-bus-to-
+  framebuffer integration covered after the timer work.
+- Quartus full compilation passed on 2026-05-15 for `cpu_video_smoke_top` with
+  4,157 / 6,272 logic elements used (66%), 111,616 memory bits used (40%), and
+  closed timing on all constrained clocks.
 - `cpu_instrs.gb` aggregate is supported by the 64 KiB runner and advanced past
   the previous STOP-related block. It reached at least `29:ok` before the run
   was stopped for wall-clock time, so it remains a long checkpoint test rather
@@ -316,8 +333,8 @@ Blargg-style output capture before implementing the real serial link timing.
 The ROM runner is now the primary CPU validation path. The next implementation
 slices should:
 
-1. Finish the current timer slice by rerunning `08`, the longer individual
-   Blargg ROMs, `cpu_video_smoke_top`, and Quartus.
+1. Finish the current timer slice by rerunning the longer individual Blargg
+   ROMs, `cpu_video_smoke_top`, and Quartus.
 2. Keep `cpu_instrs.gb` aggregate as a long optional checkpoint test. The
    individual ROMs remain the official day-to-day regression.
 3. Refine exact interrupt timing, EI/HALT edge cases, STOP behavior, and the
@@ -327,7 +344,7 @@ slices should:
 
 ## Next Code Step
 
-Finish and checkpoint the initial timer slice. The next concrete work is to run
-the remaining individual Blargg regressions, run the video smoke integration,
-run Quartus for the EP4CE6 resource impact, and then decide whether to enter
-`instr_timing`, `mem_timing`, `interrupt_time`, or `halt_bug.gb`.
+Finish and checkpoint the initial timer slice. The regression and synthesis
+evidence are now complete; the next concrete work is to create the checkpoint
+and then decide whether to enter `instr_timing`, `mem_timing`, `interrupt_time`,
+or `halt_bug.gb`.

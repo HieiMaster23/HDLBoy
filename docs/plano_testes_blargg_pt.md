@@ -454,7 +454,17 @@ Validação executada:
 - `run_cpu_blargg_03.do` — Passed;
 - `run_cpu_blargg_04.do` — Passed;
 - `run_cpu_blargg_05.do` — Passed;
-- `run_cpu_blargg_06.do` — Passed.
+- `run_cpu_blargg_06.do` — Passed;
+- `run_cpu_blargg_08.do` — Passed;
+- `run_cpu_blargg_01.do` — Passed na rodada longa;
+- `run_cpu_blargg_02.do` — Passed na rodada longa;
+- `run_cpu_blargg_07.do` — Passed na rodada longa;
+- `run_cpu_blargg_09.do` — Passed na rodada longa;
+- `run_cpu_blargg_10.do` — Passed na rodada longa;
+- `run_cpu_blargg_11.do` — Passed na rodada longa;
+- `run_cpu_video_smoke_top.do` — Passed;
+- build Quartus completo em `2026-05-15` — Passed, com `4.157 / 6.272`
+  logic elements usados (`66%`).
 
 Experimento com ROM agregada:
 

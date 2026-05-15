@@ -465,3 +465,46 @@ Notes:
   already resource-sensitive at 65% logic element usage. Future timer, PPU, and
   SDRAM work should continue to prefer registered RAM templates, shared CPU
   states, and small incremental synthesis checks.
+
+## M6 Initial DMG Timer Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_video_smoke_top`
+
+Report date: 2026-05-15
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,157 | 6,272 | 66% |
+| Registers | 1,500 | 6,272 | 24% |
+| Pins | 27 | 92 | 29% |
+| Memory bits | 111,616 | 276,480 | 40% |
+| M9Ks | 14 | 30 | 47% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, `clk_50mhz` | 17.072 ns |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.705 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 196.475 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.451 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.484 ns |
+| Hold, slow 1200 mV 85 C, `clk_50mhz` | 0.736 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- This slice replaces the duplicated timer stub with `rtl/io/timer.vhd`, adding
+  shared DIV/TIMA/TMA/TAC behavior, TAC-selected divider edges, delayed TIMA
+  reload, and a timer interrupt pulse.
+- Compared with the previous interrupt bring-up slice, the fitter increased
+  from 4,087 to 4,157 logic elements, a cost of 70 LEs while keeping registers,
+  block memory usage, M9K count, and PLL usage unchanged.
+- The design remains below the 80% warning threshold, but 66% logic usage keeps
+  the EP4CE6 budget tight. Future work should continue to favor shared control
+  states, inferred RAM, and incremental synthesis checkpoints.
