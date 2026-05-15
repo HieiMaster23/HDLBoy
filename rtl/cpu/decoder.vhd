@@ -263,12 +263,13 @@ begin
                 writes_memory <= '1';
             end if;
 
-        elsif opcode = x"07" or opcode = x"0F" or opcode = x"17" or opcode = x"1F" or
+        elsif opcode = x"07" or opcode = x"0F" or opcode = x"10" or
+              opcode = x"17" or opcode = x"1F" or
               opcode = x"27" or opcode = x"2F" or opcode = x"37" or opcode = x"3F" or
               opcode = x"F3" or opcode = x"F9" or opcode = x"FB" or
               opcode = x"76" or opcode = x"CB" then
             instr_class <= DEC_CLASS_CONTROL;
-            if opcode = x"CB" then
+            if opcode = x"CB" or opcode = x"10" then
                 immediate_bytes <= "01";
             end if;
 

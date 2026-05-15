@@ -185,7 +185,7 @@ Depois de `06-ld r,r.gb`, a ordem mais racional é:
    - inclui casos especiais como `JR`, `JP HL`, `POP AF` e `DAA`.
 10. `02-interrupts.gb` — Passed
    - validou a base de IME, IE/IF, prioridade, push de PC, vetor, `RETI`,
-     `EI`, `HALT` básico e timer stub.
+     `EI`, `HALT` básico e timer inicial.
 
 Essa ordem não é a ordem numérica original. É a ordem mais adequada para o
 estado atual do nosso core.
@@ -218,13 +218,14 @@ Esses testes são valiosos, mas pertencem a fases posteriores.
 
 O próximo passo de implementação deve ser:
 
-1. Consolidar que todas as ROMs individuais `01..11` continuam passando.
-2. Tentar a ROM agregada `cpu_instrs.gb` se o tempo de simulação for aceitável.
-3. Se a ROM agregada for impraticável, registrar esse limite e avançar para
-   timer real.
-4. Implementar o timer DMG com frequências TAC, DIV/TIMA/TMA, overflow e IF bit
-   2 mais fiéis.
-5. Só então começar `instr_timing`, `mem_timing`, `interrupt_time` e
+1. Consolidar a regressão individual por grupos.
+2. Usar `03`, `04`, `05`, `06` e `08` como regressão rápida.
+3. Rodar `01`, `02`, `07`, `09`, `10` e `11` em rodada longa separada.
+4. Tratar a ROM agregada `cpu_instrs.gb` como teste longo opcional de
+   checkpoint, não como teste diário.
+5. Fechar a fatia do timer inicial com `cpu_video_smoke_top`, Quartus e medição
+   de recursos.
+6. Só então começar `instr_timing`, `mem_timing`, `interrupt_time` e
    `halt_bug.gb`.
 
 Esse ciclo deve guiar a expansão da CPU a partir de agora.
@@ -403,7 +404,7 @@ Comportamentos validados por essa etapa:
 - `EI` com atraso básico;
 - `DI` impedindo atendimento;
 - `HALT` saindo quando uma interrupção fica pendente;
-- timer stub gerando IF bit 2 para o teste.
+- timer inicial gerando IF bit 2 para o teste.
 
 Resultado observado:
 
@@ -414,15 +415,62 @@ Resultado observado:
 
 Limitações que continuam abertas:
 
-- o timer ainda não implementa todas as frequências TAC reais;
-- o atraso exato de overflow TIMA ainda não está fiel;
+- o timer inicial já usa DIV/TIMA/TMA/TAC e seleção por TAC, mas sua escala de
+  avanço ainda está adaptada à granularidade atual da CPU;
 - a temporização exata de aceitação de interrupções ainda precisa ser refinada;
 - o bug de `HALT` ainda não foi implementado;
+- o comportamento real de `STOP` ainda não foi implementado; há apenas um
+  avanço mínimo de dois bytes para permitir a ROM agregada prosseguir;
 - os testes `instr_timing`, `mem_timing`, `interrupt_time` e `halt_bug.gb`
   continuam fora do escopo desta etapa.
 
 Próximo alvo recomendado:
 
-Consolidar a suíte `cpu_instrs` completa. Se a ROM agregada `cpu_instrs.gb` for
-pesada demais para simulação, registrar que as ROMs individuais `01..11`
-passaram e iniciar a implementação do timer real antes dos testes de timing.
+Consolidar a suíte `cpu_instrs` por ROMs individuais. A ROM agregada
+`cpu_instrs.gb` deve ficar como teste longo opcional de checkpoint, não como
+regressão diária.
+
+## 15. Atualização da sessão do timer inicial
+
+Nesta sessão, o stub duplicado de timer foi substituído por um bloco inicial
+compartilhado:
+
+- novo módulo: `rtl/io/timer.vhd`;
+- novo testbench: `tb/io/tb_timer.vhd`;
+- novo script: `sim/modelsim/run_timer.do`;
+- integração no `tb_cpu_rom_runner`;
+- integração no `bus_controller`;
+- inclusão do timer no projeto Quartus;
+- scripts Blargg individuais criados para `03`, `04`, `05`, `06`, `07` e `08`;
+- runner ampliado para carregar ROMs de até 64 KiB;
+- `G_VERBOSE_SERIAL` adicionado para reduzir logs em testes longos;
+- `STOP` mínimo adicionado para a ROM agregada avançar, ainda sem modo stop real.
+
+Validação executada:
+
+- `run_timer.do` — Passed;
+- `run_bus_controller.do` — Passed;
+- `run_cpu_blargg_02.do` — Passed com o timer novo;
+- `run_cpu_blargg_03.do` — Passed;
+- `run_cpu_blargg_04.do` — Passed;
+- `run_cpu_blargg_05.do` — Passed;
+- `run_cpu_blargg_06.do` — Passed.
+
+Experimento com ROM agregada:
+
+- `cpu_instrs.gb` carregou 64 KiB corretamente;
+- antes do suporte mínimo a `STOP`, parava no início da sequência agregada;
+- depois do suporte mínimo a `STOP`, avançou sem falha imediata e chegou pelo
+  menos a `29:ok`;
+- a execução foi interrompida por tempo de simulação, portanto a ROM agregada
+  não deve ser usada como teste padrão do dia a dia.
+
+Fluxo recomendado a partir de agora:
+
+1. Usar `03`, `04`, `05`, `06` e `08` como regressão rápida.
+2. Rodar `01`, `02`, `07`, `09`, `10` e `11` em rodada longa separada.
+3. Rodar `cpu_video_smoke_top`.
+4. Rodar Quartus e medir recursos do timer novo.
+5. Fechar commit/checkpoint da fatia de timer inicial.
+6. Só depois iniciar `instr_timing`, `mem_timing`, `interrupt_time` e
+   `halt_bug.gb`.

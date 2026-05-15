@@ -7,7 +7,7 @@
 -- Tool:        Quartus II 13.0 SP1
 -- =============================================================================
 -- This testbench is the first bridge toward external CPU test ROM execution.
--- It loads a real 32 KiB Game Boy ROM image and captures output through:
+-- It loads a real Game Boy ROM image and captures output through:
 --   0xFF01 = SB data
 --   0xFF02 = SC control, bit 7 starts a transfer
 -- =============================================================================
@@ -19,7 +19,8 @@ use ieee.numeric_std.all;
 entity tb_cpu_rom_runner is
     generic (
         G_ROM_PATH       : string := "../../gb-test-roms-master/cpu_instrs/individual/06-ld r,r.gb";
-        G_TIMEOUT_CYCLES : integer := 10000000
+        G_TIMEOUT_CYCLES : integer := 10000000;
+        G_VERBOSE_SERIAL : boolean := true
     );
 end entity tb_cpu_rom_runner;
 
@@ -45,7 +46,7 @@ architecture sim of tb_cpu_rom_runner is
     constant IO_WY_ADDR       : std_logic_vector(15 downto 0) := x"FF4A";
     constant IO_WX_ADDR       : std_logic_vector(15 downto 0) := x"FF4B";
     constant IE_ADDR          : std_logic_vector(15 downto 0) := x"FFFF";
-    constant MAX_SERIAL_LEN   : integer := 512;
+    constant MAX_SERIAL_LEN   : integer := 4096;
 
     type memory_t is array (0 to 65535) of std_logic_vector(7 downto 0);
     type serial_buffer_t is array (0 to MAX_SERIAL_LEN - 1) of std_logic_vector(7 downto 0);
@@ -57,7 +58,7 @@ architecture sim of tb_cpu_rom_runner is
         variable byte_v : character;
         variable index_v : integer := 0;
     begin
-        while not endfile(rom_file) and index_v < 32768 loop
+        while not endfile(rom_file) and index_v < 65536 loop
             read(rom_file, byte_v);
             mem_v(index_v) := std_logic_vector(to_unsigned(character'pos(byte_v), 8));
             index_v := index_v + 1;
@@ -130,10 +131,10 @@ architecture sim of tb_cpu_rom_runner is
     signal serial_sc_reg : std_logic_vector(7 downto 0) := x"7E";
     signal serial_count : integer range 0 to MAX_SERIAL_LEN := 0;
     signal serial_buffer : serial_buffer_t := (others => x"00");
-    signal io_div_reg : std_logic_vector(7 downto 0) := x"00";
-    signal io_tima_reg : std_logic_vector(7 downto 0) := x"00";
-    signal io_tma_reg : std_logic_vector(7 downto 0) := x"00";
-    signal io_tac_reg : std_logic_vector(7 downto 0) := x"00";
+    signal io_div_read : std_logic_vector(7 downto 0);
+    signal io_tima_read : std_logic_vector(7 downto 0);
+    signal io_tma_read : std_logic_vector(7 downto 0);
+    signal io_tac_read : std_logic_vector(7 downto 0);
     signal io_if_reg : std_logic_vector(7 downto 0) := x"E0";
     signal io_lcdc_reg : std_logic_vector(7 downto 0) := x"91";
     signal io_stat_reg : std_logic_vector(7 downto 0) := x"80";
@@ -147,7 +148,11 @@ architecture sim of tb_cpu_rom_runner is
     signal io_wy_reg : std_logic_vector(7 downto 0) := x"00";
     signal io_wx_reg : std_logic_vector(7 downto 0) := x"00";
     signal ie_reg : std_logic_vector(7 downto 0) := x"00";
-    signal timer_div_reg : unsigned(1 downto 0) := "00";
+    signal timer_interrupt_set : std_logic;
+    signal timer_write_div : std_logic;
+    signal timer_write_tima : std_logic;
+    signal timer_write_tma : std_logic;
+    signal timer_write_tac : std_logic;
     signal mem : memory_t := load_rom(G_ROM_PATH);
 
 begin
@@ -197,9 +202,30 @@ begin
     interrupt_enable <= ie_reg(4 downto 0);
     interrupt_flags <= io_if_reg(4 downto 0);
 
+    timer_write_div <= '1' when mem_write = '1' and mem_addr = IO_DIV_ADDR else '0';
+    timer_write_tima <= '1' when mem_write = '1' and mem_addr = IO_TIMA_ADDR else '0';
+    timer_write_tma <= '1' when mem_write = '1' and mem_addr = IO_TMA_ADDR else '0';
+    timer_write_tac <= '1' when mem_write = '1' and mem_addr = IO_TAC_ADDR else '0';
+
+    u_timer: entity work.timer
+        port map (
+            clk => clk,
+            reset => reset,
+            write_data => mem_data_out,
+            write_div => timer_write_div,
+            write_tima => timer_write_tima,
+            write_tma => timer_write_tma,
+            write_tac => timer_write_tac,
+            div_read => io_div_read,
+            tima_read => io_tima_read,
+            tma_read => io_tma_read,
+            tac_read => io_tac_read,
+            timer_interrupt_set => timer_interrupt_set
+        );
+
     p_memory_read: process(mem_addr, mem, serial_sb_reg, serial_sc_reg,
                            boot_header_reached,
-                           io_div_reg, io_tima_reg, io_tma_reg, io_tac_reg,
+                           io_div_read, io_tima_read, io_tma_read, io_tac_read,
                            io_if_reg, io_lcdc_reg, io_stat_reg, io_scy_reg,
                            io_ly_reg,
                            io_scx_reg, io_lyc_reg, io_bgp_reg, io_obp0_reg,
@@ -211,13 +237,13 @@ begin
             when IO_SC_ADDR =>
                 mem_data_in <= serial_sc_reg;
             when IO_DIV_ADDR =>
-                mem_data_in <= io_div_reg;
+                mem_data_in <= io_div_read;
             when IO_TIMA_ADDR =>
-                mem_data_in <= io_tima_reg;
+                mem_data_in <= io_tima_read;
             when IO_TMA_ADDR =>
-                mem_data_in <= io_tma_reg;
+                mem_data_in <= io_tma_read;
             when IO_TAC_ADDR =>
-                mem_data_in <= io_tac_reg;
+                mem_data_in <= io_tac_read;
             when IO_IF_ADDR =>
                 mem_data_in <= io_if_reg;
             when IO_LCDC_ADDR =>
@@ -261,10 +287,6 @@ begin
                 serial_sc_reg <= x"7E";
                 serial_count <= 0;
                 boot_header_reached <= '0';
-                io_div_reg <= x"00";
-                io_tima_reg <= x"00";
-                io_tma_reg <= x"00";
-                io_tac_reg <= x"00";
                 io_if_reg <= x"E0";
                 io_lcdc_reg <= x"91";
                 io_stat_reg <= x"80";
@@ -278,9 +300,7 @@ begin
                 io_wy_reg <= x"00";
                 io_wx_reg <= x"00";
                 ie_reg <= x"00";
-                timer_div_reg <= "00";
             else
-                io_div_reg <= std_logic_vector(unsigned(io_div_reg) + 1);
                 if io_ly_reg = x"99" then
                     io_ly_reg <= x"00";
                 else
@@ -291,20 +311,8 @@ begin
                     boot_header_reached <= '1';
                 end if;
 
-                if io_tac_reg(2) = '1' then
-                    if timer_div_reg = "11" then
-                        timer_div_reg <= "00";
-                        if io_tima_reg = x"FF" then
-                            io_tima_reg <= io_tma_reg;
-                            io_if_reg(2) <= '1';
-                        else
-                            io_tima_reg <= std_logic_vector(unsigned(io_tima_reg) + 1);
-                        end if;
-                    else
-                        timer_div_reg <= timer_div_reg + 1;
-                    end if;
-                else
-                    timer_div_reg <= "00";
+                if timer_interrupt_set = '1' then
+                    io_if_reg(2) <= '1';
                 end if;
 
                 if interrupt_ack = '1' then
@@ -335,16 +343,18 @@ begin
                                 serial_buffer(serial_count) <= serial_sb_reg;
                                 serial_count <= serial_count + 1;
                             end if;
-                            report "SERIAL $" & slv8_to_hex(serial_sb_reg) severity note;
+                            if G_VERBOSE_SERIAL then
+                                report "SERIAL $" & slv8_to_hex(serial_sb_reg) severity note;
+                            end if;
                         end if;
                     elsif mem_addr = IO_DIV_ADDR then
-                        io_div_reg <= x"00";
+                        null;
                     elsif mem_addr = IO_TIMA_ADDR then
-                        io_tima_reg <= mem_data_out;
+                        null;
                     elsif mem_addr = IO_TMA_ADDR then
-                        io_tma_reg <= mem_data_out;
+                        null;
                     elsif mem_addr = IO_TAC_ADDR then
-                        io_tac_reg <= mem_data_out;
+                        null;
                     elsif mem_addr = IO_IF_ADDR then
                         io_if_reg <= "111" & mem_data_out(4 downto 0);
                     elsif mem_addr = IO_LCDC_ADDR then
@@ -393,7 +403,10 @@ begin
             wait until rising_edge(clk);
             if unsupported_opcode = '1' then
                 assert false
-                    report "FAIL: unsupported opcode near PC=$" & slv16_to_hex(debug_pc)
+                    report "FAIL: unsupported opcode near PC=$" & slv16_to_hex(debug_pc) &
+                           ", prev=$" & slv8_to_hex(mem(to_integer(unsigned(debug_pc) - 1))) &
+                           ", at=$" & slv8_to_hex(mem(to_integer(unsigned(debug_pc)))) &
+                           ", next=$" & slv8_to_hex(mem(to_integer(unsigned(debug_pc) + 1)))
                     severity failure;
             end if;
             if serial_count >= 6 and

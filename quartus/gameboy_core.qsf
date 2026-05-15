@@ -38,6 +38,7 @@ set_global_assignment -name VHDL_FILE ../rtl/cpu/alu.vhd
 set_global_assignment -name VHDL_FILE ../rtl/cpu/registers.vhd
 set_global_assignment -name VHDL_FILE ../rtl/cpu/decoder.vhd
 set_global_assignment -name VHDL_FILE ../rtl/cpu/cpu.vhd
+set_global_assignment -name VHDL_FILE ../rtl/io/timer.vhd
 set_global_assignment -name VHDL_FILE ../rtl/io/seven_segment_mux.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/blink_led.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/pll_core.vhd

@@ -11,6 +11,7 @@ vcom -93 ../../rtl/cpu/alu.vhd
 vcom -93 ../../rtl/cpu/registers.vhd
 vcom -93 ../../rtl/cpu/decoder.vhd
 vcom -93 ../../rtl/cpu/cpu.vhd
+vcom -93 ../../rtl/io/timer.vhd
 vcom -93 ../../rtl/io/seven_segment_mux.vhd
 vcom -93 ../../rtl/video/vga_controller.vhd
 vcom -93 ../../rtl/memory/framebuffer.vhd

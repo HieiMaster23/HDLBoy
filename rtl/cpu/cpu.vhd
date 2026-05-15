@@ -830,6 +830,9 @@ begin
                     if opcode_reg = x"76" then
                         instr_complete <= '0';
                         state_next <= S_HALT;
+                    elsif opcode_reg = x"10" then
+                        instr_complete <= '0';
+                        state_next <= S_READ_IMM_LO;
                     elsif opcode_reg = x"CB" then
                         instr_complete <= '0';
                         state_next <= S_READ_IMM_LO;
@@ -903,7 +906,12 @@ begin
                 if mem_ready = '0' then
                     state_next <= S_READ_IMM_LO;
                 else
-                if opcode_reg = x"CB" then
+                if opcode_reg = x"10" then
+                    pc_write_enable <= '1';
+                    pc_in_sig <= inc16(pc_out_sig);
+                    instr_complete <= '1';
+                    state_next <= S_FETCH;
+                elsif opcode_reg = x"CB" then
                     pc_write_enable <= '1';
                     pc_in_sig <= inc16(pc_out_sig);
                     if mem_data_in(2 downto 0) = CPU_REG_HL_MEM then

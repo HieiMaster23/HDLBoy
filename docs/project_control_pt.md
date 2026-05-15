@@ -61,6 +61,8 @@ O projeto já possui:
 - WRAM inicial reduzida por restrição de recursos;
 - HRAM e stubs de I/O;
 - IE e IF básicos;
+- timer DMG inicial extraído para `rtl/io/timer.vhd`, com DIV/TIMA/TMA/TAC,
+  seleção por TAC e pulso de interrupção de timer;
 - serial debug stub em `0xFF01` e `0xFF02`;
 - runner de ROM em simulação carregando ROMs `.gb` reais e emitindo `Passed`
   via serial;
@@ -106,6 +108,43 @@ consolidadas no checkpoint atual:
 
 Antes de qualquer nova tag ou milestone formal, revisar novamente o estado do
 Git e decidir se este checkpoint já deve receber uma tag parcial.
+
+Sessão atual em andamento, ainda sem checkpoint:
+
+- extraído um módulo `rtl/io/timer.vhd` para substituir o stub de timer duplicado
+  no runner e no barramento;
+- adicionado `tb/io/tb_timer.vhd` e `sim/modelsim/run_timer.do`;
+- `tb_cpu_rom_runner` passou a carregar até 64 KiB, permitindo executar a ROM
+  agregada `cpu_instrs.gb`;
+- adicionado modo `G_VERBOSE_SERIAL` ao runner para evitar logs enormes em
+  testes longos;
+- adicionado suporte mínimo a `STOP` como instrução de dois bytes, apenas para
+  permitir que a ROM agregada prossiga; o comportamento real de STOP ainda não
+  foi implementado;
+- adicionados scripts individuais para Blargg `03`, `04`, `05`, `06`, `07` e
+  `08`;
+- a ROM agregada `cpu_instrs.gb` foi testada como experimento longo: depois do
+  suporte mínimo a `STOP`, ela avançou sem falha imediata e chegou pelo menos a
+  `29:ok`, mas foi interrompida por tempo de simulação. Ela fica classificada
+  como teste longo opcional, não como regressão diária.
+
+Validação rápida executada nesta sessão:
+
+- `run_timer.do` — Passed;
+- `run_bus_controller.do` — Passed;
+- `run_cpu_blargg_02.do` — Passed com o timer novo;
+- `run_cpu_blargg_03.do` — Passed;
+- `run_cpu_blargg_04.do` — Passed;
+- `run_cpu_blargg_05.do` — Passed;
+- `run_cpu_blargg_06.do` — Passed.
+
+Ainda falta antes de checkpoint:
+
+- repetir pelo menos `08-misc instrs.gb`;
+- repetir os testes longos `01`, `07`, `09`, `10` e `11` quando houver tempo;
+- rodar `cpu_video_smoke_top`;
+- rodar Quartus para medir impacto de recursos do timer novo;
+- atualizar o commit/checkpoint após a regressão combinada.
 
 ## 5. Estado Atual por Área
 
@@ -191,13 +230,16 @@ Implementado:
 - `DI`
 - `EI` com atraso básico
 - `HALT` básico com saída por interrupção pendente
+- `STOP` mínimo para avanço de PC, sem modo stop real
 
 Ainda pendente:
 
 - temporização exata de aceitação de interrupções;
 - temporização exata de instruções;
 - timer real com frequências TAC, atraso de overflow e bordas fiéis ao DMG;
+- refinamento de escala de ciclo do timer contra a temporização exata da CPU;
 - comportamento completo do bug de `HALT`.
+- comportamento real de `STOP`.
 
 ### Barramento e Memória
 
@@ -214,8 +256,8 @@ Implementado:
 - IE em `0xFFFF`;
 - IF em `0xFF0F`;
 - serial debug em `0xFF01/0xFF02`;
-- stub mínimo de timer capaz de gerar IF bit 2 em simulação e no barramento
-  inicial;
+- timer inicial compartilhado capaz de gerar IF bit 2 em simulação e no
+  barramento inicial;
 - limpeza de IF por `interrupt_ack` conforme vetor atendido.
 
 Risco atual:
@@ -264,7 +306,9 @@ Implementado:
 - wave setup dedicado para visualizar o runner;
 - scripts para Blargg `01-special`, `09-op r,r`, `10-bit ops` e
   `11-op a,(hl)`;
-- script dedicado para Blargg `02-interrupts`.
+- script dedicado para Blargg `02-interrupts`;
+- scripts individuais adicionados para `03`, `04`, `05`, `06`, `07` e `08`;
+- teste unitário de timer em `tb/io/tb_timer.vhd`.
 
 Blargg `cpu_instrs` individuais passando:
 
@@ -282,10 +326,13 @@ Blargg `cpu_instrs` individuais passando:
 
 Próximo alvo de teste:
 
-- rodar a ROM agregada `cpu_instrs.gb` quando o tempo de simulação for
-  aceitável, para confirmar a sequência completa;
-- iniciar a próxima fase de fidelidade: timer real, timing de instruções,
-  `HALT` bug e testes `instr_timing`, `mem_timing` e `interrupt_time`.
+- consolidar por etapas os testes individuais, usando `03`, `04`, `05`, `06` e
+  `08` como regressão rápida;
+- repetir os testes longos em uma rodada separada: `01`, `02`, `07`, `09`, `10`
+  e `11`;
+- tratar a ROM agregada `cpu_instrs.gb` como validação longa opcional;
+- depois do checkpoint do timer inicial, avançar para `instr_timing`,
+  `mem_timing`, `interrupt_time` e `halt_bug`.
 
 ## 6. Linha de Evolução do Projeto
 
@@ -309,9 +356,10 @@ de teste cada vez mais próximos de ROMs reais.
 
 Depois disso:
 
-1. consolidar a ROM agregada `cpu_instrs.gb`;
-2. implementar o timer DMG real;
-3. avançar para timing, `HALT` bug, joypad, interrupções com precisão maior e
+1. consolidar a regressão individual `cpu_instrs` por grupos;
+2. fechar o timer DMG inicial com regressões e síntese;
+3. usar a ROM agregada `cpu_instrs.gb` apenas como teste longo de checkpoint;
+4. avançar para timing, `HALT` bug, joypad, interrupções com precisão maior e
    PPU.
 
 ## 7. Ordem Recomendada para Blargg
@@ -552,25 +600,27 @@ Resultado:
 - `RETI` reativa IME;
 - `EI` mantém atraso básico;
 - `HALT` sai quando há interrupção pendente;
-- o runner e o barramento inicial possuem stub mínimo de timer e limpeza de IF.
+- o runner e o barramento inicial possuem timer inicial e limpeza de IF.
 
 ## 14. Próximo Alvo Oficial
 
 O próximo alvo oficial recomendado é:
 
 ```text
-Consolidar a suíte Blargg CPU completa: tentar a ROM agregada cpu_instrs.gb ou,
-se ela for pesada demais para simulação, registrar explicitamente que as ROMs
-individuais 01..11 passaram e avançar para timer real e testes de timing.
+Fechar a fatia do timer DMG inicial e consolidar a regressão Blargg individual
+por grupos, sem depender da ROM agregada como teste diário.
 ```
 
 Critério de sucesso:
 
-- manter `01..11` passando individualmente;
+- manter os rápidos `03`, `04`, `05`, `06` e `08` passando;
+- repetir os longos `01`, `02`, `07`, `09`, `10` e `11` antes do checkpoint;
+- manter `run_timer.do` passando;
 - não regredir `cpu_video_smoke_top`;
 - manter build Quartus sem erro;
-- documentar qualquer limite de simulação da ROM agregada;
-- definir a próxima fatia entre timer real, `instr_timing`, `mem_timing`,
+- documentar a ROM agregada como teste longo opcional;
+- medir impacto de recursos do timer novo no EP4CE6;
+- definir a próxima fatia entre `instr_timing`, `mem_timing`,
   `interrupt_time` e `halt_bug`.
 
 ## 15. Princípio de Engenharia do Projeto

@@ -11,6 +11,7 @@ vcom -93 ../../rtl/cpu/alu.vhd
 vcom -93 ../../rtl/cpu/registers.vhd
 vcom -93 ../../rtl/cpu/decoder.vhd
 vcom -93 ../../rtl/cpu/cpu.vhd
+vcom -93 ../../rtl/io/timer.vhd
 vcom -93 ../../tb/cpu/tb_cpu_rom_runner.vhd
 
 vsim -c -gG_ROM_PATH=../../gb-test-roms-master/cpu_instrs/individual/09-OPR~1.GB -gG_TIMEOUT_CYCLES=25000000 work.tb_cpu_rom_runner

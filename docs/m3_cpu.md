@@ -103,6 +103,9 @@ Control base:
 - Initial interrupt servicing accepts pending `IE & IF` bits when IME is set,
   clears IME, pushes PC, jumps to the selected vector, and emits
   `interrupt_ack`.
+- `STOP` currently consumes its padding byte and continues execution. This is a
+  bring-up placeholder for Blargg aggregate flow, not a real low-power STOP
+  implementation.
 
 ## Current Limitations
 
@@ -111,10 +114,12 @@ Control base:
 - Instruction timing is still an incremental approximation. The CPU has a
   `mem_ready` input for registered memory and wait-state integration, but it is
   not yet fully cycle-accurate against the LR35902.
-- The timer used by the ROM runner and initial bus controller is a minimal test
-  stub. It raises the Timer IF bit, but it does not yet implement all TAC
-  frequencies, DIV edge behavior, or the real TIMA overflow delay.
+- The timer has been extracted into `rtl/io/timer.vhd` and now implements
+  DIV/TIMA/TMA/TAC, TAC-selected divider edges, TIMA reload delay, and a timer
+  interrupt pulse. Its divider step is still adapted to the current CPU
+  execution granularity until instruction timing is refined.
 - The exact HALT bug behavior is not implemented yet.
+- Real STOP behavior is not implemented yet.
 
 ## Flags
 
@@ -142,9 +147,16 @@ Current ModelSim scripts:
 - `sim/modelsim/run_cpu_rom_runner.do`
 - `sim/modelsim/run_cpu_blargg_01.do`
 - `sim/modelsim/run_cpu_blargg_02.do`
+- `sim/modelsim/run_cpu_blargg_03.do`
+- `sim/modelsim/run_cpu_blargg_04.do`
+- `sim/modelsim/run_cpu_blargg_05.do`
+- `sim/modelsim/run_cpu_blargg_06.do`
+- `sim/modelsim/run_cpu_blargg_07.do`
+- `sim/modelsim/run_cpu_blargg_08.do`
 - `sim/modelsim/run_cpu_blargg_10.do`
 - `sim/modelsim/run_cpu_blargg_09.do`
 - `sim/modelsim/run_cpu_blargg_11.do`
+- `sim/modelsim/run_timer.do`
 - `sim/modelsim/run_cpu_all.do`
 - `sim/modelsim/run_cpu_integration_top.do`
 - `sim/modelsim/run_cpu_video_smoke_top.do`
@@ -154,8 +166,8 @@ loads, HL memory access, ALU flags, unconditional jump, stack transfer,
 subroutine call/return, `(HL)` read-modify-write execution, and relative branch
 looping.
 
-`tb_cpu_rom_runner` now loads a real 32 KiB Game Boy ROM image with a VHDL
-simulation-only binary file reader. The default target is
+`tb_cpu_rom_runner` now loads a real Game Boy ROM image up to 64 KiB with a
+VHDL simulation-only binary file reader. The default target is
 `gb-test-roms-master/cpu_instrs/individual/06-ld r,r.gb`.
 
 The runner provides a full 64 KiB simulation memory, captures serial output
@@ -163,7 +175,8 @@ through the Game Boy `0xFF01`/`0xFF02` convention, stubs basic I/O registers,
 and advances `LY`/`DIV` enough for Blargg's shell delay loops to complete
 without a PPU. It stops when the serial transcript contains `Passed` or
 `Failed`, or on timeout/unsupported opcode. `G_TIMEOUT_CYCLES` can be raised for
-long ROMs without changing the default runner behavior.
+long ROMs without changing the default runner behavior. `G_VERBOSE_SERIAL` can
+be disabled for long aggregate runs to avoid per-byte log overhead.
 
 Current Blargg bring-up result:
 
@@ -183,6 +196,19 @@ Current Blargg bring-up result:
   `G_TIMEOUT_CYCLES=50000000`.
 - `cpu_instrs/individual/11-op a,(hl).gb`: `Passed` via serial transcript using
   `G_TIMEOUT_CYCLES=50000000`.
+
+Current in-progress timer slice validation:
+
+- `run_timer.do`: `Passed`.
+- `run_bus_controller.do`: `Passed`.
+- `run_cpu_blargg_02.do`: `Passed` with the extracted timer block.
+- Fast individual Blargg regression rerun in this slice:
+  `03-op sp,hl.gb`, `04-op r,imm.gb`, `05-op rp.gb`, and `06-ld r,r.gb`
+  all reached `Passed`.
+- `cpu_instrs.gb` aggregate is supported by the 64 KiB runner and advanced past
+  the previous STOP-related block. It reached at least `29:ok` before the run
+  was stopped for wall-clock time, so it remains a long checkpoint test rather
+  than the daily regression path.
 
 ## Hardware Integration Harness
 
@@ -246,8 +272,9 @@ the CPU subset connected to the M2 framebuffer and VGA path:
   bits feed the CPU interrupt input ports.
 - The CPU `interrupt_ack` and `interrupt_vector` outputs feed the bus
   controller so the serviced IF bit can be cleared.
-- A minimal timer stub can raise the Timer IF bit for the interrupt bring-up
-  path. This is not the final DMG timer implementation.
+- The initial shared timer block raises the Timer IF bit through the bus
+  controller. It is closer to DMG behavior than the old stub, but final timing
+  accuracy depends on the later instruction-timing slice.
 - Basic I/O stubs are present for JOYP, Serial, Timer registers, LCDC/STAT,
   scroll/window registers, DMA, and palette registers. They are placeholders
   for future timer, joypad, and PPU ownership.
@@ -289,16 +316,18 @@ Blargg-style output capture before implementing the real serial link timing.
 The ROM runner is now the primary CPU validation path. The next implementation
 slices should:
 
-1. Consolidate the full `cpu_instrs` suite, either by running the aggregate ROM
-   or by documenting the individual `01..11` pass set.
-2. Replace the timer stub with a real DMG timer before `instr_timing`,
-   `mem_timing`, `interrupt_time`, and `halt_bug.gb`.
-3. Refine exact interrupt timing, EI/HALT edge cases, and the HALT bug.
+1. Finish the current timer slice by rerunning `08`, the longer individual
+   Blargg ROMs, `cpu_video_smoke_top`, and Quartus.
+2. Keep `cpu_instrs.gb` aggregate as a long optional checkpoint test. The
+   individual ROMs remain the official day-to-day regression.
+3. Refine exact interrupt timing, EI/HALT edge cases, STOP behavior, and the
+   HALT bug.
 4. Keep the memory-map/bus-controller harness aligned with registered memory
    reads and future wait states.
 
 ## Next Code Step
 
-Use the ROM runner to consolidate the CPU test suite, then start the real timer
-slice. The remaining high-risk CPU work is exact timing behavior: timer edges,
-interrupt entry timing, `EI`/`HALT` edge cases, and the HALT bug.
+Finish and checkpoint the initial timer slice. The next concrete work is to run
+the remaining individual Blargg regressions, run the video smoke integration,
+run Quartus for the EP4CE6 resource impact, and then decide whether to enter
+`instr_timing`, `mem_timing`, `interrupt_time`, or `halt_bug.gb`.

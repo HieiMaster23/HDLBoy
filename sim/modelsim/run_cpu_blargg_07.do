@@ -1,7 +1,7 @@
 # =============================================================================
-# ModelSim script for Blargg cpu_instrs/individual/10-bit ops.gb
+# ModelSim script for Blargg cpu_instrs/individual/07-jr,jp,call,ret,rst.gb
 # Usage from sim/modelsim:
-#   vsim -c -do run_cpu_blargg_10.do
+#   vsim -c -do run_cpu_blargg_07.do
 # =============================================================================
 
 vlib work
@@ -14,6 +14,6 @@ vcom -93 ../../rtl/cpu/cpu.vhd
 vcom -93 ../../rtl/io/timer.vhd
 vcom -93 ../../tb/cpu/tb_cpu_rom_runner.vhd
 
-vsim -c -gG_ROM_PATH=../../gb-test-roms-master/cpu_instrs/individual/10-BIT~1.GB -gG_TIMEOUT_CYCLES=50000000 work.tb_cpu_rom_runner
+vsim -c -gG_ROM_PATH=../../gb-test-roms-master/cpu_instrs/individual/07-JR_~1.GB -gG_TIMEOUT_CYCLES=30000000 work.tb_cpu_rom_runner
 run -all
 quit -f

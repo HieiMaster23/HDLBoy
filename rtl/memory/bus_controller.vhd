@@ -11,6 +11,7 @@
 -- 2026-05-13 - Added first WRAM page, echo mirror, and basic I/O stubs
 -- 2026-05-13 - Added serial debug transfer pulse for CPU ROM test output
 -- 2026-05-14 - Added registered WRAM/HRAM reads and CPU ready signaling
+-- 2026-05-14 - Replaced timer stub with divider-edge DMG timer block
 -- =============================================================================
 
 library ieee;
@@ -139,11 +140,15 @@ architecture rtl of bus_controller is
     signal serial_sc_reg     : std_logic_vector(7 downto 0);
     signal serial_debug_valid_reg : std_logic;
     signal serial_debug_data_reg  : std_logic_vector(7 downto 0);
-    signal div_counter       : unsigned(15 downto 0);
-    signal timer_divider      : unsigned(1 downto 0);
-    signal tima_reg          : std_logic_vector(7 downto 0);
-    signal tma_reg           : std_logic_vector(7 downto 0);
-    signal tac_reg           : std_logic_vector(2 downto 0);
+    signal div_read          : std_logic_vector(7 downto 0);
+    signal tima_read         : std_logic_vector(7 downto 0);
+    signal tma_read          : std_logic_vector(7 downto 0);
+    signal tac_read          : std_logic_vector(7 downto 0);
+    signal timer_interrupt_set : std_logic;
+    signal timer_write_div   : std_logic;
+    signal timer_write_tima  : std_logic;
+    signal timer_write_tma   : std_logic;
+    signal timer_write_tac   : std_logic;
     signal lcdc_reg          : std_logic_vector(7 downto 0);
     signal stat_reg          : std_logic_vector(7 downto 0);
     signal scy_reg           : std_logic_vector(7 downto 0);
@@ -206,9 +211,30 @@ begin
     cpu_ready <= '0' when cpu_read = '1' and sync_read_selected = '1' and
                           (sync_read_valid = '0' or sync_read_addr /= cpu_addr) else '1';
 
+    timer_write_div <= '1' when cpu_write = '1' and cpu_addr = IO_DIV_ADDR else '0';
+    timer_write_tima <= '1' when cpu_write = '1' and cpu_addr = IO_TIMA_ADDR else '0';
+    timer_write_tma <= '1' when cpu_write = '1' and cpu_addr = IO_TMA_ADDR else '0';
+    timer_write_tac <= '1' when cpu_write = '1' and cpu_addr = IO_TAC_ADDR else '0';
+
+    u_timer: entity work.timer
+        port map (
+            clk => clk,
+            reset => reset,
+            write_data => cpu_data_out,
+            write_div => timer_write_div,
+            write_tima => timer_write_tima,
+            write_tma => timer_write_tma,
+            write_tac => timer_write_tac,
+            div_read => div_read,
+            tima_read => tima_read,
+            tma_read => tma_read,
+            tac_read => tac_read,
+            timer_interrupt_set => timer_interrupt_set
+        );
+
     p_memory_read: process(cpu_addr, cpu_read, io_led_reg, io_status_reg,
                            joyp_select_reg, serial_sb_reg, serial_sc_reg,
-                           div_counter, tima_reg, tma_reg, tac_reg,
+                           div_read, tima_read, tma_read, tac_read,
                            lcdc_reg, stat_reg, scy_reg, scx_reg, lyc_reg,
                            dma_reg, bgp_reg, obp0_reg, obp1_reg, wy_reg,
                            wx_reg, if_reg, ie_reg, wram_selected,
@@ -223,13 +249,13 @@ begin
                 when IO_SC_ADDR =>
                     cpu_data_in <= serial_sc_reg;
                 when IO_DIV_ADDR =>
-                    cpu_data_in <= std_logic_vector(div_counter(15 downto 8));
+                    cpu_data_in <= div_read;
                 when IO_TIMA_ADDR =>
-                    cpu_data_in <= tima_reg;
+                    cpu_data_in <= tima_read;
                 when IO_TMA_ADDR =>
-                    cpu_data_in <= tma_reg;
+                    cpu_data_in <= tma_read;
                 when IO_TAC_ADDR =>
-                    cpu_data_in <= "11111" & tac_reg;
+                    cpu_data_in <= tac_read;
                 when IO_IF_ADDR =>
                     cpu_data_in <= "111" & if_reg(4 downto 0);
                 when IO_LCDC_ADDR =>
@@ -291,11 +317,6 @@ begin
                 serial_sc_reg <= x"7E";
                 serial_debug_valid_reg <= '0';
                 serial_debug_data_reg <= (others => '0');
-                div_counter <= (others => '0');
-                timer_divider <= (others => '0');
-                tima_reg <= (others => '0');
-                tma_reg <= (others => '0');
-                tac_reg <= (others => '0');
                 lcdc_reg <= x"91";
                 stat_reg <= x"80";
                 scy_reg <= (others => '0');
@@ -316,23 +337,10 @@ begin
                 checker_failed_reg <= '0';
                 final_passed_reg <= '0';
             else
-                div_counter <= div_counter + 1;
                 serial_debug_valid_reg <= '0';
 
-                if tac_reg(2) = '1' then
-                    if timer_divider = "11" then
-                        timer_divider <= (others => '0');
-                        if tima_reg = x"FF" then
-                            tima_reg <= tma_reg;
-                            if_reg(2) <= '1';
-                        else
-                            tima_reg <= std_logic_vector(unsigned(tima_reg) + 1);
-                        end if;
-                    else
-                        timer_divider <= timer_divider + 1;
-                    end if;
-                else
-                    timer_divider <= (others => '0');
+                if timer_interrupt_set = '1' then
+                    if_reg(2) <= '1';
                 end if;
 
                 if interrupt_ack = '1' then
@@ -384,13 +392,13 @@ begin
                                 serial_debug_data_reg <= serial_sb_reg;
                             end if;
                         when IO_DIV_ADDR =>
-                            div_counter <= (others => '0');
+                            null;
                         when IO_TIMA_ADDR =>
-                            tima_reg <= cpu_data_out;
+                            null;
                         when IO_TMA_ADDR =>
-                            tma_reg <= cpu_data_out;
+                            null;
                         when IO_TAC_ADDR =>
-                            tac_reg <= cpu_data_out(2 downto 0);
+                            null;
                         when IO_IF_ADDR =>
                             if_reg <= "111" & cpu_data_out(4 downto 0);
                         when IO_LCDC_ADDR =>
