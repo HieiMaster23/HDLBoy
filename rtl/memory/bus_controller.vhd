@@ -12,6 +12,7 @@
 -- 2026-05-13 - Added serial debug transfer pulse for CPU ROM test output
 -- 2026-05-14 - Added registered WRAM/HRAM reads and CPU ready signaling
 -- 2026-05-14 - Replaced timer stub with divider-edge DMG timer block
+-- 2026-05-16 - Reserved real VRAM at 0x8000..0x9FFF for the future PPU path
 -- =============================================================================
 
 library ieee;
@@ -19,6 +20,9 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity bus_controller is
+    generic (
+        G_USE_CPU_PPU_DEMO_ROM : boolean := false
+    );
     port (
         clk                 : in  std_logic;
         reset               : in  std_logic;
@@ -36,6 +40,8 @@ entity bus_controller is
         fb_we               : out std_logic;
         fb_addr             : out unsigned(14 downto 0);
         fb_data             : out std_logic_vector(1 downto 0);
+        ppu_vram_addr       : in  unsigned(12 downto 0);
+        ppu_vram_data       : out std_logic_vector(7 downto 0);
 
         led_pattern         : out std_logic_vector(3 downto 0);
         display_digits      : out std_logic_vector(15 downto 0);
@@ -53,7 +59,9 @@ end entity bus_controller;
 
 architecture rtl of bus_controller is
 
-    constant FB_BASE_ADDR       : std_logic_vector(15 downto 0) := x"8000";
+    constant VRAM_BASE_ADDR     : std_logic_vector(15 downto 0) := x"8000";
+    constant VRAM_LAST_ADDR     : std_logic_vector(15 downto 0) := x"9FFF";
+    constant FB_BASE_ADDR       : std_logic_vector(15 downto 0) := x"A000";
     constant FB_LAST_ADDR       : std_logic_vector(15 downto 0) := x"BFFF";
     constant WRAM_BASE_ADDR     : std_logic_vector(15 downto 0) := x"C000";
     constant WRAM_LAST_ADDR     : std_logic_vector(15 downto 0) := x"DFFF";
@@ -87,14 +95,16 @@ architecture rtl of bus_controller is
     constant IE_ADDR            : std_logic_vector(15 downto 0) := x"FFFF";
     constant PASS_CODE          : std_logic_vector(7 downto 0)  := x"A5";
     constant EXPECTED_FB_WRITES : unsigned(7 downto 0) := to_unsigned(64, 8);
-    constant ROM_LAST_INDEX     : integer := 280;
+    constant SMOKE_ROM_LAST_INDEX    : integer := 280;
+    constant PPU_DEMO_ROM_LAST_INDEX : integer := 82;
     constant WRAM_LAST_INDEX    : integer := 8191;
     constant HRAM_LAST_INDEX    : integer := 126;
 
-    type rom_t is array (0 to ROM_LAST_INDEX) of std_logic_vector(7 downto 0);
+    type smoke_rom_t is array (0 to SMOKE_ROM_LAST_INDEX) of std_logic_vector(7 downto 0);
+    type ppu_demo_rom_t is array (0 to PPU_DEMO_ROM_LAST_INDEX) of std_logic_vector(7 downto 0);
     type wram_t is array (0 to WRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
     type hram_t is array (0 to HRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
-    constant ROM : rom_t := (
+    constant SMOKE_ROM : smoke_rom_t := (
         x"31", x"FE", x"FF", x"21", x"80", x"FF", x"3E", x"01",
         x"77", x"3E", x"03", x"21", x"30", x"A3", x"77", x"21",
         x"31", x"A3", x"77", x"21", x"D2", x"A3", x"77", x"21",
@@ -133,6 +143,26 @@ architecture rtl of bus_controller is
         x"FE"
     );
 
+    constant PPU_DEMO_ROM : ppu_demo_rom_t := (
+        -- Initialize SP and clear tile 0 at 0x8000..0x800F.
+        x"31", x"FE", x"FF", x"21", x"00", x"80", x"AF", x"06",
+        x"10", x"22", x"05", x"20", x"FC",
+        -- Write tile 1 checkerboard data at 0x8010..0x801F.
+        x"21", x"10", x"80", x"3E", x"AA", x"22", x"22", x"3E",
+        x"55", x"22", x"22", x"3E", x"AA", x"22", x"22", x"3E",
+        x"55", x"22", x"22", x"3E", x"AA", x"22", x"22", x"3E",
+        x"55", x"22", x"22", x"3E", x"AA", x"22", x"22", x"3E",
+        x"55", x"22", x"22",
+        -- Clear the complete 32x32 background map at 0x9800..0x9BFF.
+        x"21", x"00", x"98", x"AF", x"06", x"04", x"0E", x"00",
+        x"22", x"0D", x"20", x"FC", x"05", x"20", x"F7",
+        -- Write an alternating first tile row: tile 1, tile 0, repeated.
+        x"21", x"00", x"98", x"06", x"0A", x"3E", x"01", x"22",
+        x"AF", x"22", x"05", x"20", x"F8",
+        -- Signal completion through debug I/O at 0xFF80, then park forever.
+        x"21", x"80", x"FF", x"36", x"01", x"18", x"FE"
+    );
+
     signal io_led_reg        : std_logic_vector(7 downto 0);
     signal io_status_reg     : std_logic_vector(7 downto 0);
     signal joyp_select_reg   : std_logic_vector(1 downto 0);
@@ -168,6 +198,8 @@ architecture rtl of bus_controller is
     signal fb_write_count    : unsigned(7 downto 0);
     signal checker_failed_reg: std_logic;
     signal final_passed_reg  : std_logic;
+    signal vram_selected     : std_logic;
+    signal vram_cpu_we       : std_logic;
     signal fb_selected       : std_logic;
     signal wram_selected     : std_logic;
     signal io_selected       : std_logic;
@@ -175,6 +207,7 @@ architecture rtl of bus_controller is
     signal sync_read_selected: std_logic;
     signal sync_read_valid   : std_logic;
     signal sync_read_addr    : std_logic_vector(15 downto 0);
+    signal vram_q            : std_logic_vector(7 downto 0);
     signal wram_q            : std_logic_vector(7 downto 0);
     signal hram_q            : std_logic_vector(7 downto 0);
 
@@ -183,10 +216,18 @@ architecture rtl of bus_controller is
         variable data_v : std_logic_vector(7 downto 0);
     begin
         addr_u := unsigned(addr_in);
-        if addr_u <= to_unsigned(ROM_LAST_INDEX, 16) then
-            data_v := ROM(to_integer(addr_u));
+        if G_USE_CPU_PPU_DEMO_ROM then
+            if addr_u <= to_unsigned(PPU_DEMO_ROM_LAST_INDEX, 16) then
+                data_v := PPU_DEMO_ROM(to_integer(addr_u));
+            else
+                data_v := x"00";
+            end if;
         else
-            data_v := x"00";
+            if addr_u <= to_unsigned(SMOKE_ROM_LAST_INDEX, 16) then
+                data_v := SMOKE_ROM(to_integer(addr_u));
+            else
+                data_v := x"00";
+            end if;
         end if;
 
         return data_v;
@@ -194,6 +235,8 @@ architecture rtl of bus_controller is
 
 begin
 
+    vram_selected <= '1' when unsigned(cpu_addr) >= unsigned(VRAM_BASE_ADDR) and
+                              unsigned(cpu_addr) <= unsigned(VRAM_LAST_ADDR) else '0';
     fb_selected <= '1' when unsigned(cpu_addr) >= unsigned(FB_BASE_ADDR) and
                             unsigned(cpu_addr) <= unsigned(FB_LAST_ADDR) else '0';
     wram_selected <= '1' when (unsigned(cpu_addr) >= unsigned(WRAM_BASE_ADDR) and
@@ -204,7 +247,8 @@ begin
                             unsigned(cpu_addr) <= unsigned(IO_LAST_ADDR) else '0';
     hram_selected <= '1' when unsigned(cpu_addr) >= unsigned(HRAM_BASE_ADDR) and
                               unsigned(cpu_addr) <= unsigned(HRAM_LAST_ADDR) else '0';
-    sync_read_selected <= '1' when wram_selected = '1' or
+    sync_read_selected <= '1' when vram_selected = '1' or
+                                   wram_selected = '1' or
                                    (hram_selected = '1' and
                                     cpu_addr /= IO_LED_ADDR and
                                     cpu_addr /= IO_STATUS_ADDR) else '0';
@@ -215,6 +259,7 @@ begin
     timer_write_tima <= '1' when cpu_write = '1' and cpu_addr = IO_TIMA_ADDR else '0';
     timer_write_tma <= '1' when cpu_write = '1' and cpu_addr = IO_TMA_ADDR else '0';
     timer_write_tac <= '1' when cpu_write = '1' and cpu_addr = IO_TAC_ADDR else '0';
+    vram_cpu_we <= cpu_write and vram_selected;
 
     u_timer: entity work.timer
         port map (
@@ -232,13 +277,24 @@ begin
             timer_interrupt_set => timer_interrupt_set
         );
 
+    u_vram: entity work.vram
+        port map (
+            clk          => clk,
+            cpu_we       => vram_cpu_we,
+            cpu_addr     => unsigned(cpu_addr(12 downto 0)),
+            cpu_data_in  => cpu_data_out,
+            cpu_data_out => vram_q,
+            ppu_addr     => ppu_vram_addr,
+            ppu_data_out => ppu_vram_data
+        );
+
     p_memory_read: process(cpu_addr, cpu_read, io_led_reg, io_status_reg,
                            joyp_select_reg, serial_sb_reg, serial_sc_reg,
                            div_read, tima_read, tma_read, tac_read,
                            lcdc_reg, stat_reg, scy_reg, scx_reg, lyc_reg,
                            dma_reg, bgp_reg, obp0_reg, obp1_reg, wy_reg,
-                           wx_reg, if_reg, ie_reg, wram_selected,
-                           hram_selected, io_selected, wram_q, hram_q)
+                           wx_reg, if_reg, ie_reg, vram_selected, wram_selected,
+                           hram_selected, io_selected, vram_q, wram_q, hram_q)
     begin
         if cpu_read = '1' then
             case cpu_addr is
@@ -289,7 +345,9 @@ begin
                 when IE_ADDR =>
                     cpu_data_in <= ie_reg;
                 when others =>
-                    if wram_selected = '1' then
+                    if vram_selected = '1' then
+                        cpu_data_in <= vram_q;
+                    elsif wram_selected = '1' then
                         cpu_data_in <= wram_q;
                     elsif io_selected = '1' then
                         cpu_data_in <= x"FF";

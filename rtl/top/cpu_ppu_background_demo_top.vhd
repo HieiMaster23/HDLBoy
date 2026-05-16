@@ -1,25 +1,23 @@
 -- =============================================================================
--- Module:      cpu_video_smoke_top
--- Description: CPU-to-framebuffer hardware smoke test with VGA output
+-- Module:      cpu_ppu_background_demo_top
+-- Description: CPU-authored VRAM to PPU background integration demo
 -- Author:      Rafael Siqueira de Oliveira
--- Created:     2026-05-12
+-- Created:     2026-05-16
 -- Target:      Altera Cyclone IV EP4CE6 E22C8N (OMDAZZ RZ-EasyFPGA A2.2)
 -- Tool:        Quartus II 13.0 SP1
 -- =============================================================================
 -- Revision History:
--- 2026-05-12 - Initial CPU + framebuffer + VGA integration smoke test
--- 2026-05-13 - Moved ROM, debug I/O, and framebuffer decode to bus_controller
+-- 2026-05-16 - Initial CPU -> VRAM -> PPU -> framebuffer integration demo
 -- =============================================================================
 
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity cpu_video_smoke_top is
+entity cpu_ppu_background_demo_top is
     port (
         clk_50mhz : in  std_logic;
         reset_n   : in  std_logic;
-        key_n     : in  std_logic_vector(3 downto 0);
 
         vga_r     : out std_logic;
         vga_g     : out std_logic;
@@ -27,25 +25,16 @@ entity cpu_video_smoke_top is
         vga_hsync : out std_logic;
         vga_vsync : out std_logic;
 
-        led       : out std_logic_vector(3 downto 0);
-        seg       : out std_logic_vector(7 downto 0);
-        digit_n   : out std_logic_vector(3 downto 0)
+        led       : out std_logic_vector(3 downto 0)
     );
-end entity cpu_video_smoke_top;
+end entity cpu_ppu_background_demo_top;
 
-architecture rtl of cpu_video_smoke_top is
+architecture rtl of cpu_ppu_background_demo_top is
 
     signal clk_vga        : std_logic;
     signal clk_cpu        : std_logic;
     signal pll_locked     : std_logic;
     signal pll_areset     : std_logic;
-    signal key_reset_n    : std_logic;
-    signal system_reset_n : std_logic;
-    signal display_reset  : std_logic;
-
-    signal clear_addr     : unsigned(14 downto 0);
-    signal clear_done     : std_logic;
-    signal clear_active   : std_logic;
     signal reset_meta     : std_logic;
     signal reset_sync     : std_logic;
     signal reset_cpu      : std_logic;
@@ -60,31 +49,38 @@ architecture rtl of cpu_video_smoke_top is
     signal mem_write      : std_logic;
     signal mem_ready      : std_logic;
 
-    signal led_pattern    : std_logic_vector(3 downto 0);
-    signal display_digits : std_logic_vector(15 downto 0);
-    signal checker_failed : std_logic;
-
     signal interrupt_ack      : std_logic;
     signal interrupt_vector   : std_logic_vector(2 downto 0);
     signal interrupt_enable   : std_logic_vector(4 downto 0);
     signal interrupt_flags    : std_logic_vector(4 downto 0);
     signal unsupported_opcode : std_logic;
 
-    signal pixel_x       : unsigned(9 downto 0);
-    signal pixel_y       : unsigned(9 downto 0);
-    signal visible       : std_logic;
-    signal hsync_i       : std_logic;
-    signal vsync_i       : std_logic;
-    signal vga_r_i       : std_logic_vector(2 downto 0);
-    signal vga_g_i       : std_logic_vector(2 downto 0);
-    signal vga_b_i       : std_logic_vector(2 downto 0);
-
-    signal fb_we_a       : std_logic;
-    signal fb_addr_a     : unsigned(14 downto 0);
-    signal fb_data_a     : std_logic_vector(1 downto 0);
-    signal fb_addr_b     : unsigned(14 downto 0);
-    signal fb_data_b     : std_logic_vector(1 downto 0);
+    signal ppu_vram_addr  : unsigned(12 downto 0);
     signal ppu_vram_data  : std_logic_vector(7 downto 0);
+    signal ppu_fb_we      : std_logic;
+    signal ppu_fb_addr    : unsigned(14 downto 0);
+    signal ppu_fb_data    : std_logic_vector(1 downto 0);
+    signal ppu_busy       : std_logic;
+    signal ppu_done       : std_logic;
+
+    signal led_pattern    : std_logic_vector(3 downto 0);
+    signal cpu_vram_ready : std_logic;
+
+    signal fb_addr_b      : unsigned(14 downto 0);
+    signal fb_data_b      : std_logic_vector(1 downto 0);
+
+    signal pixel_x        : unsigned(9 downto 0);
+    signal pixel_y        : unsigned(9 downto 0);
+    signal visible        : std_logic;
+    signal hsync_i        : std_logic;
+    signal vsync_i        : std_logic;
+    signal vga_r_i        : std_logic_vector(2 downto 0);
+    signal vga_g_i        : std_logic_vector(2 downto 0);
+    signal vga_b_i        : std_logic_vector(2 downto 0);
+
+    signal unused_display_digits : std_logic_vector(15 downto 0);
+    signal unused_checker_failed : std_logic;
+    signal unused_final_passed   : std_logic;
 
     function dither_channel(
         level : std_logic_vector(2 downto 0);
@@ -107,10 +103,7 @@ architecture rtl of cpu_video_smoke_top is
 begin
 
     pll_areset <= not reset_n;
-    key_reset_n <= key_n(0) and key_n(1) and key_n(2) and key_n(3);
-    system_reset_n <= reset_n and key_reset_n;
-    display_reset <= not system_reset_n;
-    clear_active <= not clear_done;
+    cpu_vram_ready <= led_pattern(0);
 
     u_pll: entity work.pll_core
         port map (
@@ -121,26 +114,10 @@ begin
             locked => pll_locked
         );
 
-    p_clear: process(clk_cpu)
-    begin
-        if rising_edge(clk_cpu) then
-            if system_reset_n = '0' or pll_locked = '0' then
-                clear_addr <= (others => '0');
-                clear_done <= '0';
-            elsif clear_done = '0' then
-                if clear_addr = to_unsigned(23039, 15) then
-                    clear_done <= '1';
-                else
-                    clear_addr <= clear_addr + 1;
-                end if;
-            end if;
-        end if;
-    end process p_clear;
-
     p_cpu_reset_sync: process(clk_cpu)
     begin
         if rising_edge(clk_cpu) then
-            reset_meta <= (not system_reset_n) or (not pll_locked) or (not clear_done);
+            reset_meta <= (not reset_n) or (not pll_locked);
             reset_sync <= reset_meta;
         end if;
     end process p_cpu_reset_sync;
@@ -150,7 +127,7 @@ begin
     p_vga_reset_sync: process(clk_vga)
     begin
         if rising_edge(clk_vga) then
-            reset_vga_meta <= (not system_reset_n) or (not pll_locked);
+            reset_vga_meta <= (not reset_n) or (not pll_locked);
             reset_vga_sync <= reset_vga_meta;
         end if;
     end process p_vga_reset_sync;
@@ -189,6 +166,9 @@ begin
         );
 
     u_bus: entity work.bus_controller
+        generic map (
+            G_USE_CPU_PPU_DEMO_ROM => true
+        )
         port map (
             clk                  => clk_cpu,
             reset                => reset_cpu,
@@ -199,17 +179,17 @@ begin
             cpu_write            => mem_write,
             cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
-            fb_clear_active      => clear_active,
-            fb_clear_addr        => clear_addr,
-            fb_we                => fb_we_a,
-            fb_addr              => fb_addr_a,
-            fb_data              => fb_data_a,
-            ppu_vram_addr        => (others => '0'),
+            fb_clear_active      => '0',
+            fb_clear_addr        => (others => '0'),
+            fb_we                => open,
+            fb_addr              => open,
+            fb_data              => open,
+            ppu_vram_addr        => ppu_vram_addr,
             ppu_vram_data        => ppu_vram_data,
             led_pattern          => led_pattern,
-            display_digits       => display_digits,
-            checker_failed       => checker_failed,
-            final_passed         => open,
+            display_digits       => unused_display_digits,
+            checker_failed       => unused_checker_failed,
+            final_passed         => unused_final_passed,
             interrupt_ack        => interrupt_ack,
             interrupt_vector     => interrupt_vector,
             interrupt_enable     => interrupt_enable,
@@ -219,12 +199,26 @@ begin
             debug_fb_write_count => open
         );
 
+    u_ppu_bg: entity work.ppu_background_renderer
+        port map (
+            clk       => clk_cpu,
+            reset     => reset_cpu,
+            start     => cpu_vram_ready,
+            vram_addr => ppu_vram_addr,
+            vram_data => ppu_vram_data,
+            fb_we     => ppu_fb_we,
+            fb_addr   => ppu_fb_addr,
+            fb_data   => ppu_fb_data,
+            busy      => ppu_busy,
+            done      => ppu_done
+        );
+
     u_framebuffer: entity work.framebuffer
         port map (
             clk_a  => clk_cpu,
-            we_a   => fb_we_a,
-            addr_a => fb_addr_a,
-            data_a => fb_data_a,
+            we_a   => ppu_fb_we,
+            addr_a => ppu_fb_addr,
+            data_a => ppu_fb_data,
             clk_b  => clk_vga,
             addr_b => fb_addr_b,
             data_b => fb_data_b
@@ -261,16 +255,9 @@ begin
     vga_g <= dither_channel(vga_g_i, pixel_x(0), pixel_y(0));
     vga_b <= dither_channel(vga_b_i, pixel_x(0), pixel_y(0));
 
-    u_seven_segment: entity work.seven_segment_mux
-        port map (
-            clk     => clk_50mhz,
-            reset   => display_reset,
-            enable  => '1',
-            digits  => display_digits,
-            seg     => seg,
-            digit_n => digit_n
-        );
-
-    led <= "0000" when checker_failed = '1' else not led_pattern;
+    led(0) <= not pll_locked;
+    led(1) <= not cpu_vram_ready;
+    led(2) <= not ppu_done;
+    led(3) <= '1';
 
 end architecture rtl;

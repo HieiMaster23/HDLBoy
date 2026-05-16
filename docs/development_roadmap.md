@@ -49,9 +49,17 @@ The project has already completed the early foundation layers:
 5. **Initial timer foundation**
    - the duplicated timer stub has been replaced by a reusable DMG-style timer
      block shared by simulation and the bus controller.
+6. **First PPU foundation**
+   - real VRAM now exists at `0x8000..0x9FFF`;
+   - a first background-only renderer reads tile data plus the background tile
+     map from VRAM and feeds the framebuffer path.
+7. **First CPU/PPU integration**
+   - the CPU now writes deterministic tile data and tile-map contents into VRAM;
+   - the PPU renders those CPU-authored contents through the VGA path;
+   - the complete path has been visually confirmed on the real board.
 
-The project is now moving from **functional correctness** toward **timing
-fidelity**.
+The project has completed the local CPU/timing ladder available in the current
+Blargg package and has entered the first **real PPU** implementation phase.
 
 ## Why the CPU Came Before the Real PPU
 
@@ -139,7 +147,8 @@ Primary validation targets:
 - `interrupt_time`;
 - `halt_bug.gb`.
 
-This is the current phase.
+This phase is now checkpointed for the local Blargg ladder available in the
+repository.
 
 ### Phase 5: Real PPU
 
@@ -158,8 +167,11 @@ Recommended order:
 6. sprites and OAM scan;
 7. PPU modes, VBlank, STAT, and DMA.
 
-The first real visual milestone should be a tile-based background produced by the
-PPU, not direct CPU pixel writes.
+The first real visual milestone is now being implemented as a tile-based
+background produced by the PPU, not direct CPU pixel writes. The first hardware
+checkpoint of that milestone is already complete: the board displays the
+expected centered image with alternating white/checkerboard tiles written by the
+CPU into VRAM and consumed by the PPU.
 
 ### Phase 6: Playable System Integration
 
@@ -223,29 +235,32 @@ CPU timing -> timer/interrupt fidelity -> real PPU -> input/ROM flow -> games
 The next recommended sequence is:
 
 1. keep `instr_timing`, `mem_timing`, `mem_timing-2`, `interrupt_time`, and
-   `halt_bug.gb` in the timing regression set;
-2. checkpoint the completed local CPU/timing ladder;
-3. import a broader timer-focused suite later if more timer coverage is needed
-   than the local Blargg package provides;
-4. only after that, open the first real PPU implementation slice.
-
-The first real PPU slice should be intentionally narrow:
-
-1. real VRAM storage;
-2. tile data and tile map reads;
-3. a background-only pixel producer that feeds the existing framebuffer path;
-4. no sprites, window, STAT, or DMA yet.
+   `halt_bug.gb` in the regression set;
+2. preserve the current background-only PPU demo as the first isolated visual
+   baseline;
+3. preserve the new CPU-authored VRAM visual top as the first combined-system
+   baseline;
+4. replace the hardcoded integration ROM with a clearer test-program flow;
+5. add scroll-facing LCD register behavior and move from one-shot rendering
+   toward scanline-timed background generation;
+6. import broader timer coverage later if the local Blargg package proves too
+   narrow for the next stages.
 
 ## Resource Discipline
 
-The EP4CE6 is a tight target. The latest synthesized `cpu_video_smoke_top`
-checkpoint uses:
+The EP4CE6 is a tight target. The last CPU/timing checkpoint used:
 
 - 4,283 / 6,272 logic elements;
 - 111,616 / 276,480 block-memory bits;
 - 14 / 30 M9K blocks.
 
-That leaves room, but not room for careless duplication. New work should prefer:
+The first real VRAM slice already raised memory use to:
+
+- 177,152 / 276,480 block-memory bits;
+- 22 / 30 M9K blocks.
+
+The PPU phase is therefore memory-sensitive before it becomes logic-heavy. New
+work should prefer:
 
 - shared CPU states instead of duplicated datapaths;
 - inferred RAMs instead of large register arrays;

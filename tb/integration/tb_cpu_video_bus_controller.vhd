@@ -35,6 +35,7 @@ architecture sim of tb_cpu_video_bus_controller is
     signal fb_we              : std_logic;
     signal fb_addr            : unsigned(14 downto 0);
     signal fb_data            : std_logic_vector(1 downto 0);
+    signal ppu_vram_data      : std_logic_vector(7 downto 0);
     signal led_pattern        : std_logic_vector(3 downto 0);
     signal display_digits     : std_logic_vector(15 downto 0);
     signal checker_failed     : std_logic;
@@ -127,6 +128,8 @@ begin
             fb_we                => fb_we,
             fb_addr              => fb_addr,
             fb_data              => fb_data,
+            ppu_vram_addr        => (others => '0'),
+            ppu_vram_data        => ppu_vram_data,
             led_pattern          => led_pattern,
             display_digits       => display_digits,
             checker_failed       => checker_failed,

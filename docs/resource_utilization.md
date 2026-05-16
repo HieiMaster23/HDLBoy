@@ -691,3 +691,140 @@ Notes:
   68% logic utilization, with memory and PLL use unchanged.
 - The `mem_timing-2` runner support is testbench-only, so it does not change
   FPGA resource utilization.
+
+## First VRAM Foundation Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_video_smoke_top`
+
+Report date: 2026-05-16
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,290 | 6,272 | 68% |
+| Registers | 1,502 | 6,272 | 24% |
+| Pins | 27 | 92 | 29% |
+| Memory bits | 177,152 | 276,480 | 64% |
+| M9Ks | 22 | 30 | 73% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, `clk_50mhz` | 17.073 ns |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 23.376 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 178.193 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.502 ns |
+| Hold, slow 1200 mV 85 C, `clk_50mhz` | 0.737 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- This slice reserves real 8 KiB VRAM at `0x8000..0x9FFF` and keeps the older
+  framebuffer smoke window separate at `0xA000..0xBFFF`.
+- `rtl/memory/vram.vhd` adds the first dedicated video memory block plus a
+  future PPU read port, while `tb_vram` and the bus-controller regression prove
+  CPU-visible VRAM read/write behavior.
+- Compared with the prior timing checkpoint, logic rises only from 4,283 to
+  4,290 LEs, but memory grows from 111,616 to 177,152 bits and M9K use rises from
+  14 to 22 blocks. The new PPU phase is therefore memory-sensitive even before
+  tile fetch logic is added.
+- Quartus currently reduces the top-level unused PPU read port away in the
+  smoke build, so the next PPU slice should consume that port with a real tile
+  producer before treating the dual-port behavior as fully exercised in the
+  synthesized top.
+
+## First Background PPU Demo Top
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `ppu_background_demo_top`
+
+Report date: 2026-05-16
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 405 | 6,272 | 6% |
+| Registers | 144 | 6,272 | 2% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 111,616 | 276,480 | 40% |
+| M9Ks | 14 | 30 | 47% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.854 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 230.609 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.442 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.510 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- This is an intentionally partial visual top, not the complete system top:
+  CPU and full WRAM are absent, so its logic-element count must not be compared
+  directly with the CPU smoke checkpoint.
+- The slice adds a real VRAM-to-PPU-to-framebuffer path:
+  `ppu_demo_loader` populates VRAM, `ppu_background_renderer` reads tile data
+  plus the background tile map, and VGA displays the generated framebuffer.
+- Quartus now infers VRAM as an actual dual-port M9K-backed memory in the
+  synthesized top: 8 M9Ks for VRAM and 6 M9Ks for the framebuffer.
+- This is the first useful resource measurement of the PPU phase. The visual
+  slice is cheap in logic so far, but the VRAM/framebuffer pair already consumes
+  14 of the 30 available M9Ks.
+
+## First CPU-to-PPU Background Integration Top
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-16
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,235 | 6,272 | 68% |
+| Registers | 1,515 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 177,152 | 276,480 | 64% |
+| M9Ks | 22 | 30 | 73% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 26.077 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 176.423 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.413 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.500 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- This is the first top where the CPU writes the VRAM contents that the PPU
+  later renders. The program writes tile 0, tile 1, the background map, then a
+  completion marker at `0xFF80` before the renderer starts.
+- The integrated visual path is now:
+  `CPU -> bus_controller -> VRAM -> ppu_background_renderer -> framebuffer -> VGA`.
+- The expected centered tile pattern was visually confirmed on the real OMDAZZ
+  hardware after programming this top.
+- Compared with the earlier VRAM foundation top, the logic-element count remains
+  in the same resource class while the real PPU-side VRAM port is now exercised
+  by the full CPU-bearing system.
+- Quartus reports 22 M9Ks in use: 8 for VRAM, 8 for WRAM, and 6 for the
+  framebuffer. Memory, not logic, is already the tighter medium-term resource
+  for the visual path on EP4CE6.

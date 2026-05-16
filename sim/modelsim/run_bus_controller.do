@@ -6,6 +6,7 @@
 vlib work
 
 vcom -93 ../../rtl/io/timer.vhd
+vcom -93 ../../rtl/memory/vram.vhd
 vcom -93 ../../rtl/memory/bus_controller.vhd
 vcom -93 ../../tb/memory/tb_bus_controller.vhd
 

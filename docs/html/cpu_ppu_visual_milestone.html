@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CPU-to-PPU Visual Milestone - Game Boy FPGA Core</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1d2430;
+      --muted: #5d6878;
+      --line: #d9dee7;
+      --panel: #ffffff;
+      --soft: #f4f7fb;
+      --cpu: #e9f2ff;
+      --bus: #eef8ee;
+      --memory: #fff5df;
+      --ppu: #f6ecff;
+      --video: #fdeceb;
+      --ok: #236b3a;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--soft);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.15;
+    }
+
+    h1 {
+      font-size: 34px;
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin: 28px 0 12px;
+    }
+
+    p {
+      margin: 8px 0;
+      color: var(--muted);
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: #eef1f6;
+      padding: 2px 5px;
+      border-radius: 4px;
+      color: #172033;
+    }
+
+    .hero,
+    .card,
+    .node,
+    .step,
+    .fact {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .hero {
+      padding: 24px;
+    }
+
+    .badge {
+      display: inline-block;
+      border: 1px solid #b7d7bf;
+      background: #ecf8ef;
+      color: var(--ok);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .card {
+      padding: 16px;
+    }
+
+    .card strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(120px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+      margin: 16px 0;
+    }
+
+    .node {
+      padding: 14px;
+      min-height: 78px;
+    }
+
+    .node.cpu { background: var(--cpu); }
+    .node.bus { background: var(--bus); }
+    .node.memory { background: var(--memory); }
+    .node.ppu { background: var(--ppu); }
+    .node.video { background: var(--video); }
+
+    .node .title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .node .detail {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .facts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .fact {
+      padding: 16px;
+    }
+
+    .fact strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .num {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #25324a;
+      color: white;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+    }
+
+    @media (max-width: 900px) {
+      .flow {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="badge">Hardware visual milestone confirmed</div>
+      <h1>CPU-to-PPU Visual Milestone</h1>
+      <p>
+        This report documents the first real board-level image generated from
+        CPU-authored VRAM data and consumed by the first PPU background slice.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <strong>Validated top</strong>
+          <code>cpu_ppu_background_demo_top</code>
+          <p>Full chain present: CPU, bus, WRAM, VRAM, PPU, framebuffer, and VGA.</p>
+        </div>
+        <div class="card">
+          <strong>Observed image</strong>
+          <p>Black border, bright centered Game Boy viewport, first tile row alternating white and checkerboard tiles.</p>
+        </div>
+        <div class="card">
+          <strong>Why it matters</strong>
+          <p>The image is no longer direct framebuffer smoke output. It is produced by interacting hardware blocks.</p>
+        </div>
+      </div>
+    </section>
+
+    <h2>Live Data Path</h2>
+    <section class="flow" aria-label="Live data path">
+      <div class="node cpu">
+        <div class="title">CPU</div>
+        <div class="detail">Writes tile data and tile-map bytes.</div>
+      </div>
+      <div class="node bus">
+        <div class="title">Bus</div>
+        <div class="detail">Decodes VRAM writes and debug marker.</div>
+      </div>
+      <div class="node memory">
+        <div class="title">VRAM</div>
+        <div class="detail">Stores 8 KiB of tile data and map entries.</div>
+      </div>
+      <div class="node ppu">
+        <div class="title">PPU Slice</div>
+        <div class="detail">Reads tiles and expands them into pixels.</div>
+      </div>
+      <div class="node video">
+        <div class="title">Framebuffer</div>
+        <div class="detail">Stores the rendered 160x144 image.</div>
+      </div>
+      <div class="node video">
+        <div class="title">VGA</div>
+        <div class="detail">Scales and displays the final picture.</div>
+      </div>
+    </section>
+
+    <h2>What This Proves</h2>
+    <section class="facts">
+      <div class="fact">
+        <strong>CPU-side proof</strong>
+        The CPU can initialize video memory through the system bus.
+      </div>
+      <div class="fact">
+        <strong>Memory proof</strong>
+        The VRAM block is exercised from both CPU and PPU sides.
+      </div>
+      <div class="fact">
+        <strong>PPU-side proof</strong>
+        The renderer consumes tile data and tile-map contents correctly.
+      </div>
+      <div class="fact">
+        <strong>System proof</strong>
+        The earlier VGA path still works after subsystem integration.
+      </div>
+    </section>
+
+    <h2>Current Boundary</h2>
+    <section class="timeline">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <h3>Completed</h3>
+          <p>CPU-authored static background shown on real hardware.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <h3>Still intentionally simple</h3>
+          <p>No scroll, no scanline timing, no window, no sprites, no PPU modes, no DMA.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <h3>Next target</h3>
+          <p>Replace the embedded integration ROM with a clearer test-program flow, then add <code>SCX</code>/<code>SCY</code> behavior.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

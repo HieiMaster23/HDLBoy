@@ -42,12 +42,30 @@ behavior, and bus ownership. Starting the PPU too early would make later visual
 failures ambiguous because a bad frame could come from the PPU, CPU timing, the
 timer, or the bus.
 
-The current rule is:
+The rule followed by the project was:
 
 1. broad CPU behavior first;
 2. realistic bus and memory contracts next;
 3. timing refinement before the real PPU;
 4. tile-based PPU work only after those shared contracts are stronger.
+
+That boundary has now been crossed. The first PPU slice is deliberately small:
+real VRAM, a demo VRAM loader, and a background-only renderer that reads tile
+data plus tile map entries before writing the existing framebuffer. This keeps
+the first PPU failure surface narrow while still exercising the real
+video-memory direction of travel.
+
+The next integration step keeps the isolated demo top as a baseline, but adds a
+second top where the CPU writes deterministic tile data and tile-map bytes into
+VRAM before the renderer is allowed to start. The explicit start marker at debug
+I/O address `0xFF80` keeps the first CPU/PPU interaction controlled and prevents
+an incomplete VRAM image from being rendered during bring-up.
+
+That controlled top has now been validated on hardware. The first visible image
+is deliberately simple: a centered Game Boy viewport with an alternating
+white/checkerboard first row. Its value is architectural rather than cosmetic:
+it proves that the CPU can author VRAM, the PPU can consume it, and the existing
+framebuffer/VGA path still behaves correctly after the subsystems are joined.
 
 ## Serial-First CPU Validation
 
@@ -151,6 +169,7 @@ replace real complexity. Early milestones prioritize correctness, but every
 meaningful RTL slice is still synthesized and measured so resource drift is
 visible before it becomes architectural debt.
 
-The current timing-control checkpoint uses 4,268 logic elements, or 68% of the
-device, so later CPU, PPU, DMA, SDRAM, and optional APU work must continue to
-favor shared datapaths, inferred RAM, and incremental integration.
+The CPU/timing checkpoint uses 4,283 logic elements, or 68% of the device. The
+first real VRAM slice already raises memory use to 177,152 bits and 22 M9Ks, so
+later PPU, DMA, SDRAM, and optional APU work must continue to favor shared
+datapaths, inferred RAM, and incremental integration.

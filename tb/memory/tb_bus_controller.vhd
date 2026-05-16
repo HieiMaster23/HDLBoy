@@ -32,6 +32,8 @@ architecture sim of tb_bus_controller is
     signal fb_we                : std_logic;
     signal fb_addr              : unsigned(14 downto 0);
     signal fb_data              : std_logic_vector(1 downto 0);
+    signal ppu_vram_addr        : unsigned(12 downto 0) := (others => '0');
+    signal ppu_vram_data        : std_logic_vector(7 downto 0);
     signal led_pattern          : std_logic_vector(3 downto 0);
     signal display_digits       : std_logic_vector(15 downto 0);
     signal checker_failed       : std_logic;
@@ -74,6 +76,8 @@ begin
             fb_we                => fb_we,
             fb_addr              => fb_addr,
             fb_data              => fb_data,
+            ppu_vram_addr        => ppu_vram_addr,
+            ppu_vram_data        => ppu_vram_data,
             led_pattern          => led_pattern,
             display_digits       => display_digits,
             checker_failed       => checker_failed,
@@ -166,6 +170,15 @@ begin
         bus_write(x"C040", x"77");
         bus_read_check(x"C040", x"77", "FAIL: Expanded WRAM should include 0xC040");
 
+        bus_write(x"8000", x"3C");
+        bus_read_check(x"8000", x"3C", "FAIL: VRAM first byte should read back written data");
+        ppu_vram_addr <= to_unsigned(0, 13);
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        assert ppu_vram_data = x"3C"
+            report "FAIL: PPU VRAM port should observe CPU VRAM writes"
+            severity failure;
+
         bus_write(x"FF82", x"5A");
         bus_read_check(x"FF82", x"5A", "FAIL: HRAM 0xFF82 should read back written data");
 
@@ -241,13 +254,13 @@ begin
 
         bus_read_check(x"FF30", x"FF", "FAIL: unmapped I/O stubs should read as open bus high");
 
-        cpu_addr <= x"8000";
+        cpu_addr <= x"A000";
         cpu_data_out <= x"03";
         cpu_read <= '0';
         cpu_write <= '1';
         wait for 1 ns;
-        assert fb_we = '1' and fb_addr = to_unsigned(0, 15) and fb_data = "11"
-            report "FAIL: framebuffer write window should drive fb port A"
+        assert fb_we = '1' and fb_addr = to_unsigned(16#2000#, 15) and fb_data = "11"
+            report "FAIL: experimental framebuffer write window should drive fb port A"
             severity failure;
         wait until rising_edge(clk);
         wait for 1 ns;

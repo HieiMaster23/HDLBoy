@@ -110,9 +110,25 @@ Já foi validado em hardware real:
 - framebuffer 160x144 com escala para VGA;
 - display de sete segmentos;
 - top visual em que a CPU escreve pixels no framebuffer.
+- top visual em que a CPU escreve tile data e tile map na VRAM, e a PPU usa
+  esses dados para gerar a imagem exibida no monitor.
 
 Isso significa que já temos uma saída visual confiável e um caminho físico de
-vídeo comprovado.
+vídeo comprovado. O marco visual mais recente foi confirmado na placa real com:
+
+- borda preta fora da área útil do Game Boy;
+- área central clara de 480x432 pixels;
+- primeira faixa de tiles alternando entre branco e padrão quadriculado.
+
+Esse padrão é importante porque não nasce mais de pixels escritos diretamente no
+framebuffer pela CPU. Ele já percorre a cadeia:
+
+```text
+CPU -> barramento -> VRAM -> PPU -> framebuffer -> VGA
+```
+
+Pela primeira vez, a imagem exibida depende de dados processados pela CPU e
+consumidos pela PPU como periférico de vídeo.
 
 ### 5.2 CPU
 
@@ -175,7 +191,7 @@ ele precisa ser alinhado à temporização final da CPU.
 
 ### 5.5 Situação de Recursos
 
-No checkpoint atual, o `cpu_video_smoke_top` usa:
+No último checkpoint completo da CPU, o `cpu_video_smoke_top` usa:
 
 - `4.268 / 6.272` logic elements, ou `68%`;
 - `111.616 / 276.480` bits de memória;
@@ -184,6 +200,27 @@ No checkpoint atual, o `cpu_video_smoke_top` usa:
 Ainda há espaço, mas não há espaço para desperdício. Isso confirma que decisões
 de compartilhamento de estados, RAM inferida e crescimento incremental não são
 luxo; são necessidade.
+
+Já a primeira demonstração isolada de PPU, `ppu_background_demo_top`, usa:
+
+- `405 / 6.272` logic elements, ou `6%`;
+- `111.616 / 276.480` bits de memória;
+- `14 / 30` blocos M9K.
+
+Esse segundo número não substitui o custo do sistema completo, porque o top de
+demonstração ainda não inclui CPU e WRAM completas. Ele serve para medir a nova
+fatia visual isoladamente e confirma que a VRAM dual-port já foi realmente
+inferida no hardware.
+
+O primeiro top integrado de verdade, `cpu_ppu_background_demo_top`, volta a
+juntar CPU, barramento, WRAM, VRAM, PPU mínima, framebuffer e VGA:
+
+- `4.235 / 6.272` logic elements, ou `68%`;
+- `177.152 / 276.480` bits de memória;
+- `22 / 30` blocos M9K.
+
+Esse é o número mais importante da etapa atual, porque mede o custo da primeira
+imagem realmente produzida por uma cadeia CPU -> VRAM -> PPU.
 
 ## 6. Por Que a CPU Veio Antes da PPU Real
 
@@ -253,11 +290,10 @@ Por isso a próxima fase não é "mais opcodes", e sim **fidelidade temporal**.
 
 ## 9. Onde Estamos Agora
 
-Estamos na transição entre:
+Estamos no começo da transição entre:
 
-- uma CPU funcionalmente forte;
-- e uma CPU suficientemente fiel para servir de base à PPU e a softwares mais
-  reais.
+- uma CPU já suficientemente consolidada para sustentar a próxima fase;
+- e uma PPU ainda mínima, mas agora existente como bloco real no sistema.
 
 O checkpoint mais recente fechou:
 
@@ -266,10 +302,10 @@ O checkpoint mais recente fechou:
 - regressão do smoke visual;
 - síntese Quartus com recursos medidos.
 
-O projeto está agora na fase:
+O projeto fechou a fase:
 
 ```text
-instr_timing -> mem_timing -> interrupt_time -> halt_bug
+instr_timing -> mem_timing -> mem_timing-2 -> interrupt_time -> halt_bug
 ```
 
 A primeira execução de `instr_timing` mostrou um detalhe importante do processo:
@@ -315,52 +351,70 @@ Atualização mais recente:
 - as regressões rápidas de CPU, timer, barramento, interrupções e smoke visual
   continuaram passando.
 
-Isso confirma que a progressão está correta: primeiro estabilizamos o tempo das
-instruções que sustentam o próprio mecanismo de teste, depois avançamos para as
-diferenças restantes por família de opcode.
+Isso confirmou que a progressão estava correta: primeiro estabilizamos o tempo
+das instruções que sustentam o próprio mecanismo de teste, depois avançamos para
+as diferenças restantes por família de opcode. Com essa escada fechada, a fase
+seguinte começou de fato: VRAM real, o primeiro produtor de background por tiles
+e o primeiro top em que a CPU escreve o que a PPU depois desenha já existem.
+Esse top também já foi validado em hardware real, o que transforma a etapa atual
+de uma hipótese arquitetural em um marco físico do projeto.
+
+### 9.1 O Que o Novo Marco Visual Prova
+
+O padrão de tiles confirmado no monitor não prova ainda que a PPU esteja fiel ao
+DMG-01. Ele prova algo anterior e muito valioso:
+
+- a CPU consegue inicializar estruturas de vídeo por software;
+- o barramento entrega essas escritas à VRAM correta;
+- a PPU lê tile data e tile map pela porta própria da VRAM;
+- o framebuffer recebe o resultado da PPU;
+- a cadeia VGA continua funcional depois da integração de blocos maiores.
+
+Em outras palavras, saímos de testes de subsistema para um teste cooperativo de
+vários blocos reais trabalhando juntos. Isso reduz bastante a incerteza antes de
+começarmos a adicionar scroll, temporização por scanline e depois sprites.
 
 ## 10. Próximos Passos Recomendados
 
-### 10.1 Próxima Fase Imediata: Fidelidade Temporal da CPU
+### 10.1 Próxima Fase Imediata: Primeira PPU Útil
 
 Ordem recomendada:
 
-1. manter uma sonda local self-checking para os ciclos já corrigidos;
-2. manter `instr_timing.gb` como regressão obrigatória já conquistada;
-3. manter `mem_timing` como regressão obrigatória já conquistada;
-4. manter `mem_timing-2` como regressão obrigatória já conquistada;
-5. manter `interrupt_time` como regressão obrigatória já conquistada;
-6. manter `halt_bug.gb` como regressão obrigatória já conquistada;
-7. repetir a síntese após cada nova família relevante;
-8. importar uma suíte específica de timer mais adiante, se quisermos ampliar a
-   cobertura além do pacote Blargg local.
+1. manter a regressão de CPU/timing já conquistada;
+2. preservar o novo teste unitário do renderer e o teste integrado do top de
+   PPU;
+3. manter o novo top integrado como baseline de sistema;
+4. substituir a ROM embutida por um fluxo de programa de teste mais explícito;
+5. adicionar os primeiros efeitos de registradores LCD, começando por scroll;
+6. migrar de um preenchimento único de framebuffer para um produtor de
+   background orientado a scanlines.
 
-Essa sequência deve tornar mais confiável:
+Essa sequência torna mais real:
 
-- a duração das instruções;
-- o momento dos acessos ao barramento;
-- a relação entre CPU e timer;
-- o comportamento de interrupções e `HALT`.
+- quem escreve a VRAM;
+- quem a lê;
+- como o background nasce dos tiles;
+- e como a PPU começará a se comportar como periférico de tempo, não apenas como
+  desenhista estático.
 
-### 10.2 Depois Disso: PPU Real
+### 10.2 Depois Disso: PPU Mais Fiel
 
-Quando a base temporal estiver melhor consolidada, o próximo grande bloco será a
-PPU real.
+Com a primeira PPU mínima já iniciada, o próximo crescimento será torná-la mais
+fiel ao DMG.
 
 Ordem sugerida:
 
-1. VRAM real;
-2. tile data;
-3. tile map;
-4. background estático;
-5. scrolling;
-6. window;
-7. sprites e OAM;
-8. modos da PPU;
-9. VBlank, STAT e DMA.
+1. scrolling;
+2. window;
+3. sprites e OAM;
+4. modos da PPU;
+5. VBlank, STAT e DMA.
 
 O primeiro grande marco visual da PPU deve ser uma imagem formada por tiles,
 gerada pela PPU, não mais pixels escritos diretamente pela CPU no framebuffer.
+Esse primeiro marco já foi alcançado de forma controlada; o próximo marco visual
+deve mostrar que o conteúdo da cena responde a registradores de LCD, começando
+por deslocamento de background com `SCX` e `SCY`.
 
 ### 10.3 Depois da PPU Mínima
 
@@ -432,6 +486,9 @@ Enquanto esses três níveis estiverem claros, o projeto continua sob controle.
 - timer inicial;
 - base de interrupções;
 - regressão Blargg `cpu_instrs`;
+- VRAM real;
+- primeiro renderer de background por tiles;
+- primeiro top integrado CPU -> VRAM -> PPU -> framebuffer -> VGA;
 - medição contínua de recursos.
 
 ### Ainda É Provisório ou Incompleto
@@ -440,7 +497,8 @@ Enquanto esses três níveis estiverem claros, o projeto continua sob controle.
 - ROM interna temporária;
 - parte dos registradores de I/O;
 - joypad;
-- PPU real;
+- PPU scanline-accurate;
+- scroll, window, sprites, modos e DMA da PPU;
 - timing exato da CPU;
 - comportamento completo de `HALT` e `STOP`;
 - carregamento final de ROMs;
@@ -484,17 +542,21 @@ Hoje, o projeto já possui:
 - timer inicial;
 - interrupções básicas;
 - integração CPU + vídeo preservada;
+- primeira PPU mínima integrada a VRAM, framebuffer e VGA;
+- primeira imagem de PPU alimentada por dados escritos pela CPU;
+- primeira validação visual em hardware real da cadeia
+  `CPU -> VRAM -> PPU -> framebuffer -> VGA`;
 - recursos medidos e ainda dentro do limite da placa.
 
 O próximo passo correto é:
 
 ```text
-fechar a fidelidade temporal da CPU antes de iniciar a PPU real
+substituir a ROM de integração embutida por um fluxo de programa de teste mais
+explícito, mantendo o caminho CPU -> VRAM -> PPU -> framebuffer -> VGA
 ```
 
-Depois disso, o grande capítulo seguinte será a PPU. A partir dela, começaremos
-a sair do território dos testes de subsistema e a entrar no território de uma
-máquina cada vez mais parecida com um Game Boy de verdade.
+Agora começamos a sair do território dos testes de subsistema e a entrar no
+território de uma máquina cada vez mais parecida com um Game Boy de verdade.
 
 ## 15. Atualização: Timing de CPU Contra o Timer
 
@@ -594,3 +656,12 @@ Essa primeira fatia real de PPU deve ser pequena e verificável:
 3. leitura de tile map;
 4. geração de background estático por tiles;
 5. ainda sem sprites, window, STAT ou DMA.
+
+O primeiro passo dessa sequência já começou:
+
+- a faixa `0x8000..0x9FFF` foi reservada como VRAM real de 8 KiB;
+- o framebuffer experimental do smoke atual foi mantido separadamente em
+  `0xA000..0xBFFF`;
+- a nova VRAM possui porta de CPU e porta de leitura reservada para a futura PPU;
+- o custo de memória subiu para `177.152 / 276.480` bits e `22 / 30` M9Ks,
+  mostrando cedo o peso real da etapa visual no EP4CE6.

@@ -58,7 +58,13 @@ O projeto já possui:
 - ALU inicial com flags Z, N, H e C;
 - decoder inicial;
 - barramento inicial extraído para `bus_controller.vhd`;
-- WRAM inicial reduzida por restrição de recursos;
+- VRAM inicial real de 8 KiB em `0x8000..0x9FFF`;
+- primeiro caminho PPU -> framebuffer implementado para background estático por
+  tiles;
+- primeiro caminho integrado CPU -> VRAM -> PPU -> framebuffer implementado;
+- primeiro caminho integrado CPU -> VRAM -> PPU -> framebuffer -> VGA validado
+  em hardware real com padrão de tiles visível no monitor;
+- WRAM completa de 8 KiB com leitura registrada;
 - HRAM e stubs de I/O;
 - IE e IF básicos;
 - timer DMG inicial extraído para `rtl/io/timer.vhd`, com DIV/TIMA/TMA/TAC,
@@ -91,6 +97,14 @@ Checkpoint atual:
 - Significado: checkpoint funcional de M3 com despacho inicial real de
   interrupções, Blargg `02-interrupts.gb` passando em simulação, regressões
   principais preservadas e build Quartus completo sem erros.
+
+Checkpoint mais recente:
+
+- Commit: `acb7991`
+- Mensagem: `Checkpoint local CPU timing Blargg suite`
+- Significado: fechamento da escada local de CPU/timing do Blargg com
+  `cpu_instrs`, `instr_timing`, `mem_timing`, `mem_timing-2`,
+  `interrupt_time` e `halt_bug` passando.
 
 Depois do checkpoint `202fa47`, foram feitas expansões importantes agora
 consolidadas no checkpoint atual:
@@ -152,6 +166,19 @@ Sessão atual em andamento, ainda sem checkpoint:
 - `interrupt_time.gb` foi promovido para regressão real do Blargg e alcança
   `Passed`, confirmando os 13 ciclos esperados pelo teste.
 - `halt_bug.gb` também alcança `Passed` no runner atual.
+- a primeira fatia da fase seguinte começou com VRAM real de 8 KiB em
+  `0x8000..0x9FFF`, preservando o framebuffer experimental em `0xA000..0xBFFF`
+  apenas para o smoke visual atual;
+- `rtl/ppu/ppu_background_renderer.vhd` passou a consumir a porta de leitura da
+  VRAM e gerar um background estático por tiles;
+- `rtl/top/ppu_background_demo_top.vhd` passou a ser o top visual da fase atual,
+  ligando loader de demonstração, barramento, VRAM, PPU mínima, framebuffer e
+  VGA.
+- `rtl/top/cpu_ppu_background_demo_top.vhd` integra CPU e PPU: a CPU escreve
+  tile data e tile map em VRAM, sinaliza conclusão em `0xFF80`, e só então a PPU
+  renderiza;
+- o mesmo top foi validado em hardware real: borda preta, área central clara e
+  primeira faixa alternando tiles brancos e quadriculados.
 
 Validação rápida executada nesta sessão:
 
@@ -185,8 +212,25 @@ Validação rápida executada nesta sessão:
 - `run_cpu_interrupt_time.do` — Passed;
 - `run_cpu_halt_bug.do` — Passed;
 - `run_cpu_timer_blargg_probe.do` — diagnóstico concluído com `LD BC,nn = 3`;
+- `run_vram.do` — Passed;
+- `run_ppu_background_renderer.do` — Passed;
+- `run_ppu_background_demo_top.do` — Passed;
+- `run_cpu_ppu_background_demo_top.do` — Passed;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
+- build Quartus completo da primeira fatia de VRAM em `2026-05-16` — Passed,
+  com `4.290 / 6.272` LEs usados (`68%`), `177.152 / 276.480` bits de memória
+  (`64%`) e `22 / 30` blocos M9K usados (`73%`).
+- build Quartus completo do `ppu_background_demo_top` em `2026-05-16` —
+  Passed, com `405 / 6.272` LEs usados (`6%`), `111.616 / 276.480` bits de
+  memória (`40%`) e `14 / 30` blocos M9K usados (`47%`). Este top é parcial e
+  não inclui a CPU/WRAM completas, portanto não substitui o custo do top de
+  sistema.
+- build Quartus completo do `cpu_ppu_background_demo_top` em `2026-05-16` —
+  Passed, com `4.235 / 6.272` LEs usados (`68%`), `177.152 / 276.480` bits de
+  memória (`64%`) e `22 / 30` blocos M9K usados (`73%`).
+- validação em hardware real do `cpu_ppu_background_demo_top` em `2026-05-16`
+  — Passed visualmente no monitor VGA-HDMI com o padrão esperado de tiles.
 
 Checkpoint pronto para formalização:
 
@@ -295,7 +339,9 @@ Ainda pendente:
 Implementado:
 
 - ROM interna temporária em simulação/top smoke;
-- janela experimental de framebuffer/VRAM em `0x8000`;
+- VRAM real de 8 KiB em `0x8000..0x9FFF`;
+- janela experimental de framebuffer mantida separadamente em `0xA000..0xBFFF`
+  para o smoke visual legado;
 - WRAM completa de 8 KiB em `0xC000..0xDFFF`, com leitura registrada;
 - espelho de WRAM em `0xE000..0xFDFF`;
 - HRAM em `0xFF80..0xFFFE`;
@@ -327,13 +373,19 @@ Implementado:
 - framebuffer 160x144 com escala para VGA;
 - padrão visual validado em hardware;
 - smoke top com CPU escrevendo pixels no framebuffer;
+- primeiro produtor PPU mínimo lendo tile data e tile map da VRAM;
+- top visual `ppu_background_demo_top` com integração VRAM -> PPU ->
+  framebuffer -> VGA;
+- top visual `cpu_ppu_background_demo_top` com integração CPU -> VRAM -> PPU ->
+  framebuffer -> VGA;
+- validação visual em hardware real do top integrado, confirmando que a imagem
+  exibida já depende de conteúdo escrito pela CPU e lido pela PPU;
 - display de sete segmentos mostrando `1234` em caso de sucesso.
 
 Ainda pendente:
 
-- PPU real;
-- VRAM real com tile data;
-- tile map;
+- PPU scanline-accurate;
+- scroll;
 - sprites;
 - window;
 - modos da PPU;
@@ -388,32 +440,44 @@ Próximo alvo de teste:
 
 ## 6. Linha de Evolução do Projeto
 
-### Etapa Atual: M3/M4 de Transição
+### Etapa Atual: Início de M5 com Base M3/M4 Preservada
 
 Estamos na transição entre:
 
-- M3: CPU LR35902;
-- M4: barramento e mapa de memória.
+- M4: barramento e mapa de memória já utilizável;
+- M5: primeira PPU real ainda mínima.
 
-O foco imediato não é jogo e não é PPU. O foco é fazer a CPU executar programas
-de teste cada vez mais próximos de ROMs reais.
+O foco imediato não é jogo ainda. O foco agora é fazer a PPU crescer de modo
+verificável sem perder a base de CPU/timing que já foi conquistada.
+
+O marco visual atual prova que os blocos já cooperam fisicamente no hardware:
+
+```text
+CPU -> barramento -> VRAM -> PPU -> framebuffer -> VGA
+```
+
+Ele ainda não prova uma PPU fiel ao DMG-01. O renderer continua sendo estático e
+de execução única, sem scroll, modos, sprites ou temporização por scanline.
 
 ### Próxima Linha de Trabalho
 
-1. Usar o runner de ROM real como ferramenta principal de M3.
-2. Avançar pela lista Blargg individual por evidência.
-3. Implementar apenas a menor fatia exigida por cada falha real.
-4. Manter scripts específicos para ROMs longas quando necessário.
-5. Atualizar documentação após cada conjunto de ROMs que passa.
+1. Preservar a suíte Blargg de CPU/timing como regressão obrigatória.
+2. Substituir a ROM de integração embutida por um fluxo de programa de teste mais
+   explícito.
+3. Introduzir os primeiros registradores LCD que alteram o background, começando
+   por `SCX` e `SCY`.
+4. Evoluir o produtor de background de preenchimento único para geração por
+   scanline.
+5. Atualizar documentação e recursos após cada corte verificável.
 
 Depois disso:
 
-1. consolidar a regressão individual `cpu_instrs` por grupos;
-2. fechar o timer DMG inicial com regressões e síntese;
-3. usar a ROM agregada `cpu_instrs.gb` apenas como teste longo de checkpoint;
-4. manter `instr_timing.gb` como regressão obrigatória já conquistada;
-5. avançar para `mem_timing-2`, `interrupt_time`, `halt_bug`, joypad,
-   interrupções com precisão maior e PPU.
+1. adicionar scroll;
+2. adicionar window;
+3. adicionar OAM/sprites;
+4. implementar modos da PPU, VBlank, STAT e DMA;
+5. retomar joypad e fluxo de ROM para começar a aproximar o sistema de ROMs
+   gráficas reais.
 
 ## 7. Ordem Recomendada para Blargg
 
@@ -683,13 +747,16 @@ Resultado:
 O próximo alvo oficial recomendado é:
 
 ```text
-Manter `instr_timing.gb`, `mem_timing`, `mem_timing-2`, `interrupt_time.gb` e
-`halt_bug.gb` como regressões obrigatórias, formalizar o checkpoint desta fase e
-iniciar a primeira fatia real de PPU.
+Substituir a ROM de integração embutida por um fluxo de programa de teste mais
+explícito, mantendo o novo caminho CPU -> VRAM -> PPU -> framebuffer -> VGA e
+preservando toda a regressão já conquistada.
 ```
 
 Critério de sucesso:
 
+- manter `run_ppu_background_renderer.do` passando;
+- manter `run_ppu_background_demo_top.do` passando;
+- manter `run_cpu_ppu_background_demo_top.do` passando;
 - manter `run_cpu_timing_probe.do` passando;
 - manter `run_cpu_instr_timing.do` passando;
 - manter `run_cpu_mem_timing.do` passando;
@@ -700,19 +767,10 @@ Critério de sucesso:
 - manter `run_timer.do` passando;
 - manter `07-jr,jp,call,ret,rst.gb` passando;
 - preservar `JR cc,e` em `2/3` ciclos para não tomado/tomado;
-- identificar qual família ainda tem contagem de M-ciclos incorreta;
-- adicionar primeiro um caso self-checking a `tb_cpu_timing_probe`;
-- implementar apenas a menor correção necessária em `cpu.vhd`;
-- repetir a síntese e registrar o novo custo antes de avançar para outra
-  família.
-
-Primeira fatia real de PPU recomendada depois do checkpoint:
-
-```text
-Introduzir VRAM real e um produtor mínimo de background por tiles, ainda sem
-sprites, window ou DMA, para que a primeira imagem da próxima fase venha da PPU
-e não mais de writes diretos da CPU no framebuffer.
-```
+- preservar a porta dual de VRAM já inferida;
+- manter o primeiro renderer restrito a background, sem sprites, window ou DMA;
+- repetir a síntese e registrar o custo do top completo à medida que a PPU
+  crescer.
 
 ## 15. Princípio de Engenharia do Projeto
 
