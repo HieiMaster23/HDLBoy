@@ -16,7 +16,9 @@ use ieee.numeric_std.all;
 
 entity timer is
     generic (
-        G_DIV_COUNTER_STEP : integer := 4
+        G_DIV_COUNTER_STEP      : integer := 4;
+        G_DIV_COUNTER_RESET     : integer := 4;
+        G_TIMA_READ_AFTER_TICK  : boolean := true
     );
     port (
         clk                 : in  std_logic;
@@ -43,7 +45,6 @@ architecture rtl of timer is
     signal tma_reg : std_logic_vector(7 downto 0);
     signal tac_reg : std_logic_vector(2 downto 0);
     signal overflow_pending : std_logic;
-    signal overflow_delay : unsigned(1 downto 0);
     signal timer_interrupt_set_reg : std_logic;
 
     function timer_input(
@@ -66,6 +67,31 @@ architecture rtl of timer is
         end if;
     end function timer_input;
 
+    function visible_tima_after_tick(
+        counter_in : unsigned(15 downto 0);
+        step_in    : integer;
+        tima_in    : std_logic_vector(7 downto 0);
+        tma_in     : std_logic_vector(7 downto 0);
+        tac_in     : std_logic_vector(2 downto 0);
+        pending_in : std_logic) return std_logic_vector is
+        variable div_next_v : unsigned(15 downto 0);
+    begin
+        div_next_v := counter_in + to_unsigned(step_in, 16);
+
+        if pending_in = '1' then
+            return tima_in;
+        elsif timer_input(counter_in, tac_in) = '1' and
+              timer_input(div_next_v, tac_in) = '0' then
+            if tima_in = x"FF" then
+                return x"00";
+            else
+                return std_logic_vector(unsigned(tima_in) + 1);
+            end if;
+        else
+            return tima_in;
+        end if;
+    end function visible_tima_after_tick;
+
 begin
 
     p_timer: process(clk)
@@ -77,12 +103,13 @@ begin
     begin
         if rising_edge(clk) then
             if reset = '1' then
-                div_counter <= (others => '0');
+                -- Match the boot-time divider phase expected by the current
+                -- M-cycle CPU model used by the Blargg timing harness.
+                div_counter <= to_unsigned(G_DIV_COUNTER_RESET, 16);
                 tima_reg <= (others => '0');
                 tma_reg <= (others => '0');
                 tac_reg <= (others => '0');
                 overflow_pending <= '0';
-                overflow_delay <= (others => '0');
                 timer_interrupt_set_reg <= '0';
             else
                 timer_interrupt_set_reg <= '0';
@@ -113,14 +140,10 @@ begin
                     if write_tima = '1' then
                         tima_reg <= write_data;
                         overflow_pending <= '0';
-                        overflow_delay <= (others => '0');
-                    elsif overflow_delay = "11" then
+                    else
                         tima_reg <= tma_next_v;
                         overflow_pending <= '0';
-                        overflow_delay <= (others => '0');
                         timer_interrupt_set_reg <= '1';
-                    else
-                        overflow_delay <= overflow_delay + 1;
                     end if;
                 else
                     if write_tima = '1' then
@@ -129,7 +152,6 @@ begin
                         if tima_reg = x"FF" then
                             tima_reg <= x"00";
                             overflow_pending <= '1';
-                            overflow_delay <= (others => '0');
                         else
                             tima_reg <= std_logic_vector(unsigned(tima_reg) + 1);
                         end if;
@@ -140,7 +162,12 @@ begin
     end process p_timer;
 
     div_read <= std_logic_vector(div_counter(15 downto 8));
-    tima_read <= tima_reg;
+    -- The current CPU bus model samples reads at the end of an M-cycle. Expose
+    -- the TIMA value that is visible after the timer edge of that same M-cycle.
+    tima_read <= visible_tima_after_tick(div_counter, G_DIV_COUNTER_STEP,
+                                         tima_reg, tma_reg, tac_reg,
+                                         overflow_pending)
+                 when G_TIMA_READ_AFTER_TICK else tima_reg;
     tma_read <= tma_reg;
     tac_read <= "11111" & tac_reg;
     timer_interrupt_set <= timer_interrupt_set_reg;

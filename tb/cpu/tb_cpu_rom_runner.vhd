@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Module:      tb_cpu_rom_runner
--- Description: ROM-style CPU runner with Blargg-like serial transcript capture
+-- Description: ROM-style CPU runner with Blargg serial and memory status capture
 -- Author:      Rafael Siqueira de Oliveira
 -- Created:     2026-05-14
 -- Target:      Simulation only (ModelSim-Altera)
@@ -10,6 +10,7 @@
 -- It loads a real Game Boy ROM image and captures output through:
 --   0xFF01 = SB data
 --   0xFF02 = SC control, bit 7 starts a transfer
+-- It also observes Blargg's cartridge-RAM status protocol at 0xA000.
 -- =============================================================================
 
 library ieee;
@@ -20,7 +21,11 @@ entity tb_cpu_rom_runner is
     generic (
         G_ROM_PATH       : string := "../../gb-test-roms-master/cpu_instrs/individual/06-ld r,r.gb";
         G_TIMEOUT_CYCLES : integer := 10000000;
-        G_VERBOSE_SERIAL : boolean := true
+        G_VERBOSE_SERIAL : boolean := true;
+        G_TIMER_DIV_RESET : integer := 4;
+        G_TIMA_READ_AFTER_TICK : boolean := true;
+        G_OBSERVE_MEMORY_STATUS : boolean := true;
+        G_TRACE_INSTR_TIMING : boolean := false
     );
 end entity tb_cpu_rom_runner;
 
@@ -46,10 +51,18 @@ architecture sim of tb_cpu_rom_runner is
     constant IO_WY_ADDR       : std_logic_vector(15 downto 0) := x"FF4A";
     constant IO_WX_ADDR       : std_logic_vector(15 downto 0) := x"FF4B";
     constant IE_ADDR          : std_logic_vector(15 downto 0) := x"FFFF";
+    constant BLARGG_SAVED_SP_ADDR  : std_logic_vector(15 downto 0) := x"D81E";
+    constant BLARGG_INSTR_ADDR     : std_logic_vector(15 downto 0) := x"D820";
+    constant BLARGG_INSTR_JP_ADDR  : std_logic_vector(15 downto 0) := x"D826";
+    constant BLARGG_STATUS_ADDR    : integer := 16#A000#;
+    constant BLARGG_TEXT_ADDR      : integer := 16#A004#;
     constant MAX_SERIAL_LEN   : integer := 4096;
+    constant TRACE_DEPTH      : integer := 32;
 
     type memory_t is array (0 to 65535) of std_logic_vector(7 downto 0);
     type serial_buffer_t is array (0 to MAX_SERIAL_LEN - 1) of std_logic_vector(7 downto 0);
+    type trace_pc_array_t is array (0 to TRACE_DEPTH - 1) of std_logic_vector(15 downto 0);
+    type trace_opcode_array_t is array (0 to TRACE_DEPTH - 1) of std_logic_vector(7 downto 0);
     type byte_file_t is file of character;
 
     impure function load_rom(path_in : string) return memory_t is
@@ -126,6 +139,9 @@ architecture sim of tb_cpu_rom_runner is
     signal debug_pc : std_logic_vector(15 downto 0);
     signal debug_sp : std_logic_vector(15 downto 0);
     signal debug_state : std_logic_vector(4 downto 0);
+    signal trace_pc : trace_pc_array_t := (others => (others => '0'));
+    signal trace_opcode : trace_opcode_array_t := (others => (others => '0'));
+    signal trace_wr_index : integer range 0 to TRACE_DEPTH - 1 := 0;
 
     signal serial_sb_reg : std_logic_vector(7 downto 0) := x"00";
     signal serial_sc_reg : std_logic_vector(7 downto 0) := x"7E";
@@ -153,6 +169,7 @@ architecture sim of tb_cpu_rom_runner is
     signal timer_write_tima : std_logic;
     signal timer_write_tma : std_logic;
     signal timer_write_tac : std_logic;
+    signal instr_timing_trace_count : integer range 0 to 255 := 0;
     signal mem : memory_t := load_rom(G_ROM_PATH);
 
 begin
@@ -208,6 +225,10 @@ begin
     timer_write_tac <= '1' when mem_write = '1' and mem_addr = IO_TAC_ADDR else '0';
 
     u_timer: entity work.timer
+        generic map (
+            G_DIV_COUNTER_RESET => G_TIMER_DIV_RESET,
+            G_TIMA_READ_AFTER_TICK => G_TIMA_READ_AFTER_TICK
+        )
         port map (
             clk => clk,
             reset => reset,
@@ -379,7 +400,10 @@ begin
                         io_wx_reg <= mem_data_out;
                     elsif mem_addr = IE_ADDR then
                         ie_reg <= mem_data_out;
-                    elsif unsigned(mem_addr) >= x"8000" and unsigned(mem_addr) <= x"FDFF" then
+                    elsif (unsigned(mem_addr) >= x"8000" and unsigned(mem_addr) <= x"9FFF") or
+                          (unsigned(mem_addr) >= x"C000" and unsigned(mem_addr) <= x"FDFF") then
+                        mem(to_integer(unsigned(mem_addr))) <= mem_data_out;
+                    elsif unsigned(mem_addr) >= x"A000" and unsigned(mem_addr) <= x"BFFF" then
                         mem(to_integer(unsigned(mem_addr))) <= mem_data_out;
                     elsif unsigned(mem_addr) >= x"FF80" and unsigned(mem_addr) <= x"FFFE" then
                         mem(to_integer(unsigned(mem_addr))) <= mem_data_out;
@@ -389,7 +413,80 @@ begin
         end if;
     end process p_memory_and_serial;
 
+    p_fetch_trace: process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                trace_pc <= (others => (others => '0'));
+                trace_opcode <= (others => (others => '0'));
+                trace_wr_index <= 0;
+                instr_timing_trace_count <= 0;
+            elsif debug_state = "00000" and mem_read = '1' then
+                trace_pc(trace_wr_index) <= mem_addr;
+                trace_opcode(trace_wr_index) <= mem_data_in;
+                if trace_wr_index = TRACE_DEPTH - 1 then
+                    trace_wr_index <= 0;
+                else
+                    trace_wr_index <= trace_wr_index + 1;
+                end if;
+                if G_TRACE_INSTR_TIMING and instr_timing_trace_count < 255 and
+                   unsigned(mem_addr) >= unsigned(BLARGG_INSTR_ADDR) and
+                   unsigned(mem_addr) <= unsigned(BLARGG_INSTR_JP_ADDR) + 2 then
+                    report "ITRACE FETCH $" & slv16_to_hex(mem_addr) &
+                           " => $" & slv8_to_hex(mem_data_in) &
+                           " PC=$" & slv16_to_hex(debug_pc) &
+                           " STATE=$" & slv8_to_hex("000" & debug_state)
+                           severity note;
+                    instr_timing_trace_count <= instr_timing_trace_count + 1;
+                end if;
+            elsif G_TRACE_INSTR_TIMING and instr_timing_trace_count < 255 then
+                if mem_write = '1' and
+                   unsigned(mem_addr) >= unsigned(BLARGG_INSTR_ADDR) and
+                   unsigned(mem_addr) <= unsigned(BLARGG_INSTR_JP_ADDR) + 2 then
+                    report "ITRACE WRITE $" & slv16_to_hex(mem_addr) &
+                           " <= $" & slv8_to_hex(mem_data_out) &
+                           " PC=$" & slv16_to_hex(debug_pc) &
+                           " STATE=$" & slv8_to_hex("000" & debug_state)
+                           severity note;
+                    instr_timing_trace_count <= instr_timing_trace_count + 1;
+                elsif mem_read = '1' and
+                      unsigned(mem_addr) >= unsigned(BLARGG_INSTR_ADDR) and
+                      unsigned(mem_addr) <= unsigned(BLARGG_INSTR_JP_ADDR) + 2 then
+                    report "ITRACE READ  $" & slv16_to_hex(mem_addr) &
+                           " => $" & slv8_to_hex(mem_data_in) &
+                           " PC=$" & slv16_to_hex(debug_pc) &
+                           " STATE=$" & slv8_to_hex("000" & debug_state)
+                           severity note;
+                    instr_timing_trace_count <= instr_timing_trace_count + 1;
+                elsif mem_write = '1' and mem_addr = IO_TIMA_ADDR then
+                    report "ITRACE TIMA WRITE $" & slv8_to_hex(mem_data_out) &
+                           " PC=$" & slv16_to_hex(debug_pc) &
+                           " STATE=$" & slv8_to_hex("000" & debug_state)
+                           severity note;
+                    instr_timing_trace_count <= instr_timing_trace_count + 1;
+                elsif mem_read = '1' and mem_addr = IO_TIMA_ADDR then
+                    report "ITRACE TIMA READ $" & slv8_to_hex(mem_data_in) &
+                           " PC=$" & slv16_to_hex(debug_pc) &
+                           " STATE=$" & slv8_to_hex("000" & debug_state)
+                           severity note;
+                    instr_timing_trace_count <= instr_timing_trace_count + 1;
+                elsif mem_write = '1' and mem_addr = BLARGG_SAVED_SP_ADDR then
+                    report "ITRACE SAVED_SP_LO <= $" & slv8_to_hex(mem_data_out) &
+                           " PC=$" & slv16_to_hex(debug_pc)
+                           severity note;
+                    instr_timing_trace_count <= instr_timing_trace_count + 1;
+                elsif mem_write = '1' and mem_addr = std_logic_vector(unsigned(BLARGG_SAVED_SP_ADDR) + 1) then
+                    report "ITRACE SAVED_SP_HI <= $" & slv8_to_hex(mem_data_out) &
+                           " PC=$" & slv16_to_hex(debug_pc)
+                           severity note;
+                    instr_timing_trace_count <= instr_timing_trace_count + 1;
+                end if;
+            end if;
+        end if;
+    end process p_fetch_trace;
+
     p_stimulus: process
+        variable trace_index_v : integer;
     begin
         report "=== tb_cpu_rom_runner: Starting simulation ===" severity note;
 
@@ -402,6 +499,12 @@ begin
         for i in 0 to G_TIMEOUT_CYCLES loop
             wait until rising_edge(clk);
             if unsupported_opcode = '1' then
+                for j in 0 to TRACE_DEPTH - 1 loop
+                    trace_index_v := (trace_wr_index + j) mod TRACE_DEPTH;
+                    report "TRACE PC=$" & slv16_to_hex(trace_pc(trace_index_v)) &
+                           " OPC=$" & slv8_to_hex(trace_opcode(trace_index_v))
+                           severity note;
+                end loop;
                 assert false
                     report "FAIL: unsupported opcode near PC=$" & slv16_to_hex(debug_pc) &
                            ", prev=$" & slv8_to_hex(mem(to_integer(unsigned(debug_pc) - 1))) &
@@ -420,6 +523,25 @@ begin
                 report "=== tb_cpu_rom_runner: ALL TESTS PASSED ===" severity note;
                 sim_done <= true;
                 wait;
+            end if;
+            if G_OBSERVE_MEMORY_STATUS and
+               mem(BLARGG_STATUS_ADDR + 1) = x"DE" and
+               mem(BLARGG_STATUS_ADDR + 2) = x"B0" and
+               mem(BLARGG_STATUS_ADDR + 3) = x"61" and
+               mem(BLARGG_STATUS_ADDR) /= x"80" and
+               mem(BLARGG_STATUS_ADDR) /= x"FF" then
+                if mem(BLARGG_STATUS_ADDR) = x"00" then
+                    report "=== tb_cpu_rom_runner: MEMORY STATUS CONTAINS PASSED ===" severity note;
+                    report "=== tb_cpu_rom_runner: ALL TESTS PASSED ===" severity note;
+                    sim_done <= true;
+                    wait;
+                else
+                    assert false
+                        report "FAIL: Blargg memory status code $" &
+                               slv8_to_hex(mem(BLARGG_STATUS_ADDR)) &
+                               ", text starts $" & slv8_to_hex(mem(BLARGG_TEXT_ADDR))
+                        severity failure;
+                end if;
             end if;
             if serial_count >= 6 and
                serial_buffer(serial_count - 6) = x"46" and

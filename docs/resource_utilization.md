@@ -508,3 +508,186 @@ Notes:
 - The design remains below the 80% warning threshold, but 66% logic usage keeps
   the EP4CE6 budget tight. Future work should continue to favor shared control
   states, inferred RAM, and incremental synthesis checkpoints.
+
+## M3 Instruction Timing Bring-Up Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_video_smoke_top`
+
+Report date: 2026-05-15
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,251 | 6,272 | 68% |
+| Registers | 1,500 | 6,272 | 24% |
+| Pins | 27 | 92 | 29% |
+| Memory bits | 111,616 | 276,480 | 40% |
+| M9Ks | 14 | 30 | 47% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, `clk_50mhz` | 17.071 ns |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 24.480 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 177.247 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.451 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.502 ns |
+| Hold, slow 1200 mV 85 C, `clk_50mhz` | 0.735 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- This slice adds fetch-stage fast paths for the first instruction families
+  proven to be one M-cycle too long during `instr_timing` bring-up.
+- Compared with the previous timer slice, the fitter increased from 4,157 to
+  4,251 logic elements, a cost of 94 LEs while register count, memory usage,
+  M9K count, and PLL usage stayed flat.
+- `instr_timing.gb` now gets past its initial timer self-check and reaches the
+  opcode timing phase, but the ROM does not pass yet.
+- At 68% logic utilization, the design still has margin on the EP4CE6, but
+  timing fidelity must keep being added selectively rather than by duplicating
+  large control structures.
+
+## M3 Instruction Timing Expansion Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_video_smoke_top`
+
+Report date: 2026-05-15
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,511 | 6,272 | 72% |
+| Registers | 1,501 | 6,272 | 24% |
+| Pins | 27 | 92 | 29% |
+| Memory bits | 111,616 | 276,480 | 40% |
+| M9Ks | 14 | 30 | 47% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, `clk_50mhz` | 17.071 ns |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 24.693 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 169.147 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.650 ns |
+| Hold, slow 1200 mV 85 C, `clk_50mhz` | 0.735 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- This slice extends timing coverage to indirect pair loads/stores,
+  accumulator rotates, `DAA/CPL/SCF/CCF`, `LD (nn),SP`, and taken/not-taken
+  conditional relative jumps.
+- `JR cc,e` now has distinct timing behavior: 2 M-cycles when not taken and
+  3 M-cycles when taken.
+- Compared with the prior timing bring-up slice, the fitter increased from
+  4,251 to 4,511 logic elements, a cost of 260 LEs for this expanded control
+  work.
+- The design still fits with timing margin, but 72% LE usage is a clear signal
+  that the current fetch fast-path style should be refactored before many more
+  timing families are added. Continuing with duplicated execution logic would
+  spend EP4CE6 headroom too quickly.
+
+## M3 Instruction Timing Control Refactor Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_video_smoke_top`
+
+Report date: 2026-05-15
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,268 | 6,272 | 68% |
+| Registers | 1,501 | 6,272 | 24% |
+| Pins | 27 | 92 | 29% |
+| Memory bits | 111,616 | 276,480 | 40% |
+| M9Ks | 14 | 30 | 47% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, `clk_50mhz` | 17.072 ns |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 26.480 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 174.655 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.502 ns |
+| Hold, slow 1200 mV 85 C, `clk_50mhz` | 0.736 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- This slice refactors the fetch control after the initial timing expansion.
+- Shared opcode helper predicates now classify register-addressed memory
+  transfers for both `S_FETCH` and `S_DECODE`.
+- Duplicate register-only `LD r,r`, `INC/DEC r`, `ALU r`, and one-cycle
+  accumulator/flag-control execution bodies were removed from the decode path.
+- Compared with the previous timing expansion slice, the fitter dropped from
+  4,511 to 4,268 logic elements, recovering 243 LEs while preserving the
+  expanded timing coverage and the Blargg regressions used for this slice.
+- A generic decoder-metadata routing experiment for `LD_MEM` was rejected after
+  it broke the WRAM copy flow exercised by `06-ld r,r.gb`; the final
+  implementation keeps the small explicit opcode distinction because it is both
+  safer and cheaper on the EP4CE6.
+
+## M3 Blargg Timing Checkpoint
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_video_smoke_top`
+
+Report date: 2026-05-16
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,283 | 6,272 | 68% |
+| Registers | 1,502 | 6,272 | 24% |
+| Pins | 27 | 92 | 29% |
+| Memory bits | 111,616 | 276,480 | 40% |
+| M9Ks | 14 | 30 | 47% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, `clk_50mhz` | 17.072 ns |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 24.697 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 174.035 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.501 ns |
+| Hold, slow 1200 mV 85 C, `clk_50mhz` | 0.736 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- This slice promotes the CPU-visible TIMA read value used by the current
+  M-cycle bus model, allowing Blargg `instr_timing.gb` to reach `Passed`.
+- Blargg `mem_timing` individual ROMs `01-read_timing.gb`,
+  `02-write_timing.gb`, and `03-modify_timing.gb` reached `Passed`.
+- The aggregate Blargg `mem_timing.gb` ROM also reached `Passed`.
+- Blargg `mem_timing-2` individual ROMs and aggregate ROM reached `Passed` in
+  simulation after extending the ROM runner to observe the documented memory
+  status protocol at `0xA000`.
+- Compared with the prior control-refactor checkpoint, the fitter increased
+  from 4,268 to 4,283 logic elements, a cost of 15 LEs. The design remains at
+  68% logic utilization, with memory and PLL use unchanged.
+- The `mem_timing-2` runner support is testbench-only, so it does not change
+  FPGA resource utilization.

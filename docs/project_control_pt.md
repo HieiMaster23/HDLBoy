@@ -68,7 +68,12 @@ O projeto já possui:
   via serial;
 - pacote local de ROMs Blargg baixado em `gb-test-roms-master`;
 - Blargg `cpu_instrs` individuais `01`, `02`, `03`, `04`, `05`, `06`, `07`,
-  `08`, `09`, `10` e `11` passando via transcript serial.
+  `08`, `09`, `10` e `11` passando via transcript serial;
+- Blargg `instr_timing.gb` passando via transcript serial no runner real.
+- Blargg `mem_timing` individual e agregado passando via transcript serial.
+- Blargg `mem_timing-2` individual e agregado passando via status de memória
+  em `0xA000`;
+- Blargg `interrupt_time.gb` passando no runner real.
 
 ## 4. Checkpoints Confiáveis
 
@@ -127,6 +132,24 @@ Sessão atual em andamento, ainda sem checkpoint:
   suporte mínimo a `STOP`, ela avançou sem falha imediata e chegou pelo menos a
   `29:ok`, mas foi interrompida por tempo de simulação. Ela fica classificada
   como teste longo opcional, não como regressão diária.
+- a primeira fatia de fidelidade temporal foi criada com fast paths de fetch,
+  `S_JR_TAKEN` e a sonda local `tb_cpu_timing_probe`;
+- a reorganização inicial do controle de execução foi concluída: a roteirização
+  de loads por endereço de registrador passou a usar predicados compartilhados,
+  e os corpos redundantes de instruções já resolvidas no fetch foram removidos
+  de `S_DECODE`;
+- uma tentativa de roteirização genérica de `LD_MEM` por metadados do decoder
+  foi rejeitada após quebrar o fluxo de cópia para WRAM usado pelas ROMs Blargg.
+- a primeira falha real de `instr_timing.gb` foi corrigida na fronteira
+  CPU/barramento/timer: leituras de TIMA agora enxergam o incremento normal
+  visível ao fim do ciclo M, preservando o atraso separado de overflow.
+- `mem_timing` foi promovido para regressão real do Blargg: os três individuais
+  e a ROM agregada alcançam `Passed`.
+- `mem_timing-2` foi promovido para regressão real do Blargg: os três
+  individuais e a ROM agregada alcançam `Passed` via protocolo de status em
+  memória.
+- `interrupt_time.gb` foi promovido para regressão real do Blargg e alcança
+  `Passed`, confirmando os 13 ciclos esperados pelo teste.
 
 Validação rápida executada nesta sessão:
 
@@ -145,12 +168,28 @@ Validação rápida executada nesta sessão:
 - `run_cpu_blargg_10.do` — Passed na rodada longa;
 - `run_cpu_blargg_11.do` — Passed na rodada longa;
 - `run_cpu_video_smoke_top.do` — Passed;
-- build Quartus completo em `2026-05-15` — Passed, com `4.157 / 6.272` LEs
-  usados (`66%`) e temporização fechada.
+- `run_cpu_timing_probe.do` — Passed;
+- `run_cpu_instr_timing.do` — Passed;
+- `run_cpu_mem_timing_01.do` — Passed;
+- `run_cpu_mem_timing_02.do` — Passed;
+- `run_cpu_mem_timing_03.do` — Passed;
+- `run_cpu_mem_timing.do` — Passed;
+- `run_cpu_mem_timing_aggregate.do` — Passed;
+- `run_cpu_mem_timing2_01.do` — Passed;
+- `run_cpu_mem_timing2_02.do` — Passed;
+- `run_cpu_mem_timing2_03.do` — Passed;
+- `run_cpu_mem_timing2.do` — Passed;
+- `run_cpu_mem_timing2_aggregate.do` — Passed;
+- `run_cpu_interrupt_time.do` — Passed;
+- `run_cpu_timer_blargg_probe.do` — diagnóstico concluído com `LD BC,nn = 3`;
+- build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
+  usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 
 Ainda falta antes de checkpoint:
 
-- atualizar o commit/checkpoint após a regressão combinada.
+- decidir se este ponto já merece commit/checkpoint;
+- avançar para `halt_bug.gb`, o próximo alvo de CPU disponível no pacote
+  Blargg local.
 
 ## 5. Estado Atual por Área
 
@@ -332,13 +371,16 @@ Blargg `cpu_instrs` individuais passando:
 
 Próximo alvo de teste:
 
-- consolidar por etapas os testes individuais, usando `03`, `04`, `05`, `06` e
-  `08` como regressão rápida;
-- repetir os testes longos em uma rodada separada: `01`, `02`, `07`, `09`, `10`
-  e `11`;
-- tratar a ROM agregada `cpu_instrs.gb` como validação longa opcional;
-- depois do checkpoint do timer inicial, avançar para `instr_timing`,
-  `mem_timing`, `interrupt_time` e `halt_bug`.
+- `instr_timing.gb` já foi iniciado;
+- a primeira execução falhava ainda no autoteste do timer;
+- depois da primeira correção de fast-path da CPU, a ROM passou pela calibração
+  inicial e agora falha dentro da fase real de medição de opcodes;
+- manter `mem_timing-2`, `interrupt_time` e `halt_bug` para depois de fechar o
+  primeiro bloco de timing de instruções.
+- a sonda local agora cobre também `LD (BC),A`, `LD A,(BC)`, `RLCA`,
+  `LD (nn),SP`, `DAA`, `CPL`, `SCF`, `CCF` e `JR cc,e` tomado/não tomado.
+- a reorganização do controle reduziu o custo da fatia de timing de
+  `4.511 / 6.272` para `4.268 / 6.272` LEs sem perder os testes rápidos.
 
 ## 6. Linha de Evolução do Projeto
 
@@ -365,8 +407,9 @@ Depois disso:
 1. consolidar a regressão individual `cpu_instrs` por grupos;
 2. fechar o timer DMG inicial com regressões e síntese;
 3. usar a ROM agregada `cpu_instrs.gb` apenas como teste longo de checkpoint;
-4. avançar para timing, `HALT` bug, joypad, interrupções com precisão maior e
-   PPU.
+4. manter `instr_timing.gb` como regressão obrigatória já conquistada;
+5. avançar para `mem_timing-2`, `interrupt_time`, `halt_bug`, joypad,
+   interrupções com precisão maior e PPU.
 
 ## 7. Ordem Recomendada para Blargg
 
@@ -383,19 +426,29 @@ Ordem prática, considerando o estado atual do core:
 9. `10-bit ops.gb` — Passed com timeout longo parametrizado
 10. `01-special.gb` — Passed
 11. `02-interrupts.gb` — Passed com suporte inicial real de interrupções
+12. `instr_timing.gb` — Passed depois do ajuste de visibilidade da TIMA
+13. `mem_timing/individual/01-read_timing.gb` — Passed
+14. `mem_timing/individual/02-write_timing.gb` — Passed
+15. `mem_timing/individual/03-modify_timing.gb` — Passed
+16. `mem_timing/mem_timing.gb` — Passed
+17. `mem_timing-2/rom_singles/01-read_timing.gb` — Passed
+18. `mem_timing-2/rom_singles/02-write_timing.gb` — Passed
+19. `mem_timing-2/rom_singles/03-modify_timing.gb` — Passed
+20. `mem_timing-2/mem_timing.gb` — Passed
+21. `interrupt_time/interrupt_time.gb` — Passed
 
-Não começar por:
+Próximos grupos sensíveis:
 
-- `instr_timing`;
-- `mem_timing`;
-- `interrupt_time`;
 - `halt_bug.gb`;
 - `oam_bug`;
 - `dmg_sound`;
 - `cgb_sound`.
 
-Esses grupos dependem de timer, temporização exata, interrupções, PPU/OAM ou
-APU, e pertencem a fases posteriores.
+`instr_timing.gb`, `mem_timing`, `mem_timing-2` e `interrupt_time.gb` já
+passaram depois da correção da fronteira CPU/barramento/timer, do suporte ao
+status de memória do Blargg e da confirmação do caminho de interrupção. Os
+demais grupos dependem de `HALT` exato, PPU/OAM ou APU, e pertencem às próximas
+fases.
 
 ## 8. Dependências Principais
 
@@ -472,6 +525,19 @@ Toda fatia deve terminar com:
 - impacto de recursos, se houve alteração sintetizável;
 - limitações restantes;
 - próximo alvo recomendado.
+
+Para preservar material do futuro artigo/TCC, toda fatia relevante também deve
+deixar um rastro publicável com:
+
+- contexto;
+- objetivo;
+- decisão de projeto;
+- implementação;
+- verificação;
+- resultado;
+- lições aprendidas.
+
+O modelo de registro está em `docs/base_artigo_tcc_pt.md`.
 
 ## 10. Uso de Subagentes
 
@@ -590,44 +656,50 @@ Alvo concreto:
 O alvo oficial anterior era:
 
 ```text
-Preparar e executar gb-test-roms-master\cpu_instrs\individual\02-interrupts.gb
-no tb_cpu_rom_runner, capturando a saída serial via 0xFF01/0xFF02 até obter
-Passed, Failed ou a primeira falha útil.
+Refatorar o fast path de fetch para reduzir duplicação de lógica entre
+`S_FETCH` e `S_DECODE`, preservando as famílias de timing já corrigidas antes
+de expandir mais a cobertura de `instr_timing.gb`.
 ```
 
 Resultado:
 
-- `02-interrupts.gb` chegou a `Passed`;
-- a CPU agora aceita interrupções quando `IME=1` e `IE & IF` possui bit
-  pendente;
-- a prioridade inicial segue a ordem VBlank, STAT, Timer, Serial e Joypad;
-- o atendimento empilha o PC, limpa IME, salta para `0x40/0x48/0x50/0x58/0x60`
-  e emite `interrupt_ack`;
-- `RETI` reativa IME;
-- `EI` mantém atraso básico;
-- `HALT` sai quando há interrupção pendente;
-- o runner e o barramento inicial possuem timer inicial e limpeza de IF.
+- a roteirização de `LD_MEM` passou a usar predicados pequenos compartilhados
+  entre fetch e decode;
+- a versão genérica baseada apenas em metadados do decoder foi descartada após
+  causar regressão em ROM real;
+- os corpos redundantes de `LD r,r`, `INC/DEC r`, `ALU r`, rotações do
+  acumulador e controle de flags de 1 ciclo foram removidos de `S_DECODE`;
+- `run_cpu_timing_probe.do`, `03`, `04`, `05`, `06`, `07`, `08`,
+  `run_timer.do` e `run_cpu_video_smoke_top.do` continuaram passando;
+- a síntese caiu de `4.511 / 6.272` para `4.268 / 6.272` LEs, recuperando 243
+  LEs sem perder a cobertura temporal já conquistada.
 
 ## 14. Próximo Alvo Oficial
 
 O próximo alvo oficial recomendado é:
 
 ```text
-Fechar a fatia do timer DMG inicial e consolidar a regressão Blargg individual
-por grupos, sem depender da ROM agregada como teste diário.
+Manter `instr_timing.gb`, `mem_timing`, `mem_timing-2` e `interrupt_time.gb`
+como regressões obrigatórias e avançar para `halt_bug.gb`, usando sondas locais
+apenas para explicar falhas reais.
 ```
 
 Critério de sucesso:
 
+- manter `run_cpu_timing_probe.do` passando;
+- manter `run_cpu_instr_timing.do` passando;
+- manter `run_cpu_mem_timing.do` passando;
+- manter `run_cpu_mem_timing2.do` passando;
+- manter `run_cpu_interrupt_time.do` passando;
 - manter os rápidos `03`, `04`, `05`, `06` e `08` passando;
-- repetir os longos `01`, `02`, `07`, `09`, `10` e `11` antes do checkpoint;
 - manter `run_timer.do` passando;
-- não regredir `cpu_video_smoke_top`;
-- manter build Quartus sem erro;
-- documentar a ROM agregada como teste longo opcional;
-- medir impacto de recursos do timer novo no EP4CE6;
-- definir a próxima fatia entre `instr_timing`, `mem_timing`,
-  `interrupt_time` e `halt_bug`.
+- manter `07-jr,jp,call,ret,rst.gb` passando;
+- preservar `JR cc,e` em `2/3` ciclos para não tomado/tomado;
+- identificar qual família ainda tem contagem de M-ciclos incorreta;
+- adicionar primeiro um caso self-checking a `tb_cpu_timing_probe`;
+- implementar apenas a menor correção necessária em `cpu.vhd`;
+- repetir a síntese e registrar o novo custo antes de avançar para outra
+  família.
 
 ## 15. Princípio de Engenharia do Projeto
 
@@ -646,3 +718,142 @@ O ciclo correto é:
 
 Essa disciplina é o que evita que o projeto perca coerência à medida que a CPU,
 o barramento, a memória, o vídeo e os testes reais começam a se cruzar.
+
+## 16. Atualização da Fase de Timing
+
+Nesta etapa, o foco foi estabilizar a temporização sem quebrar os testes já
+conquistados.
+
+Resultado técnico:
+
+- a fase inicial do divisor do timer foi ajustada para o modelo atual de CPU em
+  ciclos M, permitindo que `instr_timing.gb` saia da calibração inicial do timer;
+- `JP nn` incondicional passou a preservar o quarto ciclo M;
+- `CALL nn` incondicional passou a preservar o ciclo interno antes dos writes de
+  pilha;
+- `RET` e `RETI` passaram a preservar o quarto ciclo M após a leitura do endereço
+  de retorno;
+- `tb_cpu_timing_probe` agora testa explicitamente `JP nn`, `CALL nn` e `RET`.
+
+Regressões executadas e aprovadas:
+
+- `run_cpu_smoke.do`;
+- `run_cpu_timing_probe.do`;
+- `run_timer.do`;
+- `run_cpu_blargg_02.do`;
+- `run_bus_controller.do`;
+- `run_cpu_video_smoke_top.do`.
+
+Estado de `instr_timing.gb`:
+
+- a ROM já avança além do erro inicial `Timer doesn't work properly`;
+- a investigação mostrou que as primeiras diferenças por opcode eram causadas
+  pela fronteira CPU/barramento/timer, não pelos opcodes isolados;
+- a ROM agora alcança `Passed` no runner real de ROM.
+
+Próximo alvo:
+
+1. manter `instr_timing.gb` como regressão obrigatória;
+2. avançar para as próximas ROMs de timing do Blargg;
+3. usar sondas locais apenas para localizar falhas já observadas nas ROMs reais;
+4. repetir as regressões rápidas;
+5. depois sintetizar e medir custo em LEs.
+
+Observação para hardware real:
+
+Quando a simulação de timing estiver mais estável, devemos levar uma parte desse
+trabalho para a placa OMDAZZ Cyclone IV EP4CE6 usando SignalTap. A validação deve
+capturar poucos sinais por vez, por exemplo `debug_pc`, `debug_state`,
+`mem_read`, `mem_write`, `mem_addr`, `timer_interrupt_set` e alguns sinais do
+timer. Isso é importante porque a simulação comprova o modelo lógico, mas o
+hardware real também revela problemas de fase, reset, clock, constraints e
+observabilidade que podem não aparecer no ModelSim.
+
+## 17. Diagnóstico Seguinte de `instr_timing`
+
+Nesta etapa, evitamos corrigir opcodes às cegas. A ROM `instr_timing.gb`
+começou a imprimir diferenças logo nos opcodes iniciais, mas a sonda local
+mostrou que muitos desses opcodes já possuem a contagem direta correta de ciclos
+M dentro da CPU.
+
+Alterações feitas:
+
+- o timer recebeu o genérico `G_DIV_COUNTER_RESET`, mantendo o valor padrão `4`;
+- o script `run_cpu_instr_timing.do` agora passa explicitamente essa fase para
+  deixar a hipótese visível;
+- `tb_cpu_rom_runner` também recebeu o genérico correspondente para permitir
+  varreduras curtas de fase sem editar o RTL;
+- `tb_cpu_timing_probe` foi ampliado com `INC BC`, `DEC BC`, `LD (HL+),A`,
+  `LD A,(HL+)`, `LDH A,(n)`, `LD A,(nn)` e `LD SP,HL`;
+- a hipótese de leitura de `TIMA` pós-tick foi refinada: o incremento normal da
+  TIMA passa a ser visível no fim do ciclo M atual, enquanto o atraso de
+  overflow continua preservado e coberto por `tb_timer`.
+
+Resultado:
+
+- `tb_cpu_timing_probe` continua passando com a cobertura ampliada;
+- `run_cpu_instr_timing.do` agora alcança `Passed`;
+- `run_timer.do` continua passando;
+- `run_cpu_smoke.do` continua passando;
+- `run_cpu_blargg_02.do` continua passando;
+- `run_bus_controller.do` continua passando;
+- `run_cpu_video_smoke_top.do` continua passando.
+
+Conclusão técnica:
+
+As primeiras linhas de `instr_timing.gb`, como `01:4-3`, `02:3-2` e `06:1-2`,
+não eram erro isolado nesses opcodes. A causa estava no ponto em que o timer
+torna `TIMA` visível para uma leitura de I/O da CPU dentro do ciclo M.
+
+Próximo alvo:
+
+1. manter essa correção como checkpoint de `instr_timing.gb`;
+2. manter `interrupt_time.gb` como regressão já conquistada;
+3. avançar para `halt_bug.gb`;
+4. comparar qualquer nova falha com a ROM real antes de mexer na FSM;
+5. só criar novas sondas locais quando elas ajudarem a explicar uma falha real.
+
+## 18. Sonda de Debug CPU/Timer
+
+Foi criada uma sonda local chamada `tb_cpu_timer_blargg_probe`. Ela não é um
+substituto para o Blargg e não deve ser usada como critério independente de
+aprovação. A função dela é apenas reduzir o problema e permitir observar a
+fronteira CPU/bus/timer com menos ruído do que a ROM completa.
+
+O que a sonda faz:
+
+- executa um pequeno programa real na CPU;
+- usa o timer compartilhado do projeto;
+- usa laços no estilo `start_timer`/`stop_timer` do Blargg;
+- mede `NOP`;
+- mede `LD BC,nn`, que é o primeiro opcode reportado como `01:4-3` na ROM
+  `instr_timing.gb`.
+
+Resultado observado:
+
+- `NOP` mede `1`, como esperado;
+- depois do ajuste de visibilidade da TIMA, `LD BC,nn` mede `3`, como esperado;
+- o teste direto `tb_cpu_timing_probe` ainda mede `LD BC,nn` como `3` ciclos.
+
+Conclusão:
+
+Esse foi o ponto decisivo desta investigação: a CPU já estava contando
+`LD BC,nn` corretamente, e a correção precisava acontecer na fronteira de
+observação CPU/barramento/timer. A ROM real `instr_timing.gb` confirmou isso ao
+alcançar `Passed` depois do ajuste.
+
+Regressões executadas após a correção:
+
+- `run_cpu_instr_timing.do` — Passed;
+- `run_timer.do` — Passed;
+- `run_cpu_smoke.do` — Passed;
+- `run_cpu_blargg_02.do` — Passed;
+- `run_bus_controller.do` — Passed;
+- `run_cpu_video_smoke_top.do` — Passed;
+- `run_cpu_timer_blargg_probe.do` — diagnóstico concluído com `LD BC,nn = 3`.
+
+Próximo passo técnico:
+
+- avançar para as próximas ROMs Blargg de temporização;
+- não criar testes locais como substitutos de aceite;
+- usar sondas locais apenas para explicar falhas que aparecerem nas ROMs reais.

@@ -16,7 +16,7 @@ A estrutura principal encontrada foi:
 - `instr_timing`: testes de tempo de execução das instruções.
 - `mem_timing`: testes de temporização de acesso à memória.
 - `mem_timing-2`: outra versão dos testes de temporização de memória.
-- `interrupt_time`: teste de tempo de interrupções.
+- `interrupt_time`: teste de tempo de interrupções, já passando no runner atual.
 - `halt_bug.gb`: teste específico do comportamento de `HALT`.
 - `dmg_sound`: testes de áudio para DMG.
 - `cgb_sound`: testes de áudio para CGB.
@@ -98,8 +98,9 @@ rodar uma ROM Blargg sem adaptação:
   - `ADC`, `SBC`
   - rotates não-CB
   - CB-prefix completo
-- O timer ainda não é funcional o suficiente para `instr_timing`,
-  `mem_timing`, `interrupt_time` e `halt_bug`.
+- O timer já é funcional o suficiente para `instr_timing.gb`, `mem_timing` e
+  `mem_timing-2` no modelo atual de ciclo M, mas `interrupt_time`,
+  timer-specific ROMs e `halt_bug` ainda pertencem às próximas etapas.
 - Interrupções iniciais já fazem prioridade, push de PC, salto para vetor,
   `interrupt_ack` e `RETI`.
 - O comportamento completo de temporização de `HALT`, `EI`, `DI`, `RETI` e o
@@ -192,11 +193,8 @@ estado atual do nosso core.
 
 ## 6. Testes Que Devem Ficar Para Depois
 
-Os seguintes grupos não devem ser priorizados agora:
+Os seguintes grupos não devem ser priorizados antes da base de CPU/timer atual:
 
-- `instr_timing`
-- `mem_timing`
-- `mem_timing-2`
 - `interrupt_time`
 - `halt_bug.gb`
 - `oam_bug`
@@ -205,9 +203,10 @@ Os seguintes grupos não devem ser priorizados agora:
 
 Motivo:
 
-- `instr_timing` depende de timer funcional e temporização por ciclo.
-- `mem_timing` depende de acessos de memória nos ciclos corretos.
-- `interrupt_time` depende de interrupções reais.
+- `instr_timing` já foi promovido para regressão conquistada.
+- `mem_timing` também já foi promovido para regressão conquistada.
+- `mem_timing-2` também já foi promovido para regressão conquistada.
+- `interrupt_time` já foi promovido para regressão conquistada.
 - `halt_bug` depende do comportamento exato de `HALT`.
 - `oam_bug` depende de PPU/OAM.
 - `dmg_sound` e `cgb_sound` dependem de APU.
@@ -225,8 +224,9 @@ O próximo passo de implementação deve ser:
    checkpoint, não como teste diário.
 5. Fechar a fatia do timer inicial com `cpu_video_smoke_top`, Quartus e medição
    de recursos.
-6. Só então começar `instr_timing`, `mem_timing`, `interrupt_time` e
-   `halt_bug.gb`.
+6. Manter `instr_timing.gb` como regressão obrigatória de timing.
+7. Manter `interrupt_time` como regressão já conquistada e iniciar
+   `halt_bug.gb` como próxima etapa local.
 
 Esse ciclo deve guiar a expansão da CPU a partir de agora.
 
@@ -421,8 +421,12 @@ Limitações que continuam abertas:
 - o bug de `HALT` ainda não foi implementado;
 - o comportamento real de `STOP` ainda não foi implementado; há apenas um
   avanço mínimo de dois bytes para permitir a ROM agregada prosseguir;
-- os testes `instr_timing`, `mem_timing`, `interrupt_time` e `halt_bug.gb`
-  continuam fora do escopo desta etapa.
+- `instr_timing.gb` agora passa como checkpoint posterior desta linha de
+  trabalho;
+- `mem_timing` agora passa como checkpoint posterior desta linha de trabalho;
+- `mem_timing-2` agora passa como checkpoint posterior desta linha de trabalho;
+- os testes `interrupt_time` e `halt_bug.gb` continuam fora do escopo desta
+  etapa.
 
 Próximo alvo recomendado:
 
@@ -462,6 +466,11 @@ Validação executada:
 - `run_cpu_blargg_09.do` — Passed na rodada longa;
 - `run_cpu_blargg_10.do` — Passed na rodada longa;
 - `run_cpu_blargg_11.do` — Passed na rodada longa;
+- `run_cpu_instr_timing.do` — Passed em checkpoint posterior de timing;
+- `run_cpu_mem_timing.do` — Passed em checkpoint posterior de timing;
+- `run_cpu_mem_timing_aggregate.do` — Passed em checkpoint posterior de timing;
+- `run_cpu_mem_timing2.do` — Passed em checkpoint posterior de timing;
+- `run_cpu_mem_timing2_aggregate.do` — Passed em checkpoint posterior de timing;
 - `run_cpu_video_smoke_top.do` — Passed;
 - build Quartus completo em `2026-05-15` — Passed, com `4.157 / 6.272`
   logic elements usados (`66%`).
@@ -482,5 +491,8 @@ Fluxo recomendado a partir de agora:
 3. Rodar `cpu_video_smoke_top`.
 4. Rodar Quartus e medir recursos do timer novo.
 5. Fechar commit/checkpoint da fatia de timer inicial.
-6. Só depois iniciar `instr_timing`, `mem_timing`, `interrupt_time` e
-   `halt_bug.gb`.
+6. Manter `instr_timing.gb` como regressão de timing já conquistada.
+7. Manter `mem_timing` como regressão de timing já conquistada.
+8. Manter `mem_timing-2` como regressão de timing já conquistada.
+9. Iniciar `interrupt_time`, timer-specific ROMs e `halt_bug.gb` em etapas
+   separadas.

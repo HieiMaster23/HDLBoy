@@ -34,6 +34,106 @@ The framebuffer stores native Game Boy pixels:
 - 46,080 total bits.
 - Expected implementation: Cyclone IV M9K block RAM.
 
+## CPU Before Real PPU
+
+The project grows the CPU, memory map, timer, and timing model before starting
+the real PPU. A Game Boy PPU depends on CPU-visible register timing, interrupt
+behavior, and bus ownership. Starting the PPU too early would make later visual
+failures ambiguous because a bad frame could come from the PPU, CPU timing, the
+timer, or the bus.
+
+The current rule is:
+
+1. broad CPU behavior first;
+2. realistic bus and memory contracts next;
+3. timing refinement before the real PPU;
+4. tile-based PPU work only after those shared contracts are stronger.
+
+## Serial-First CPU Validation
+
+CPU validation uses Blargg-style serial output before relying on the future PPU.
+The serial debug path at `0xFF01` and `0xFF02` is intentionally a low-cost test
+hook, not a complete serial peripheral. It lets simulation determine whether a
+real test ROM reached `Passed` without requiring a display subsystem to be
+correct at the same time.
+
+This keeps CPU regressions narrow and makes failure diagnosis much faster during
+M3 and early timing work.
+
+## Timing Before Integration
+
+Passing the individual `cpu_instrs` ROMs proves broad functional correctness, but
+it does not prove cycle accuracy. Before the real PPU depends on the CPU bus, the
+design must move through:
+
+- `instr_timing` (currently passing);
+- `mem_timing` (currently passing);
+- `mem_timing-2` (currently passing);
+- `interrupt_time` (currently passing);
+- `halt_bug.gb`.
+
+This is the bridge from "the CPU computes the right result" to "the CPU occupies
+the bus at the right time," which matters for a hardware reimplementation.
+
+## Fetch Fast-Path Discipline
+
+The timing bring-up uses fetch-stage fast paths for instruction families that
+must not pay an extra standalone decode cycle. This optimization is kept narrow
+and evidence-driven:
+
+- direct opcode helper predicates are preferred when fetch dispatch needs a
+  memory-path distinction that generic decode metadata does not preserve safely;
+- `S_DECODE` should retain only behavior that still needs a real extra cycle or
+  a meaningful fallback path;
+- every fast-path cleanup must rerun both the local timing probe and Blargg ROMs
+  that exercise WRAM copy, ALU, and control-flow behavior.
+
+An attempted generic `DEC_CLASS_LD_MEM` routing broke the WRAM code-copy path in
+the Blargg shell, while small shared opcode predicates kept the behavior correct
+and reduced fitter usage. A lower-level explicit classification is the better
+hardware abstraction when it preserves a real timing or datapath distinction.
+
+The same rule now applies to unconditional control flow. `JP nn`, `CALL nn`,
+`RET`, and `RETI` need explicit fetch-stage routing plus internal M-cycle states
+so the CPU does not accidentally complete them as decode-only shortcuts. This is
+especially visible in Blargg `instr_timing`, because that ROM uses a generated
+`JP instr_end` sequence as part of its own timing harness. If unconditional
+control flow is off by one M-cycle, many unrelated opcodes appear wrong.
+
+Timer bring-up also keeps a documented phase assumption: the current M-cycle CPU
+model initializes the timer divider with a small phase offset so the Blargg
+timing harness can calibrate before measuring opcodes. This is a simulation and
+bring-up alignment point, not the final fine-grained T-cycle timer model.
+
+That phase is now an explicit generic on the timer block. This keeps the
+assumption visible in simulation scripts and prevents silent magic constants
+from spreading through the codebase. The default value remains selected for the
+current M-cycle model.
+
+Blargg `instr_timing.gb` also exposed a CPU/timer observation issue: individual
+opcode fetch-to-fetch probes showed correct M-cycle counts, while the real ROM
+still measured several opcodes one cycle off through TIMA. The adopted model is
+that CPU reads observe the value visible at the end of the current M-cycle bus
+access. For normal divider-edge TIMA increments, `tima_read` therefore exposes
+the post-edge value. The overflow path remains delayed so TIMA still holds
+`0x00` before the later TMA reload and interrupt pulse. This allowed
+`instr_timing.gb` to reach `Passed` without adding fake cycles to otherwise
+correct opcode bodies.
+
+The same model now carries the first memory timing layer: Blargg
+`mem_timing` individual ROMs for read, write, and read-modify-write access
+placement all reach `Passed`, and the aggregate `mem_timing.gb` reaches
+`Passed` as well. This means the current bus contract is good enough for the
+instruction families covered by that suite.
+
+`mem_timing-2` uses Blargg's memory status protocol at cartridge RAM
+`0xA000..0xA004` rather than relying on link-port serial output. The ROM runner
+therefore observes the documented signature at `0xA001..0xA003` and the final
+status byte at `0xA000`. With that runner support, the `mem_timing-2`
+individual and aggregate ROMs also reach `Passed`. The next evidence-driven
+timing target is `halt_bug.gb`, because `interrupt_time.gb` also reaches
+`Passed` with the current interrupt-entry path.
+
 ## VGA Pinout Caution
 
 Public RZ-EasyFPGA A2.2 pin references commonly list VGA as scalar `VGA_R`,
@@ -46,5 +146,10 @@ board schematic confirms a wider resistor DAC.
 
 The EP4CE6 has only 6,272 logic elements and 276,480 block RAM bits. Large
 lookup tables and broad control abstractions should be introduced only when they
-replace real complexity. Early milestones prioritize correctness, then resource
-optimization is documented and applied after functional integration.
+replace real complexity. Early milestones prioritize correctness, but every
+meaningful RTL slice is still synthesized and measured so resource drift is
+visible before it becomes architectural debt.
+
+The current timing-control checkpoint uses 4,268 logic elements, or 68% of the
+device, so later CPU, PPU, DMA, SDRAM, and optional APU work must continue to
+favor shared datapaths, inferred RAM, and incremental integration.

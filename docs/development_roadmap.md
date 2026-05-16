@@ -1,0 +1,258 @@
+# Development Roadmap
+
+This document explains how the project is intended to grow from isolated FPGA
+building blocks into a coherent Game Boy DMG-01 hardware reimplementation.
+
+The central rule is that each new subsystem must be added only after the
+contracts it depends on are already observable, testable, and affordable on the
+Cyclone IV EP4CE6 target.
+
+## Development Principle
+
+The project is not a software emulator. It is a hardware reconstruction, so the
+main engineering problem is not only implementing each block, but making the
+blocks agree on:
+
+- clocking;
+- memory-map behavior;
+- interrupt flow;
+- timing;
+- ownership of shared resources;
+- FPGA resource cost.
+
+The project therefore grows by evidence:
+
+1. implement a small hardware slice;
+2. test it in simulation;
+3. synthesize it when RTL changes;
+4. measure resource impact;
+5. validate on hardware when the slice has visible behavior;
+6. document the new boundary before expanding it.
+
+## Current Position
+
+The project has already completed the early foundation layers:
+
+1. **Board bring-up**
+   - clock, reset, LEDs, JTAG, and Quartus flow are working;
+   - the real target board has been validated.
+2. **Video foundation**
+   - VGA timing is working in hardware;
+   - the framebuffer and scaling pipeline are working in hardware.
+3. **CPU behavior foundation**
+   - the LR35902 core is multi-cycle and modular;
+   - the individual Blargg `cpu_instrs` ROMs all pass through the serial runner.
+4. **System-bus foundation**
+   - full WRAM, HRAM, IE/IF, serial debug, and a memory-ready path exist;
+   - the bus is now shaped like a real system component instead of a smoke-test
+     convenience block.
+5. **Initial timer foundation**
+   - the duplicated timer stub has been replaced by a reusable DMG-style timer
+     block shared by simulation and the bus controller.
+
+The project is now moving from **functional correctness** toward **timing
+fidelity**.
+
+## Why the CPU Came Before the Real PPU
+
+The Game Boy PPU depends on several CPU-visible contracts:
+
+- access to VRAM and I/O registers;
+- interrupt behavior;
+- cycle timing;
+- bus ownership;
+- later, DMA and scanline-related coordination.
+
+If the real PPU is started while CPU timing is still too approximate, later
+visual failures become ambiguous. A bad frame could come from the PPU, the CPU,
+the timer, or the bus. Finishing the next timing layer first reduces that
+ambiguity and gives the PPU a firmer base.
+
+The current order is therefore intentional:
+
+1. make the CPU broadly correct;
+2. make the bus realistic enough to host real memory;
+3. make timing progressively more faithful;
+4. begin the real PPU after those shared contracts are stronger.
+
+## Major Development Phases
+
+### Phase 1: Infrastructure and Visible Output
+
+Purpose:
+
+- prove the FPGA flow;
+- prove the board;
+- prove the VGA path;
+- establish a visible debug surface.
+
+Main outputs:
+
+- blinking LEDs;
+- VGA timing;
+- framebuffer image;
+- hardware-visible pass/fail indicators.
+
+### Phase 2: CPU Bring-Up
+
+Purpose:
+
+- build the LR35902 as hardware, not as a software interpreter;
+- validate register, ALU, control-flow, stack, memory-transfer, CB-prefixed, and
+  interrupt behavior incrementally.
+
+Main outputs:
+
+- modular CPU RTL;
+- self-checking unit tests;
+- ROM runner with serial capture;
+- all individual Blargg `cpu_instrs` tests passing.
+
+### Phase 3: Bus and Peripheral Foundations
+
+Purpose:
+
+- replace ad hoc smoke-test wiring with reusable system structure;
+- establish the address map the rest of the machine will depend on;
+- keep the design affordable on EP4CE6.
+
+Main outputs:
+
+- registered WRAM reads with wait-state support;
+- HRAM;
+- IF/IE;
+- serial debug path;
+- initial timer;
+- Quartus resource tracking after each slice.
+
+### Phase 4: Timing Fidelity
+
+Purpose:
+
+- turn a behaviorally correct CPU into a CPU that cooperates with the rest of the
+  machine at the right time.
+
+Primary validation targets:
+
+- `instr_timing`;
+- `mem_timing`;
+- `interrupt_time`;
+- `halt_bug.gb`.
+
+This is the current phase.
+
+### Phase 5: Real PPU
+
+Purpose:
+
+- replace the current direct framebuffer smoke path with a Game Boy-style pixel
+  producer.
+
+Recommended order:
+
+1. VRAM storage;
+2. tile data and tile map reads;
+3. background-only static image;
+4. scrolling;
+5. window;
+6. sprites and OAM scan;
+7. PPU modes, VBlank, STAT, and DMA.
+
+The first real visual milestone should be a tile-based background produced by the
+PPU, not direct CPU pixel writes.
+
+### Phase 6: Playable System Integration
+
+Purpose:
+
+- move from validation ROMs to controlled software experiences.
+
+Needed pieces:
+
+- joypad input;
+- sufficiently faithful timer and interrupts;
+- PPU good enough for homebrew ROMs;
+- ROM loading path;
+- eventually cartridge mapping for larger software.
+
+Expected software ladder:
+
+1. custom ROMs with serial output;
+2. custom ROMs with controlled graphics;
+3. homebrew test ROMs;
+4. simple commercial games such as `Tetris` and `Dr. Mario`.
+
+### Phase 7: Audio and Deeper Fidelity
+
+Purpose:
+
+- complete the machine after the first playable target exists.
+
+Main outputs:
+
+- APU channels;
+- stronger edge-case compatibility;
+- broader regression suites;
+- optional input and usability refinements.
+
+The APU matters for completeness, but it is not the primary blocker for the
+first playable Game Boy target.
+
+## Dependency View
+
+```text
+Board bring-up
+  -> VGA/framebuffer
+  -> CPU behavior
+  -> Bus + WRAM + timer + interrupts
+  -> CPU timing fidelity
+  -> Real PPU
+  -> Joypad + ROM loading + playable integration
+  -> APU and deeper compatibility
+```
+
+Some work can be parallelized later, but the critical path to a first playable
+system is:
+
+```text
+CPU timing -> timer/interrupt fidelity -> real PPU -> input/ROM flow -> games
+```
+
+## Current Near-Term Roadmap
+
+The next recommended sequence is:
+
+1. keep `instr_timing`, `mem_timing`, `mem_timing-2`, and `interrupt_time` in
+   the timing regression set;
+2. refine `HALT` behavior with `halt_bug.gb`;
+3. import a broader timer-focused suite later if more timer coverage is needed
+   than the local Blargg package provides;
+4. only after that, open the first real PPU implementation slice.
+
+## Resource Discipline
+
+The EP4CE6 is a tight target. The latest synthesized `cpu_video_smoke_top`
+checkpoint uses:
+
+- 4,157 / 6,272 logic elements;
+- 111,616 / 276,480 block-memory bits;
+- 14 / 30 M9K blocks.
+
+That leaves room, but not room for careless duplication. New work should prefer:
+
+- shared CPU states instead of duplicated datapaths;
+- inferred RAMs instead of large register arrays;
+- small, testable peripheral slices;
+- incremental Quartus checkpoints after meaningful RTL growth.
+
+## What Success Looks Like
+
+The project is on the correct path when each new stage leaves behind:
+
+- a clearer hardware boundary;
+- a stronger automated test;
+- an updated resource measurement;
+- less ambiguity for the next subsystem.
+
+That is the standard that keeps a multi-subsystem FPGA console project
+manageable all the way from first blink to first game.

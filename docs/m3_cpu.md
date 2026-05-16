@@ -156,6 +156,8 @@ Current ModelSim scripts:
 - `sim/modelsim/run_cpu_blargg_10.do`
 - `sim/modelsim/run_cpu_blargg_09.do`
 - `sim/modelsim/run_cpu_blargg_11.do`
+- `sim/modelsim/run_cpu_instr_timing.do`
+- `sim/modelsim/run_cpu_timing_probe.do`
 - `sim/modelsim/run_timer.do`
 - `sim/modelsim/run_cpu_all.do`
 - `sim/modelsim/run_cpu_integration_top.do`
@@ -176,7 +178,9 @@ and advances `LY`/`DIV` enough for Blargg's shell delay loops to complete
 without a PPU. It stops when the serial transcript contains `Passed` or
 `Failed`, or on timeout/unsupported opcode. `G_TIMEOUT_CYCLES` can be raised for
 long ROMs without changing the default runner behavior. `G_VERBOSE_SERIAL` can
-be disabled for long aggregate runs to avoid per-byte log overhead.
+be disabled for long aggregate runs to avoid per-byte log overhead. Unsupported
+opcode failures now emit a small fetch ring buffer so control-flow regressions
+are easier to localize from the transcript alone.
 
 Current Blargg bring-up result:
 
@@ -197,7 +201,7 @@ Current Blargg bring-up result:
 - `cpu_instrs/individual/11-op a,(hl).gb`: `Passed` via serial transcript using
   `G_TIMEOUT_CYCLES=50000000`.
 
-Current in-progress timer slice validation:
+Latest timer checkpoint validation:
 
 - `run_timer.do`: `Passed`.
 - `run_bus_controller.do`: `Passed`.
@@ -333,18 +337,137 @@ Blargg-style output capture before implementing the real serial link timing.
 The ROM runner is now the primary CPU validation path. The next implementation
 slices should:
 
-1. Finish the current timer slice by rerunning the longer individual Blargg
-   ROMs, `cpu_video_smoke_top`, and Quartus.
-2. Keep `cpu_instrs.gb` aggregate as a long optional checkpoint test. The
+1. Keep `cpu_instrs.gb` aggregate as a long optional checkpoint test. The
    individual ROMs remain the official day-to-day regression.
+2. Move into timing-focused validation with `instr_timing`, then `mem_timing`,
+   `interrupt_time`, and `halt_bug.gb`.
 3. Refine exact interrupt timing, EI/HALT edge cases, STOP behavior, and the
    HALT bug.
 4. Keep the memory-map/bus-controller harness aligned with registered memory
    reads and future wait states.
 
+## Timing-Fidelity Bring-Up
+
+The first timing-specific slice is now in place:
+
+- `tb_cpu_timing_probe` is a self-checking micro-program that verifies a small
+  representative set of M-cycle counts:
+  `NOP`, `LD B,n`, `LD BC,nn`, `LD (BC),A`, `LD A,(BC)`, `RLCA`,
+  `LD (nn),SP`, `DAA`, `CPL`, `SCF`, `CCF`, `DI`, `LDH (n),A`,
+  `LD (nn),A`, `JR e`, and taken/not-taken `JR cc,e`.
+- `cpu.vhd` now performs fetch-stage fast paths for the first instruction
+  families that must not spend an extra standalone decode cycle:
+  `NOP`, register-only `LD r,r`, register-only `INC/DEC r`, register-only ALU
+  ops, immediate register loads, 16-bit immediate loads, immediate ALU ops,
+  indirect pair loads/stores, accumulator rotates, single-cycle flag/control
+  ops, `LD (nn),SP`, `DI`, `LDH (n),A`, `LDH A,(n)`, `LD (nn),A`, and
+  `LD A,(nn)`.
+- Conditional relative branches now use distinct paths: not-taken `JR cc,e`
+  completes in 2 M-cycles, while taken `JR cc,e` uses `S_JR_TAKEN` to preserve
+  the required third cycle.
+- Blargg `instr_timing.gb` now reaches `Passed` through the real ROM runner.
+  The final fix for this checkpoint was not an opcode-specific cycle change,
+  but an alignment of the CPU-visible TIMA read value with the end of the
+  current M-cycle bus model.
+
+The follow-up control refactor is now complete for this slice:
+
+- register-addressed `LD` memory routing is centralized through small opcode
+  helper predicates shared by fetch and decode;
+- register-only `LD r,r`, `INC/DEC r`, and `ALU r` execution bodies were removed
+  from the fallback decode path because those instructions are already executed
+  in the fetch fast path;
+- duplicated one-cycle accumulator rotate and flag-control execution bodies were
+  also removed from `S_DECODE`;
+- a rejected intermediate version routed `DEC_CLASS_LD_MEM` from generic decoder
+  metadata alone, but it broke the WRAM copy flow used by Blargg ROMs. The final
+  version keeps direct opcode groups because they preserve the required fetch
+  dispatch distinction.
+
+This remains incremental bring-up rather than a blanket FSM rewrite. The
+refactor reduced the fitter result from 4,511 to 4,268 logic elements while
+preserving the expanded timing coverage and the existing regression set.
+
 ## Next Code Step
 
-Finish and checkpoint the initial timer slice. The regression and synthesis
-evidence are now complete; the next concrete work is to create the checkpoint
-and then decide whether to enter `instr_timing`, `mem_timing`, `interrupt_time`,
-or `halt_bug.gb`.
+The timing-fidelity phase now has a first real ROM checkpoint: Blargg
+`instr_timing.gb` reaches `Passed`. The main fixes from that phase were:
+
+- the timer reset phase was aligned with the current M-cycle CPU model so the
+  Blargg timing harness can leave its initial timer calibration path;
+- unconditional `JP nn` now keeps its fourth M-cycle instead of completing
+  directly after the high immediate byte;
+- unconditional `CALL nn` now uses the same internal pre-push M-cycle as taken
+  conditional calls;
+- unconditional `RET` and `RETI` now keep their fourth M-cycle after the high
+  return-address read;
+- `tb_cpu_timing_probe` now covers `JP nn`, `CALL nn`, and `RET` in addition to
+  the previous conditional branch and CB-prefix cases;
+- `TIMA` reads now expose the value visible after a normal divider-edge
+  increment at the end of the current M-cycle, while the overflow reload delay
+  remains visible as a separate delayed event.
+
+The next slice should keep the same discipline: use Blargg ROMs as the
+acceptance target, use local probes only to localize failures already reported
+by those ROMs, make the smallest hardware change, and rerun the quick
+regressions before moving to another timing ROM.
+
+The latest diagnostic slice expanded that probe before changing the CPU again:
+
+- `rtl/io/timer.vhd` now exposes the divider reset phase as
+  `G_DIV_COUNTER_RESET`. The default remains `4`, and the `instr_timing` script
+  passes that value explicitly so the current phase assumption is visible.
+- A short phase sweep showed that reset phases `0`, `8`, and `12` do not reach
+  the opcode table reliably in the current model, while phase `4` still reaches
+  opcode timing output.
+- `TIMA` reads now expose the post-divider-edge increment value for normal TIMA
+  increments in the current M-cycle bus model. The overflow path was kept
+  delayed, so `tb_timer` still verifies that TIMA holds `0x00` before the later
+  TMA reload and interrupt pulse.
+- `tb_cpu_timing_probe` now also covers early opcode families reported by
+  `instr_timing`: `INC BC`, `DEC BC`, `LD (HL+),A`, `LD A,(HL+)`,
+  `LDH A,(n)`, `LD A,(nn)`, and `LD SP,HL`.
+
+Those probe additions pass, and the real `instr_timing.gb` result confirmed the
+important conclusion: the early opcode differences were caused by the
+CPU/timer observation boundary, not by the individual opcode bodies.
+
+A dedicated debug-only probe now exists for that boundary:
+
+- `tb_cpu_timer_blargg_probe` runs a small CPU program against the shared timer
+  and uses Blargg-style `start_timer`/`stop_timer` loops.
+- This probe is not an acceptance test and does not replace Blargg ROMs. It is a
+  localization tool for understanding failures already reported by Blargg.
+- Current diagnostic result after the timer read visibility fix: `NOP` measures
+  as `1`, and `LD BC,nn` measures as `3`, matching Blargg's expectation.
+- The same `LD BC,nn` instruction still measures as `3` in the direct
+  fetch-to-fetch CPU timing probe, so the remaining issue is likely in the
+  CPU/timer measurement boundary rather than the basic immediate-load FSM body.
+
+Current validation for this checkpoint:
+
+- `run_cpu_instr_timing.do`: `Passed`.
+- `run_cpu_mem_timing_01.do`: `Passed`.
+- `run_cpu_mem_timing_02.do`: `Passed`.
+- `run_cpu_mem_timing_03.do`: `Passed`.
+- `run_cpu_mem_timing.do`: `Passed`.
+- `run_cpu_mem_timing_aggregate.do`: `Passed`.
+- `run_cpu_mem_timing2_01.do`: `Passed`.
+- `run_cpu_mem_timing2_02.do`: `Passed`.
+- `run_cpu_mem_timing2_03.do`: `Passed`.
+- `run_cpu_mem_timing2.do`: `Passed`.
+- `run_cpu_mem_timing2_aggregate.do`: `Passed`.
+- `run_timer.do`: `Passed`.
+- `run_cpu_smoke.do`: `Passed`.
+- `run_cpu_blargg_02.do`: `Passed`.
+- `run_bus_controller.do`: `Passed`.
+- `run_cpu_video_smoke_top.do`: `Passed`.
+- `run_cpu_timer_blargg_probe.do`: diagnostic completed, matching the real ROM
+  for the first measured opcode family.
+
+The ROM runner now supports both Blargg link-port serial output and the
+cartridge-RAM status protocol used by `mem_timing-2` at `0xA000`.
+`interrupt_time.gb` also reaches `Passed`, confirming the current interrupt
+entry path matches Blargg's 13-cycle expectation. The next Blargg-facing target
+available in the local package is `halt_bug.gb`, while local probes remain
+strictly debugging aids.

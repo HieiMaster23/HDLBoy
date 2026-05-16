@@ -1,341 +1,580 @@
-# Progressão da Criação do Hardware do Game Boy FPGA
+# Progressão do Hardware do Game Boy FPGA
 
-Este documento explica, em português, como o hardware deste projeto cresce de
-forma incremental. Ele não substitui a documentação técnica oficial do projeto,
-que permanece em inglês dentro do repositório, mas serve como guia didático para
-entender o processo.
+Este documento é a referência em português para entender a evolução do projeto
+`gameboy-fpga-core`: o que estamos construindo, por que a ordem escolhida faz
+sentido, o que já foi implementado e quais são os próximos passos até chegarmos
+a um sistema capaz de executar ROMs simples de Game Boy.
 
-## 1. A Ideia Principal
+Ele complementa:
 
-Este projeto não é um emulador de software. A meta é reconstruir, em VHDL
-sintetizável, blocos de hardware equivalentes aos blocos internos do Game Boy
-DMG-01.
+- `docs/project_control_pt.md`, que registra o estado operacional do projeto;
+- `docs/development_roadmap.md`, que descreve a mesma linha de evolução em
+  inglês para a documentação técnica do repositório.
+- `docs/base_artigo_tcc_pt.md`, que define como transformar a documentação
+  acumulada do projeto em material para um futuro artigo ou TCC.
 
-Isso significa que cada parte precisa virar circuito:
+## 1. O Que Estamos Construindo
 
-- CPU vira uma máquina de estados, registradores, ALU e barramento.
-- Memória vira RAM, ROM, registradores de I/O e decodificação de endereços.
-- Vídeo vira PPU, framebuffer ou pipeline de pixels.
-- Timer vira contadores reais.
-- Joypad vira leitura de entradas físicas.
-- Interrupções viram sinais, flags e sequenciamento de CPU.
+Este projeto não é um emulador de software. A meta é recriar, em VHDL
+sintetizável, os blocos de hardware que formam o Game Boy DMG-01:
 
-O crescimento do projeto precisa ser incremental porque o FPGA alvo, Cyclone IV
-EP4CE6, é pequeno. Não podemos simplesmente implementar tudo de uma vez sem
-testar, medir recursos e controlar a complexidade.
+- CPU Sharp LR35902;
+- barramento e mapa de memória;
+- temporizador;
+- controlador de interrupções;
+- joypad;
+- PPU;
+- memória de vídeo e RAMs internas;
+- mais tarde, APU e carregamento de ROMs.
 
-## 2. Por Que Não Começar Direto por Jogos
+Cada parte precisa existir como circuito real no FPGA. Isso muda a forma de
+pensar o desenvolvimento: não basta que um programa "dê o resultado certo"; os
+blocos precisam trocar sinais no instante certo, ocupar o barramento da forma
+correta e caber no Cyclone IV EP4CE6.
 
-Um jogo de Game Boy depende de quase tudo funcionando ao mesmo tempo:
+## 2. A Ideia Central da Progressão
 
-- CPU com muitos opcodes.
-- Flags corretos.
-- Pilha e chamadas de subrotina.
-- Interrupções.
-- Timer.
-- Joypad.
-- Mapa de memória.
-- PPU renderizando tiles, sprites, window e scrolling.
-- Acesso correto a VRAM, OAM e registradores de I/O.
+O projeto cresce por evidência, não por acúmulo de código.
 
-Se tentarmos rodar um jogo cedo demais e ele falhar, não saberemos onde está o
-problema. Pode ser CPU, memória, timer, vídeo, interrupção, ou uma combinação de
-tudo.
+O ciclo correto é:
 
-Por isso o caminho correto é construir testes pequenos, onde cada falha aponta
-para uma parte específica do hardware.
+1. escolher uma fatia pequena e verificável;
+2. implementar apenas o necessário para essa fatia;
+3. simular;
+4. sintetizar quando houver mudança em RTL;
+5. medir recursos no FPGA;
+6. testar em hardware quando houver efeito observável;
+7. documentar;
+8. avançar.
 
-## 3. A Progressão Geral
+Essa disciplina evita um problema clássico em projetos de console em FPGA:
+quando muitos blocos são criados cedo demais, um erro visual ou funcional deixa
+de ter causa clara. Pode ser CPU, barramento, timer, PPU, memória ou uma
+interação entre todos eles.
 
-A progressão recomendada é:
+## 3. Visão Geral da Linha de Evolução
 
-1. Infraestrutura básica do FPGA.
-2. Vídeo VGA simples.
-3. Framebuffer.
-4. CPU mínima.
-5. CPU escrevendo em memória e I/O.
-6. Runner de ROM com saída serial.
-7. Testes de CPU estilo Blargg.
-8. Testes visuais controlados pela CPU.
-9. PPU mínima com tiles.
-10. Timer, joypad e interrupções.
-11. ROMs homebrew simples.
-12. Jogos básicos.
+```text
+Bring-up da placa
+  -> VGA e framebuffer
+  -> CPU funcional
+  -> Barramento, WRAM, timer e interrupções
+  -> Fidelidade temporal da CPU
+  -> PPU real
+  -> Joypad, ROM loading e integração jogável
+  -> APU e refinamentos de compatibilidade
+```
 
-Cada etapa aumenta a semelhança com o Game Boy real, mas preserva uma forma de
-teste clara.
+O caminho crítico até o primeiro jogo rodando é:
 
-## 4. Etapa M0/M1: Infraestrutura e VGA
+```text
+CPU com timing confiável
+  -> timer/interrupções mais fiéis
+  -> PPU real
+  -> entrada e fluxo de ROM
+  -> jogos simples
+```
 
-Antes da CPU, precisamos provar que a placa está viva e que conseguimos gerar
-sinais estáveis.
+## 4. Por Que Não Começamos Diretamente por Jogos
 
-Nesta fase entram:
+Um jogo comercial depende de quase todo o hardware ao mesmo tempo:
 
-- Clock de 50 MHz da placa.
-- PLL para gerar clocks internos.
-- Reset.
-- LEDs.
-- Saída VGA.
-- Sincronismo horizontal e vertical.
+- CPU com instruções corretas;
+- flags corretos;
+- stack;
+- temporização;
+- interrupções;
+- timer;
+- joypad;
+- mapa de memória;
+- VRAM;
+- PPU;
+- sprites;
+- DMA;
+- eventualmente MBC e ROM externa.
 
-O primeiro teste visual é simples: barras de cor, padrões estáticos ou formas
-na tela. Isso prova que o monitor, o conversor VGA-HDMI e o timing de vídeo
-estão funcionando.
+Se tentássemos rodar um jogo logo no início, uma falha não ensinaria quase nada.
+Por isso começamos com testes muito menores e ampliamos a fidelidade aos poucos.
 
-Nesta etapa ainda não existe Game Boy. Existe apenas uma base de hardware
-confiável.
+## 5. O Que Já Foi Implementado
 
-## 5. Etapa M2: Framebuffer
+### 5.1 Base da Placa e Vídeo
 
-O framebuffer é uma memória de pixels.
+Já foi validado em hardware real:
 
-No Game Boy real, a PPU não funciona exatamente como um framebuffer simples, mas
-usar um framebuffer no início é muito útil porque permite testar vídeo sem
-implementar a PPU inteira.
+- clock da placa;
+- reset;
+- programação via JTAG;
+- VGA 640x480;
+- funcionamento do conversor VGA-HDMI ativo;
+- framebuffer 160x144 com escala para VGA;
+- display de sete segmentos;
+- top visual em que a CPU escreve pixels no framebuffer.
 
-A ideia é:
+Isso significa que já temos uma saída visual confiável e um caminho físico de
+vídeo comprovado.
 
-- Uma parte do hardware escreve pixels.
-- O VGA lê esses pixels.
-- A tela mostra o resultado.
+### 5.2 CPU
 
-Com isso conseguimos testar:
+A CPU LR35902 já deixou de ser uma CPU "mínima". Hoje ela possui:
 
-- memória de vídeo;
-- leitura em outro clock;
-- conversão de coordenadas;
-- escala de 160x144 para VGA;
-- tons de cinza.
+- registradores A, F, B, C, D, E, H, L, SP e PC;
+- ALU com flags Z, N, H e C;
+- decoder separado;
+- máquina de estados multi-ciclo;
+- loads principais;
+- ALU entre registradores, imediatos e `(HL)`;
+- jumps, calls, returns, stack e RST;
+- instruções CB em registradores e em `(HL)`;
+- `DAA`;
+- base real de interrupções com IME, IE/IF, prioridade, push de PC, vetores e
+  `RETI`;
+- `EI`, `DI`, `HALT` básico e `STOP` mínimo.
 
-Este passo cria uma saída visual estável para os próximos testes.
+O resultado mais importante até aqui é:
 
-## 6. Etapa M3: CPU Mínima
+- todos os testes individuais de `cpu_instrs` do Blargg já passam via transcript
+  serial.
 
-A CPU do Game Boy, Sharp LR35902, é o coração do sistema.
+Isso mostra que a CPU está amplamente correta do ponto de vista funcional.
 
-Ela precisa ser implementada como hardware, não como um interpretador de
-software. No projeto atual, ela cresce em blocos:
+### 5.3 Barramento e Memória
 
-- registradores A, F, B, C, D, E, H, L;
-- registradores PC e SP;
-- ALU;
-- decoder de opcodes;
-- máquina de estados;
-- interface de memória;
-- base para interrupções.
+Já existe:
 
-O ponto mais importante: a CPU não deve executar uma instrução inteira como se
-fosse uma CPU ideal de ciclo único. Ela deve passar por estados como:
+- `bus_controller.vhd`;
+- ROM temporária de smoke test;
+- WRAM completa de 8 KiB;
+- espelho de WRAM;
+- HRAM;
+- IE em `0xFFFF`;
+- IF em `0xFF0F`;
+- serial debug em `0xFF01/0xFF02`;
+- stubs de I/O;
+- handshake `mem_ready/cpu_ready`;
+- leitura registrada para permitir uso eficiente de RAM interna.
 
-- buscar opcode;
-- decodificar;
-- ler imediato;
-- acessar memória;
-- escrever resultado;
-- atualizar PC ou SP.
+Esse ponto foi importante para o projeto não se perder no EP4CE6. Quando a WRAM
+foi tentada como grande arranjo combinacional, o custo subiu demais. A solução
+com leitura registrada permitiu que o Quartus inferisse RAM interna e manteve o
+projeto viável.
 
-Isso aproxima o projeto do comportamento real do Game Boy e permite adicionar
-wait states, barramento, PPU e memória real depois.
+### 5.4 Timer e Interrupções
 
-## 7. Etapa M4: Barramento e Mapa de Memória
+Já temos:
 
-O barramento é o bloco que decide para onde cada acesso da CPU vai.
+- timer inicial extraído para `rtl/io/timer.vhd`;
+- `DIV`, `TIMA`, `TMA` e `TAC`;
+- seleção por TAC;
+- pulso de interrupção de timer;
+- integração com IF;
+- testes unitários e regressão preservada.
 
-Exemplos:
+O timer já é muito melhor do que o stub inicial, mas ainda não está encerrado:
+ele precisa ser alinhado à temporização final da CPU.
 
-- endereço `0x0000` vai para ROM;
-- endereço `0x8000` vai para VRAM ou framebuffer experimental;
-- endereço `0xC000` vai para WRAM;
-- endereço `0xFF01` vai para serial SB;
-- endereço `0xFF02` vai para serial SC;
-- endereço `0xFFFF` vai para IE, o registrador de interrupção.
+### 5.5 Situação de Recursos
 
-Esse bloco é essencial porque o Game Boy inteiro é organizado em torno do mapa
-de memória.
+No checkpoint atual, o `cpu_video_smoke_top` usa:
 
-No projeto atual, o barramento ainda é inicial e econômico. Isso é proposital.
-Já descobrimos que RAMs grandes implementadas como registradores combinacionais
-consomem muitos recursos no EP4CE6. Então a expansão de memória precisa ser
-feita com cuidado, preferindo estruturas que o Quartus consiga mapear para RAMs
-internas quando possível.
+- `4.268 / 6.272` logic elements, ou `68%`;
+- `111.616 / 276.480` bits de memória;
+- `14 / 30` blocos M9K.
 
-## 8. Por Que Testar por Serial Antes de Testar por Vídeo
+Ainda há espaço, mas não há espaço para desperdício. Isso confirma que decisões
+de compartilhamento de estados, RAM inferida e crescimento incremental não são
+luxo; são necessidade.
 
-Testes como Blargg geralmente comunicam o resultado pela serial do Game Boy.
-Eles escrevem caracteres em:
+## 6. Por Que a CPU Veio Antes da PPU Real
 
-- `0xFF01`: dado serial;
+À primeira vista, pode parecer natural começar logo a PPU, porque ela é a parte
+mais visível do Game Boy. Mas a PPU real depende de contratos que vêm antes:
+
+- temporização da CPU;
+- acesso a registradores;
+- interrupções;
+- uso do barramento;
+- acesso à VRAM;
+- depois, DMA e sincronização por scanline.
+
+Se começarmos a PPU com uma CPU funcional, porém ainda imprecisa em timing,
+qualquer defeito visual futuro fica ambíguo. Pode ser um erro da PPU, da CPU, do
+timer ou da interação entre eles.
+
+Por isso a ordem correta agora é:
+
+1. CPU amplamente correta em comportamento;
+2. barramento realista;
+3. refinamento temporal;
+4. PPU real.
+
+Não estamos atrasando a PPU. Estamos preparando o terreno para que ela nasça em
+um sistema compreensível.
+
+## 7. Por Que Testamos por Serial Antes de Depender de Vídeo
+
+Os testes do Blargg enviam texto pela serial do Game Boy:
+
+- `0xFF01`: byte de dados;
 - `0xFF02`: controle da transferência.
 
-No nosso caso, ainda não precisamos implementar a serial real bit a bit. Para
-testes de CPU, basta um stub:
+No estágio atual, usamos um stub de serial apenas para capturar esse texto em
+simulação. Assim, a CPU consegue informar `Passed` ou `Failed` sem depender da
+PPU estar pronta.
 
-- a CPU escreve um caractere em `0xFF01`;
-- a CPU escreve `0x81` em `0xFF02`;
-- o testbench captura esse caractere;
-- no final, o testbench verifica se a mensagem foi `Passed`.
+Isso é muito valioso porque separa as causas:
 
-Isso é poderoso porque permite testar a CPU sem depender da PPU, do VGA ou de
-um jogo completo.
+- se um teste de CPU falha pela serial, o problema está no domínio CPU/bus/timer;
+- se um teste visual falha mais tarde, já teremos uma base muito mais confiável.
 
-Se uma ROM de teste imprime `Passed`, sabemos que uma parte importante da CPU
-está funcionando. Se ela falha, podemos olhar qual opcode ou comportamento ainda
-está faltando.
+## 8. O Que Significa "Passar cpu_instrs"
 
-## 9. O Runner de ROM
+Passar todos os `cpu_instrs` individuais é um marco grande, mas não encerra a
+CPU.
 
-O runner de ROM é uma bancada de teste em simulação.
+Esses testes provam principalmente:
 
-Ele instancia a CPU, fornece uma memória e observa a saída serial. A ROM pode
-ser inicialmente embutida em VHDL, como um pequeno programa que imprime
-`Passed`.
+- comportamento das instruções;
+- flags;
+- fluxo de controle;
+- stack;
+- várias interações de memória;
+- base de interrupções.
 
-Com o tempo, esse runner deve evoluir para:
+Eles não provam completamente:
 
-- carregar bytes de ROMs pequenas;
-- executar programas de teste mais longos;
-- capturar texto pela serial;
-- comparar a saída com o esperado;
-- apontar quando a CPU encontrou opcode não implementado.
+- número exato de ciclos por instrução;
+- temporização de barramento;
+- temporização de interrupções;
+- bug de `HALT`;
+- comportamento real de `STOP`.
 
-Esse runner é a ponte entre nossos testes pequenos e ROMs reais de validação.
+Por isso a próxima fase não é "mais opcodes", e sim **fidelidade temporal**.
 
-## 10. Onde Entra o Blargg
+## 9. Onde Estamos Agora
 
-Blargg é uma suíte de testes muito conhecida para Game Boy. Ela testa detalhes
-da CPU, instrução por instrução.
+Estamos na transição entre:
 
-Mas Blargg não deve ser visto como uma única etapa gigante. Ele deve ser usado
-como guia incremental.
+- uma CPU funcionalmente forte;
+- e uma CPU suficientemente fiel para servir de base à PPU e a softwares mais
+  reais.
 
-O ciclo ideal é:
+O checkpoint mais recente fechou:
 
-1. Rodar um teste pequeno.
-2. Ver onde falha.
-3. Implementar o menor conjunto de opcodes ou comportamento necessário.
-4. Rodar de novo.
-5. Repetir.
+- todos os `cpu_instrs` individuais;
+- timer inicial compartilhado;
+- regressão do smoke visual;
+- síntese Quartus com recursos medidos.
 
-Isso evita implementar muita coisa sem validação.
+O projeto está agora na fase:
 
-Antes de Blargg completo, provavelmente precisaremos de:
+```text
+instr_timing -> mem_timing -> interrupt_time -> halt_bug
+```
 
-- branches condicionais;
-- ALU imediata;
-- loads adicionais;
-- `RST`;
-- melhor comportamento de flags;
-- opcodes CB;
-- interrupções mais completas;
-- comportamento correto de `HALT`, `EI` e `DI`.
+A primeira execução de `instr_timing` mostrou um detalhe importante do processo:
+a ROM primeiro calibra o próprio temporizador antes de medir os opcodes. No
+estado inicial, ela falhava nessa calibração. Depois da primeira correção de
+temporização da CPU, ela passou dessa etapa e chegou à fase real de medição das
+instruções.
 
-## 11. Primeiro Teste Visual Depois da CPU
+Na sequência, surgiram três tipos diferentes de ajuste:
 
-Depois que os testes seriais básicos estiverem funcionando, o próximo teste
-visual deve ser controlado pela CPU, mas ainda sem exigir a PPU completa.
+1. remover um ciclo de decode desnecessário em instruções simples;
+2. preservar operações de 1 ciclo que já executam tudo no fetch;
+3. separar caminhos condicionais com tempos diferentes, como `JR cc,e`, que
+   leva 2 ciclos quando não toma o salto e 3 quando toma.
 
-Exemplos:
+Essa terceira etapa é especialmente importante porque mostra por que a
+temporização não deve ser tratada como uma simples tabela de números. Ela muda a
+própria organização do controle interno da CPU.
 
-- CPU limpa a tela.
-- CPU desenha uma faixa vertical.
-- CPU desenha um xadrez.
-- CPU desenha blocos 8x8.
-- CPU move um bloco pela tela.
+Depois disso, fizemos a primeira reorganização deliberada do controle de
+execução:
 
-Esse teste prova que:
+- mantivemos os fast paths necessários para timing;
+- removemos de `S_DECODE` corpos de execução que já eram resolvidos no fetch;
+- centralizamos a classificação de loads por endereço de registrador em
+  predicados pequenos compartilhados;
+- rejeitamos uma versão aparentemente mais genérica de `LD_MEM` porque ela
+  quebrou o fluxo de cópia para WRAM usado pelas ROMs de teste.
 
-- a CPU executa um programa;
-- a CPU escreve em memória de vídeo;
-- o barramento entrega esses writes ao framebuffer;
-- o VGA mostra o resultado.
+O resultado foi importante para o projeto como um todo: a lógica caiu de
+`4.511` para `4.268` LEs, preservando os testes e recuperando margem no FPGA sem
+abrir mão da fidelidade temporal já conquistada.
 
-Esse é o primeiro "hello world visual" do sistema.
+Atualização mais recente:
 
-## 12. Depois Vem a PPU Real
+- o autoteste inicial de timer do `instr_timing.gb` deixou de ser o bloqueio
+  principal;
+- a ROM agora alcança a tabela de medição por opcode;
+- os caminhos incondicionais `JP nn`, `CALL nn`, `RET` e `RETI` foram corrigidos
+  para preservar os ciclos M internos esperados;
+- a sonda local `tb_cpu_timing_probe` passou a cobrir `JP nn`, `CALL nn` e
+  `RET`;
+- as regressões rápidas de CPU, timer, barramento, interrupções e smoke visual
+  continuaram passando.
 
-O Game Boy real não desenha jogos escrevendo cada pixel diretamente em um
-framebuffer. Ele usa tiles, tile maps, sprites e registradores de controle.
+Isso confirma que a progressão está correta: primeiro estabilizamos o tempo das
+instruções que sustentam o próprio mecanismo de teste, depois avançamos para as
+diferenças restantes por família de opcode.
 
-Então, depois dos testes visuais simples, precisamos substituir aos poucos o
-modelo de framebuffer direto por uma PPU mais realista.
+## 10. Próximos Passos Recomendados
 
-Primeira PPU mínima:
+### 10.1 Próxima Fase Imediata: Fidelidade Temporal da CPU
 
-- VRAM em `0x8000`;
-- tile data;
-- tile map;
-- leitura de tiles;
-- geração de pixels;
-- envio para o pipeline VGA.
+Ordem recomendada:
 
-O primeiro teste visual de PPU deve ser uma tela de tiles estáticos.
+1. manter uma sonda local self-checking para os ciclos já corrigidos;
+2. manter `instr_timing.gb` como regressão obrigatória já conquistada;
+3. manter `mem_timing` como regressão obrigatória já conquistada;
+4. manter `mem_timing-2` como regressão obrigatória já conquistada;
+5. manter `interrupt_time` como regressão obrigatória já conquistada;
+6. repetir a síntese após cada nova família relevante;
+7. avançar para `halt_bug.gb`;
+8. importar uma suíte específica de timer mais adiante, se quisermos ampliar a
+   cobertura além do pacote Blargg local.
 
-Depois entram:
+Essa sequência deve tornar mais confiável:
 
-- scrolling;
-- window;
-- sprites;
-- OAM;
-- modos da PPU;
-- VBlank;
-- STAT;
-- DMA.
+- a duração das instruções;
+- o momento dos acessos ao barramento;
+- a relação entre CPU e timer;
+- o comportamento de interrupções e `HALT`.
 
-## 13. Quando Jogos Entram
+### 10.2 Depois Disso: PPU Real
 
-Jogos entram apenas quando CPU, memória, timer, joypad e uma PPU mínima já
-estiverem funcionando.
+Quando a base temporal estiver melhor consolidada, o próximo grande bloco será a
+PPU real.
 
-Antes disso, ROMs homebrew pequenas são melhores que jogos comerciais, porque
-são mais simples e mais controláveis.
+Ordem sugerida:
 
-A ordem provável é:
+1. VRAM real;
+2. tile data;
+3. tile map;
+4. background estático;
+5. scrolling;
+6. window;
+7. sprites e OAM;
+8. modos da PPU;
+9. VBlank, STAT e DMA.
 
-1. ROM própria imprimindo `Passed` via serial.
-2. ROM própria desenhando na tela.
-3. Testes Blargg parciais.
-4. ROM homebrew simples.
-5. Testes de PPU como `dmg-acid2`, quando a PPU estiver madura.
-6. Jogos pequenos.
+O primeiro grande marco visual da PPU deve ser uma imagem formada por tiles,
+gerada pela PPU, não mais pixels escritos diretamente pela CPU no framebuffer.
 
-## 14. Como Pensar no Crescimento do Hardware
+### 10.3 Depois da PPU Mínima
 
-Cada nova etapa deve responder três perguntas:
+Para chegar a jogos simples, ainda precisaremos de:
 
-1. O que este bloco novo precisa fazer?
-2. Como eu provo que ele faz isso?
-3. Quanto recurso ele custou no FPGA?
+- joypad real;
+- fluxo de ROM mais realista;
+- mais fidelidade de timer/interrupções;
+- possivelmente MBC para ROMs maiores;
+- integração do sistema em um top mais próximo do Game Boy final.
 
-Para este projeto, a terceira pergunta é muito importante. O EP4CE6 tem apenas
-6.272 logic elements. Se uma implementação funcionar mas consumir recursos
-demais, ela ainda não é boa o bastante para o objetivo final.
+Só então faz sentido mirar:
 
-Por isso o projeto deve sempre crescer assim:
+- homebrews simples;
+- `Tetris`;
+- `Dr. Mario`.
 
-- implementar uma fatia pequena;
-- simular;
-- sintetizar quando houver mudança em RTL;
-- medir recursos;
-- documentar;
-- só então expandir.
+### 10.4 Depois do Primeiro Sistema Jogável
 
-## 15. Resumo da Linha Atual
+A APU entra como etapa de completude e refinamento:
 
-O projeto já tem:
+- canais de pulso;
+- wave channel;
+- noise channel;
+- mistura e saída de áudio.
 
-- VGA funcionando em hardware;
-- framebuffer exibindo imagem;
-- CPU inicial multi-ciclo;
-- ALU e registradores;
-- subconjunto inicial de opcodes;
-- barramento inicial;
-- WRAM pequena;
-- HRAM e I/O stubs;
-- serial debug stub;
-- runner de ROM em simulação imprimindo `Passed`.
+Ela é importante para um Game Boy completo, mas não é o bloqueador principal
+para o primeiro alvo jogável.
 
-O próximo crescimento natural é usar o runner para guiar a expansão da CPU até
-ela conseguir rodar testes estilo Blargg de forma progressiva.
+## 11. Como Ler o Estado do Projeto Sem Se Perder
 
-Depois disso, voltamos para testes visuais mais ricos e iniciamos a PPU real.
+Pense sempre em três níveis:
+
+### Nível 1: Blocos
+
+- CPU
+- bus/memória
+- timer/interrupções
+- PPU
+- joypad
+- APU
+
+### Nível 2: Contratos Entre Blocos
+
+- quem responde a qual endereço;
+- quando a CPU pode ler;
+- quando uma interrupção é levantada;
+- quando a PPU pode usar memória;
+- como dados atravessam clocks diferentes.
+
+### Nível 3: Evidência
+
+- qual teste prova que aquele comportamento existe;
+- qual bitstream já foi validado em hardware;
+- quanto custou no FPGA;
+- o que ainda é stub.
+
+Enquanto esses três níveis estiverem claros, o projeto continua sob controle.
+
+## 12. O Que Já É Real e O Que Ainda É Provisório
+
+### Já É Real no Projeto
+
+- VGA em hardware;
+- framebuffer em hardware;
+- CPU multi-ciclo;
+- WRAM completa;
+- caminho serial de testes;
+- timer inicial;
+- base de interrupções;
+- regressão Blargg `cpu_instrs`;
+- medição contínua de recursos.
+
+### Ainda É Provisório ou Incompleto
+
+- framebuffer direto no smoke test;
+- ROM interna temporária;
+- parte dos registradores de I/O;
+- joypad;
+- PPU real;
+- timing exato da CPU;
+- comportamento completo de `HALT` e `STOP`;
+- carregamento final de ROMs;
+- APU.
+
+## 13. Como Sabemos Que a Progressão Está Correta
+
+A progressão está correta quando cada nova etapa:
+
+- reduz uma incerteza importante;
+- cria um teste novo;
+- evita acoplar muitos blocos imaturos ao mesmo tempo;
+- preserva espaço no FPGA;
+- deixa o próximo passo mais claro do que o anterior.
+
+Foi exatamente isso que aconteceu até aqui:
+
+- VGA tornou o hardware observável;
+- framebuffer tornou o vídeo controlável;
+- CPU tornou programas possíveis;
+- serial tornou ROMs de teste observáveis sem PPU;
+- barramento tornou a memória realista;
+- timer começou a unir CPU e interrupções;
+- agora o timing vai preparar o caminho da PPU.
+
+## 14. Resumo Executivo
+
+Hoje, o projeto já possui:
+
+- base FPGA validada;
+- vídeo funcionando em hardware;
+- CPU ampla em comportamento;
+- toda a suíte individual `cpu_instrs` passando;
+- `instr_timing.gb` passando;
+- `mem_timing` individual e agregado passando;
+- `mem_timing-2` individual e agregado passando;
+- `interrupt_time.gb` passando;
+- barramento com WRAM completa;
+- serial debug;
+- timer inicial;
+- interrupções básicas;
+- integração CPU + vídeo preservada;
+- recursos medidos e ainda dentro do limite da placa.
+
+O próximo passo correto é:
+
+```text
+fechar a fidelidade temporal da CPU antes de iniciar a PPU real
+```
+
+Depois disso, o grande capítulo seguinte será a PPU. A partir dela, começaremos
+a sair do território dos testes de subsistema e a entrar no território de uma
+máquina cada vez mais parecida com um Game Boy de verdade.
+
+## 15. Atualização: Timing de CPU Contra o Timer
+
+A etapa atual mostrou uma diferença importante entre dois tipos de validação:
+
+- contar ciclos diretamente dentro da CPU;
+- medir ciclos usando uma ROM real que depende do timer do Game Boy.
+
+O `tb_cpu_timing_probe` conta os ciclos M observando a própria CPU. Ele foi
+ampliado para cobrir mais opcodes que aparecem cedo no `instr_timing.gb`, como
+`INC BC`, `DEC BC`, `LD (HL+),A`, `LD A,(HL+)`, `LDH A,(n)`, `LD A,(nn)` e
+`LD SP,HL`. Todos esses casos passaram.
+
+Mesmo assim, o `instr_timing.gb` ainda imprimia diferenças. Isso indicava que o
+problema não era simplesmente "adicionar um ciclo" ou "remover um ciclo" desses
+opcodes. O ponto sensível era a fronteira entre CPU, bus e timer: em qual ciclo a
+escrita em `TIMA` acontece, em qual ciclo a leitura de `TIMA` enxerga o valor, e
+como isso se alinha à borda interna do divisor.
+
+Essa distinção é importante para o projeto inteiro. Um jogo não depende apenas
+de a CPU chegar ao resultado correto; ele depende de a CPU ocupar o barramento
+no tempo correto. Mais adiante, a PPU, DMA, interrupções e joypad também vão
+depender dessa mesma disciplina temporal.
+
+O passo técnico seguinte foi criar uma sonda específica para o laço de timer
+usado por Blargg, antes de mexer novamente nos opcodes. Isso reduziu o risco de
+corrigir um sintoma e quebrar testes que já estavam bons.
+
+Essa sonda foi criada como ferramenta de depuração, não como substituta do
+Blargg. O resultado inicial é útil:
+
+- `NOP` mediu `1`, como esperado;
+- `LD BC,nn` mediu `4` antes da correção de visibilidade da TIMA, embora o
+  Blargg espere `3`;
+- a mesma instrução mede `3` quando observamos apenas a distância entre fetches
+  da CPU.
+
+Isso ensina uma coisa importante: existem duas verdades parciais sendo
+observadas ao mesmo tempo. A CPU, isolada, parece contar corretamente os ciclos
+da instrução. A medição pelo timer, porém, ainda vê um ciclo a mais. Portanto, o
+erro mais provável está na fronteira entre CPU, barramento e timer, não
+necessariamente no opcode isolado.
+
+O Blargg continua sendo a referência. A sonda local serve apenas para descobrir
+onde olhar dentro do nosso hardware.
+
+A correção final desta etapa foi ajustar a visibilidade de leitura da TIMA: no
+modelo atual de barramento por ciclo M, a CPU deve enxergar o valor visível ao
+fim do ciclo de acesso. Para incrementos normais do timer, isso significa ver a
+TIMA já incrementada após a borda do divisor naquele ciclo. O caminho de overflow
+continua com atraso separado: TIMA ainda passa por `0x00` antes do reload por
+TMA e do pulso de interrupção.
+
+Com isso, a ROM real `instr_timing.gb` passou. Esse é um checkpoint importante
+porque confirma a regra de desenvolvimento do projeto: quando um teste local e a
+ROM real parecem discordar, a ROM real decide o alvo; o teste local serve apenas
+para revelar onde a implementação precisa ser observada.
+
+Na sequência, a família `mem_timing` também passou:
+
+- `01-read_timing.gb`;
+- `02-write_timing.gb`;
+- `03-modify_timing.gb`;
+- `mem_timing.gb` agregado.
+
+Isso mostra que, para as instruções já cobertas, a CPU está posicionando leituras
+e escritas de memória no ciclo correto dentro do modelo atual. É um avanço
+importante porque começa a validar não só "quanto tempo a instrução dura", mas
+também "em qual ciclo o barramento é realmente acessado".
+
+A família `mem_timing-2` também passou. Ela foi importante por outro motivo:
+essa versão do Blargg publica o resultado por memória em `0xA000`, com assinatura
+em `0xA001..0xA003`. Portanto, o runner foi ampliado para observar esse
+protocolo oficial além da saída serial. Isso deixa o ambiente de teste mais
+próximo da diversidade real dos testes Blargg.
+
+Na sequência, `interrupt_time.gb` também passou. Essa ROM mede a entrada de
+interrupção e espera 13 ciclos entre a solicitação e o retorno do handler. O
+resultado confirma que o caminho atual de IME, prioridade, push de `PC`, vetor,
+`interrupt_ack` e retorno está coerente com o teste.
+
+Dentro do pacote Blargg local, o próximo alvo de CPU diretamente disponível é
+`halt_bug.gb`. Não há uma suíte separada de timer nesse pacote além das famílias
+já usadas e dos helpers internos dos testes de timing.

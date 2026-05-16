@@ -87,6 +87,10 @@ architecture rtl of cpu is
         S_CALL_PUSH_LO,
         S_RET_READ_LO,
         S_RET_READ_HI,
+        S_JR_TAKEN,
+        S_BRANCH_TAKEN,
+        S_SP_REL_WAIT,
+        S_SP_REL_EXEC,
         S_HALT
     );
 
@@ -106,6 +110,7 @@ architecture rtl of cpu is
     signal interrupt_vector_reg : std_logic_vector(2 downto 0);
 
     signal dec_valid : std_logic;
+    signal decoder_opcode_sig : std_logic_vector(7 downto 0);
     signal dec_class : std_logic_vector(3 downto 0);
     signal dec_dst : std_logic_vector(2 downto 0);
     signal dec_src : std_logic_vector(2 downto 0);
@@ -279,6 +284,55 @@ architecture rtl of cpu is
         end if;
     end function is_rst_opcode;
 
+    function is_cond_jp_opcode(opcode_in : std_logic_vector(7 downto 0)) return std_logic is
+    begin
+        if opcode_in(7 downto 5) = "110" and opcode_in(2 downto 0) = "010" then
+            return '1';
+        else
+            return '0';
+        end if;
+    end function is_cond_jp_opcode;
+
+    function is_cond_call_opcode(opcode_in : std_logic_vector(7 downto 0)) return std_logic is
+    begin
+        if opcode_in(7 downto 5) = "110" and opcode_in(2 downto 0) = "100" then
+            return '1';
+        else
+            return '0';
+        end if;
+    end function is_cond_call_opcode;
+
+    function is_cond_ret_opcode(opcode_in : std_logic_vector(7 downto 0)) return std_logic is
+    begin
+        if opcode_in(7 downto 5) = "110" and opcode_in(2 downto 0) = "000" then
+            return '1';
+        else
+            return '0';
+        end if;
+    end function is_cond_ret_opcode;
+
+    function is_reg_addr_write_opcode(opcode_in : std_logic_vector(7 downto 0)) return std_logic is
+    begin
+        if opcode_in = x"02" or opcode_in = x"12" or
+           opcode_in = x"22" or opcode_in = x"32" or
+           opcode_in = x"E2" then
+            return '1';
+        else
+            return '0';
+        end if;
+    end function is_reg_addr_write_opcode;
+
+    function is_reg_addr_read_opcode(opcode_in : std_logic_vector(7 downto 0)) return std_logic is
+    begin
+        if opcode_in = x"0A" or opcode_in = x"1A" or
+           opcode_in = x"2A" or opcode_in = x"3A" or
+           opcode_in = x"F2" then
+            return '1';
+        else
+            return '0';
+        end if;
+    end function is_reg_addr_read_opcode;
+
     function cb_exec_result(opcode_in : std_logic_vector(7 downto 0);
                             value_in : std_logic_vector(7 downto 0);
                             carry_in : std_logic) return std_logic_vector is
@@ -409,7 +463,12 @@ architecture rtl of cpu is
             when S_CALL_PUSH_LO => return "10110";
             when S_RET_READ_LO  => return "10111";
             when S_RET_READ_HI  => return "11000";
-            when others         => return "11001";
+            when S_JR_TAKEN     => return "11001";
+            when S_BRANCH_TAKEN => return "11010";
+            when S_SP_REL_WAIT  => return "11011";
+            when S_SP_REL_EXEC  => return "11100";
+            when S_HALT         => return "11101";
+            when others         => return "11111";
         end case;
     end function state_to_slv;
 
@@ -417,7 +476,7 @@ begin
 
     u_decoder: entity work.decoder
         port map (
-            opcode          => opcode_reg,
+            opcode          => decoder_opcode_sig,
             valid           => dec_valid,
             instr_class     => dec_class,
             dst_sel         => dec_dst,
@@ -430,6 +489,8 @@ begin
             writes_register => dec_writes_register,
             writes_flags    => dec_writes_flags
         );
+
+    decoder_opcode_sig <= mem_data_in when state_reg = S_FETCH and mem_ready = '1' else opcode_reg;
 
     u_registers: entity work.registers
         port map (
@@ -511,6 +572,12 @@ begin
                         else
                             if mem_ready = '1' then
                                 opcode_reg <= mem_data_in;
+                                if mem_data_in = x"F3" then
+                                    ime_reg <= '0';
+                                    ei_pending_reg <= '0';
+                                elsif mem_data_in = x"FB" then
+                                    ei_pending_reg <= '1';
+                                end if;
                             end if;
                         end if;
 
@@ -656,7 +723,171 @@ begin
                     if mem_ready = '1' then
                         pc_write_enable <= '1';
                         pc_in_sig <= inc16(pc_out_sig);
-                        state_next <= S_DECODE;
+                        if dec_valid = '1' and dec_class = DEC_CLASS_NOP then
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif dec_valid = '1' and
+                              (dec_class = DEC_CLASS_LD_R_N or
+                               dec_class = DEC_CLASS_LD_16_N or
+                               dec_class = DEC_CLASS_ALU_N) then
+                            instr_complete <= '0';
+                            state_next <= S_READ_IMM_LO;
+                        elsif mem_data_in = x"F3" then
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif mem_data_in = x"FB" then
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif mem_data_in = x"E9" then
+                            pc_write_enable <= '1';
+                            pc_in_sig <= hl_sig;
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif mem_data_in = x"CB" then
+                            instr_complete <= '0';
+                            state_next <= S_READ_IMM_LO;
+                        elsif mem_data_in = x"C3" or mem_data_in = x"CD" then
+                            instr_complete <= '0';
+                            state_next <= S_READ_IMM_LO;
+                        elsif mem_data_in = x"C9" or mem_data_in = x"D9" then
+                            instr_complete <= '0';
+                            state_next <= S_RET_READ_LO;
+                        elsif mem_data_in = x"20" or mem_data_in = x"28" or
+                              mem_data_in = x"30" or mem_data_in = x"38" then
+                            instr_complete <= '0';
+                            state_next <= S_READ_IMM_LO;
+                        elsif is_cond_jp_opcode(mem_data_in) = '1' or
+                              is_cond_call_opcode(mem_data_in) = '1' then
+                            instr_complete <= '0';
+                            state_next <= S_READ_IMM_LO;
+                        elsif dec_valid = '1' and dec_class = DEC_CLASS_LD_MEM then
+                            instr_complete <= '0';
+                            if is_reg_addr_write_opcode(mem_data_in) = '1' then
+                                state_next <= S_MEM_WRITE_REG_ADDR;
+                            elsif is_reg_addr_read_opcode(mem_data_in) = '1' then
+                                state_next <= S_MEM_READ_REG_ADDR;
+                            else
+                                state_next <= S_READ_IMM_LO;
+                            end if;
+                        elsif dec_valid = '1' and
+                              (dec_class = DEC_CLASS_INC_R or dec_class = DEC_CLASS_DEC_R) and
+                              dec_reads_memory = '1' then
+                            instr_complete <= '0';
+                            state_next <= S_MEM_READ_HL;
+                        elsif dec_valid = '1' and dec_class = DEC_CLASS_LD_R_R and
+                              dec_reads_memory = '1' then
+                            instr_complete <= '0';
+                            state_next <= S_MEM_READ_HL;
+                        elsif dec_valid = '1' and dec_class = DEC_CLASS_LD_R_R and
+                              dec_writes_memory = '1' then
+                            instr_complete <= '0';
+                            state_next <= S_MEM_WRITE_HL;
+                        elsif dec_valid = '1' and dec_class = DEC_CLASS_ALU_R and
+                              dec_reads_memory = '1' then
+                            instr_complete <= '0';
+                            state_next <= S_MEM_READ_HL;
+                        elsif dec_valid = '1' and dec_class = DEC_CLASS_STACK and
+                              mem_data_in(2) = '0' then
+                            instr_complete <= '0';
+                            state_next <= S_POP_LO;
+                        elsif mem_data_in = x"07" or mem_data_in = x"0F" or
+                              mem_data_in = x"17" or mem_data_in = x"1F" then
+                            reg_write_enable <= '1';
+                            reg_write_sel <= CPU_REG_A;
+                            flags_write_enable <= '1';
+                            flags_in_sig(CPU_FLAG_Z_BIT) <= '0';
+                            flags_in_sig(CPU_FLAG_N_BIT) <= '0';
+                            flags_in_sig(CPU_FLAG_H_BIT) <= '0';
+                            if mem_data_in = x"07" then
+                                reg_write_data <= a_sig(6 downto 0) & a_sig(7);
+                                flags_in_sig(CPU_FLAG_C_BIT) <= a_sig(7);
+                            elsif mem_data_in = x"0F" then
+                                reg_write_data <= a_sig(0) & a_sig(7 downto 1);
+                                flags_in_sig(CPU_FLAG_C_BIT) <= a_sig(0);
+                            elsif mem_data_in = x"17" then
+                                reg_write_data <= a_sig(6 downto 0) & flags_sig(CPU_FLAG_C_BIT);
+                                flags_in_sig(CPU_FLAG_C_BIT) <= a_sig(7);
+                            else
+                                reg_write_data <= flags_sig(CPU_FLAG_C_BIT) & a_sig(7 downto 1);
+                                flags_in_sig(CPU_FLAG_C_BIT) <= a_sig(0);
+                            end if;
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif mem_data_in = x"27" then
+                            alu_a_sig <= a_sig;
+                            alu_b_sig <= x"00";
+                            alu_op_sig <= ALU_OP_DAA;
+                            reg_write_enable <= '1';
+                            reg_write_sel <= CPU_REG_A;
+                            reg_write_data <= alu_result_sig;
+                            flags_write_enable <= '1';
+                            flags_in_sig <= alu_flags_sig;
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif mem_data_in = x"2F" then
+                            reg_write_enable <= '1';
+                            reg_write_sel <= CPU_REG_A;
+                            reg_write_data <= not a_sig;
+                            flags_write_enable <= '1';
+                            flags_in_sig(CPU_FLAG_Z_BIT) <= flags_sig(CPU_FLAG_Z_BIT);
+                            flags_in_sig(CPU_FLAG_N_BIT) <= '1';
+                            flags_in_sig(CPU_FLAG_H_BIT) <= '1';
+                            flags_in_sig(CPU_FLAG_C_BIT) <= flags_sig(CPU_FLAG_C_BIT);
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif mem_data_in = x"37" then
+                            flags_write_enable <= '1';
+                            flags_in_sig(CPU_FLAG_Z_BIT) <= flags_sig(CPU_FLAG_Z_BIT);
+                            flags_in_sig(CPU_FLAG_N_BIT) <= '0';
+                            flags_in_sig(CPU_FLAG_H_BIT) <= '0';
+                            flags_in_sig(CPU_FLAG_C_BIT) <= '1';
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif mem_data_in = x"3F" then
+                            flags_write_enable <= '1';
+                            flags_in_sig(CPU_FLAG_Z_BIT) <= flags_sig(CPU_FLAG_Z_BIT);
+                            flags_in_sig(CPU_FLAG_N_BIT) <= '0';
+                            flags_in_sig(CPU_FLAG_H_BIT) <= '0';
+                            flags_in_sig(CPU_FLAG_C_BIT) <= not flags_sig(CPU_FLAG_C_BIT);
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif dec_valid = '1' and dec_class = DEC_CLASS_LD_R_R and
+                              dec_reads_memory = '0' and dec_writes_memory = '0' then
+                            reg_write_enable <= '1';
+                            reg_write_sel <= dec_dst;
+                            reg_write_data <= reg_read_data_b;
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif dec_valid = '1' and
+                              (dec_class = DEC_CLASS_INC_R or dec_class = DEC_CLASS_DEC_R) and
+                              dec_reads_memory = '0' then
+                            alu_a_sig <= reg_read_data_b;
+                            alu_b_sig <= x"01";
+                            alu_op_sig <= dec_alu_op;
+                            reg_write_enable <= '1';
+                            reg_write_sel <= dec_dst;
+                            reg_write_data <= alu_result_sig;
+                            flags_write_enable <= '1';
+                            flags_in_sig <= alu_flags_sig;
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        elsif dec_valid = '1' and dec_class = DEC_CLASS_ALU_R and
+                              dec_reads_memory = '0' then
+                            alu_a_sig <= a_sig;
+                            alu_b_sig <= reg_read_data_b;
+                            alu_op_sig <= dec_alu_op;
+                            if dec_alu_op /= ALU_OP_CP then
+                                reg_write_enable <= '1';
+                                reg_write_sel <= CPU_REG_A;
+                                reg_write_data <= alu_result_sig;
+                            end if;
+                            flags_write_enable <= '1';
+                            flags_in_sig <= alu_flags_sig;
+                            instr_complete <= '1';
+                            state_next <= S_FETCH;
+                        else
+                            state_next <= S_DECODE;
+                        end if;
                     else
                         state_next <= S_FETCH;
                     end if;
@@ -683,32 +914,16 @@ begin
                     elsif dec_writes_memory = '1' then
                         instr_complete <= '0';
                         state_next <= S_MEM_WRITE_HL;
-                    elsif dec_src /= CPU_REG_HL_MEM and dec_dst /= CPU_REG_HL_MEM then
-                        reg_write_enable <= '1';
-                        reg_write_sel <= dec_dst;
-                        reg_write_data <= reg_read_data_b;
                     else
                         state_next <= S_FETCH;
                     end if;
-
-                elsif dec_class = DEC_CLASS_LD_16_N then
-                    instr_complete <= '0';
-                    state_next <= S_READ_IMM_LO;
 
                 elsif dec_class = DEC_CLASS_INC_R or dec_class = DEC_CLASS_DEC_R then
                     if dec_reads_memory = '1' then
                         instr_complete <= '0';
                         state_next <= S_MEM_READ_HL;
                     else
-                        reg_read_sel_b <= dec_src;
-                        alu_a_sig <= reg_read_data_b;
-                        alu_b_sig <= x"01";
-                        alu_op_sig <= dec_alu_op;
-                        reg_write_enable <= '1';
-                        reg_write_sel <= dec_dst;
-                        reg_write_data <= alu_result_sig;
-                        flags_write_enable <= '1';
-                        flags_in_sig <= alu_flags_sig;
+                        state_next <= S_FETCH;
                     end if;
 
                 elsif dec_class = DEC_CLASS_ALU_R then
@@ -716,20 +931,14 @@ begin
                         instr_complete <= '0';
                         state_next <= S_MEM_READ_HL;
                     else
-                        reg_read_sel_b <= dec_src;
-                        alu_a_sig <= a_sig;
-                        alu_b_sig <= reg_read_data_b;
-                        alu_op_sig <= dec_alu_op;
-                        if dec_alu_op /= ALU_OP_CP then
-                            reg_write_enable <= '1';
-                            reg_write_sel <= CPU_REG_A;
-                            reg_write_data <= alu_result_sig;
-                        end if;
-                        flags_write_enable <= '1';
-                        flags_in_sig <= alu_flags_sig;
+                        state_next <= S_FETCH;
                     end if;
 
                 elsif dec_class = DEC_CLASS_ALU_N then
+                    instr_complete <= '0';
+                    state_next <= S_READ_IMM_LO;
+
+                elsif dec_class = DEC_CLASS_LD_16_N then
                     instr_complete <= '0';
                     state_next <= S_READ_IMM_LO;
 
@@ -771,11 +980,9 @@ begin
                     end if;
 
                 elsif dec_class = DEC_CLASS_JUMP then
-                    if opcode_reg = x"C2" or opcode_reg = x"C3" or
-                       opcode_reg = x"C4" or opcode_reg = x"CA" or
-                       opcode_reg = x"CC" or opcode_reg = x"D2" or
-                       opcode_reg = x"D4" or opcode_reg = x"DA" or
-                       opcode_reg = x"DC" or opcode_reg = x"CD" then
+                    if is_cond_jp_opcode(opcode_reg) = '1' or
+                       is_cond_call_opcode(opcode_reg) = '1' or
+                       opcode_reg = x"C3" or opcode_reg = x"CD" then
                         instr_complete <= '0';
                         state_next <= S_READ_IMM_LO;
                     elsif is_rst_opcode(opcode_reg) = '1' then
@@ -792,8 +999,7 @@ begin
                     elsif opcode_reg = x"E9" then
                         pc_write_enable <= '1';
                         pc_in_sig <= hl_sig;
-                    elsif opcode_reg = x"C0" or opcode_reg = x"C8" or
-                          opcode_reg = x"D0" or opcode_reg = x"D8" then
+                    elsif is_cond_ret_opcode(opcode_reg) = '1' then
                         if condition_met(opcode_reg, flags_sig) = '1' then
                             instr_complete <= '0';
                             state_next <= S_RET_READ_LO;
@@ -814,13 +1020,9 @@ begin
 
                 elsif dec_class = DEC_CLASS_LD_MEM then
                     instr_complete <= '0';
-                    if opcode_reg = x"02" or opcode_reg = x"12" or
-                       opcode_reg = x"22" or opcode_reg = x"32" or
-                       opcode_reg = x"E2" then
+                    if is_reg_addr_write_opcode(opcode_reg) = '1' then
                         state_next <= S_MEM_WRITE_REG_ADDR;
-                    elsif opcode_reg = x"0A" or opcode_reg = x"1A" or
-                          opcode_reg = x"2A" or opcode_reg = x"3A" or
-                          opcode_reg = x"F2" then
+                    elsif is_reg_addr_read_opcode(opcode_reg) = '1' then
                         state_next <= S_MEM_READ_REG_ADDR;
                     else
                         state_next <= S_READ_IMM_LO;
@@ -839,57 +1041,6 @@ begin
                     elsif opcode_reg = x"F9" then
                         sp_write_enable <= '1';
                         sp_in_sig <= hl_sig;
-                    elsif opcode_reg = x"27" then
-                        alu_a_sig <= a_sig;
-                        alu_b_sig <= x"00";
-                        alu_op_sig <= ALU_OP_DAA;
-                        reg_write_enable <= '1';
-                        reg_write_sel <= CPU_REG_A;
-                        reg_write_data <= alu_result_sig;
-                        flags_write_enable <= '1';
-                        flags_in_sig <= alu_flags_sig;
-                    elsif opcode_reg = x"2F" then
-                        reg_write_enable <= '1';
-                        reg_write_sel <= CPU_REG_A;
-                        reg_write_data <= not a_sig;
-                        flags_write_enable <= '1';
-                        flags_in_sig(CPU_FLAG_Z_BIT) <= flags_sig(CPU_FLAG_Z_BIT);
-                        flags_in_sig(CPU_FLAG_N_BIT) <= '1';
-                        flags_in_sig(CPU_FLAG_H_BIT) <= '1';
-                        flags_in_sig(CPU_FLAG_C_BIT) <= flags_sig(CPU_FLAG_C_BIT);
-                    elsif opcode_reg = x"37" then
-                        flags_write_enable <= '1';
-                        flags_in_sig(CPU_FLAG_Z_BIT) <= flags_sig(CPU_FLAG_Z_BIT);
-                        flags_in_sig(CPU_FLAG_N_BIT) <= '0';
-                        flags_in_sig(CPU_FLAG_H_BIT) <= '0';
-                        flags_in_sig(CPU_FLAG_C_BIT) <= '1';
-                    elsif opcode_reg = x"3F" then
-                        flags_write_enable <= '1';
-                        flags_in_sig(CPU_FLAG_Z_BIT) <= flags_sig(CPU_FLAG_Z_BIT);
-                        flags_in_sig(CPU_FLAG_N_BIT) <= '0';
-                        flags_in_sig(CPU_FLAG_H_BIT) <= '0';
-                        flags_in_sig(CPU_FLAG_C_BIT) <= not flags_sig(CPU_FLAG_C_BIT);
-                    elsif opcode_reg = x"07" or opcode_reg = x"0F" or
-                          opcode_reg = x"17" or opcode_reg = x"1F" then
-                        reg_write_enable <= '1';
-                        reg_write_sel <= CPU_REG_A;
-                        flags_write_enable <= '1';
-                        flags_in_sig(CPU_FLAG_Z_BIT) <= '0';
-                        flags_in_sig(CPU_FLAG_N_BIT) <= '0';
-                        flags_in_sig(CPU_FLAG_H_BIT) <= '0';
-                        if opcode_reg = x"07" then
-                            reg_write_data <= a_sig(6 downto 0) & a_sig(7);
-                            flags_in_sig(CPU_FLAG_C_BIT) <= a_sig(7);
-                        elsif opcode_reg = x"0F" then
-                            reg_write_data <= a_sig(0) & a_sig(7 downto 1);
-                            flags_in_sig(CPU_FLAG_C_BIT) <= a_sig(0);
-                        elsif opcode_reg = x"17" then
-                            reg_write_data <= a_sig(6 downto 0) & flags_sig(CPU_FLAG_C_BIT);
-                            flags_in_sig(CPU_FLAG_C_BIT) <= a_sig(7);
-                        else
-                            reg_write_data <= flags_sig(CPU_FLAG_C_BIT) & a_sig(7 downto 1);
-                            flags_in_sig(CPU_FLAG_C_BIT) <= a_sig(0);
-                        end if;
                     else
                         -- DI/EI bookkeeping is handled by the sequential process.
                         state_next <= S_FETCH;
@@ -956,29 +1107,11 @@ begin
                 elsif opcode_reg = x"E8" or opcode_reg = x"F8" then
                     pc_write_enable <= '1';
                     pc_in_sig <= inc16(pc_out_sig);
-                    sp_low_sum_v := unsigned('0' & sp_out_sig(7 downto 0)) +
-                                    unsigned('0' & mem_data_in);
-                    sp_nib_sum_v := unsigned('0' & sp_out_sig(3 downto 0)) +
-                                    unsigned('0' & mem_data_in(3 downto 0));
-                    flags_write_enable <= '1';
-                    flags_in_sig(CPU_FLAG_Z_BIT) <= '0';
-                    flags_in_sig(CPU_FLAG_N_BIT) <= '0';
-                    if sp_nib_sum_v(4) = '1' then
-                        flags_in_sig(CPU_FLAG_H_BIT) <= '1';
-                    else
-                        flags_in_sig(CPU_FLAG_H_BIT) <= '0';
-                    end if;
-                    flags_in_sig(CPU_FLAG_C_BIT) <= sp_low_sum_v(8);
                     if opcode_reg = x"E8" then
-                        sp_write_enable <= '1';
-                        sp_in_sig <= add_signed8(sp_out_sig, mem_data_in);
+                        state_next <= S_SP_REL_WAIT;
                     else
-                        pair_write_enable <= '1';
-                        pair_write_sel <= CPU_PAIR_HL;
-                        pair_write_data <= add_signed8(sp_out_sig, mem_data_in);
+                        state_next <= S_SP_REL_EXEC;
                     end if;
-                    instr_complete <= '1';
-                    state_next <= S_FETCH;
                 elsif opcode_reg = x"18" then
                     pc_write_enable <= '1';
                     jr_base_v := inc16(pc_out_sig);
@@ -990,12 +1123,13 @@ begin
                     pc_write_enable <= '1';
                     jr_base_v := inc16(pc_out_sig);
                     if condition_met(opcode_reg, flags_sig) = '1' then
-                        pc_in_sig <= add_signed8(jr_base_v, mem_data_in);
+                        pc_in_sig <= jr_base_v;
+                        state_next <= S_JR_TAKEN;
                     else
                         pc_in_sig <= jr_base_v;
+                        instr_complete <= '1';
+                        state_next <= S_FETCH;
                     end if;
-                    instr_complete <= '1';
-                    state_next <= S_FETCH;
                 elsif dec_class = DEC_CLASS_LD_R_N then
                     pc_write_enable <= '1';
                     pc_in_sig <= inc16(pc_out_sig);
@@ -1063,32 +1197,30 @@ begin
                 elsif opcode_reg = x"C3" then
                     pc_write_enable <= '1';
                     pc_in_sig <= mem_data_in & imm_lo_reg;
-                    instr_complete <= '1';
-                    state_next <= S_FETCH;
-                elsif opcode_reg = x"C2" or opcode_reg = x"CA" or
-                      opcode_reg = x"D2" or opcode_reg = x"DA" then
+                    state_next <= S_BRANCH_TAKEN;
+                elsif is_cond_jp_opcode(opcode_reg) = '1' then
                     pc_write_enable <= '1';
                     if condition_met(opcode_reg, flags_sig) = '1' then
                         pc_in_sig <= mem_data_in & imm_lo_reg;
+                        state_next <= S_BRANCH_TAKEN;
                     else
                         pc_in_sig <= inc16(pc_out_sig);
+                        instr_complete <= '1';
+                        state_next <= S_FETCH;
                     end if;
-                    instr_complete <= '1';
-                    state_next <= S_FETCH;
                 elsif opcode_reg = x"CD" then
                     pc_write_enable <= '1';
                     pc_in_sig <= inc16(pc_out_sig);
-                    state_next <= S_CALL_PUSH_HI;
+                    state_next <= S_BRANCH_TAKEN;
                 elsif opcode_reg = x"08" then
                     pc_write_enable <= '1';
                     pc_in_sig <= inc16(pc_out_sig);
                     state_next <= S_MEM_WRITE_SP_LO;
-                elsif opcode_reg = x"C4" or opcode_reg = x"CC" or
-                      opcode_reg = x"D4" or opcode_reg = x"DC" then
+                elsif is_cond_call_opcode(opcode_reg) = '1' then
                     pc_write_enable <= '1';
                     pc_in_sig <= inc16(pc_out_sig);
                     if condition_met(opcode_reg, flags_sig) = '1' then
-                        state_next <= S_CALL_PUSH_HI;
+                        state_next <= S_BRANCH_TAKEN;
                     else
                         instr_complete <= '1';
                         state_next <= S_FETCH;
@@ -1369,9 +1501,56 @@ begin
                 sp_in_sig <= inc16(sp_out_sig);
                 pc_write_enable <= '1';
                 pc_in_sig <= mem_data_in & stack_lo_reg;
+                if is_cond_ret_opcode(opcode_reg) = '1' or
+                   opcode_reg = x"C9" or opcode_reg = x"D9" then
+                    state_next <= S_BRANCH_TAKEN;
+                else
+                    instr_complete <= '1';
+                    state_next <= S_FETCH;
+                end if;
+                end if;
+
+            when S_JR_TAKEN =>
+                pc_write_enable <= '1';
+                pc_in_sig <= add_signed8(pc_out_sig, imm_lo_reg);
                 instr_complete <= '1';
                 state_next <= S_FETCH;
+
+            when S_BRANCH_TAKEN =>
+                if is_cond_call_opcode(opcode_reg) = '1' or opcode_reg = x"CD" then
+                    state_next <= S_CALL_PUSH_HI;
+                else
+                    instr_complete <= '1';
+                    state_next <= S_FETCH;
                 end if;
+
+            when S_SP_REL_WAIT =>
+                state_next <= S_SP_REL_EXEC;
+
+            when S_SP_REL_EXEC =>
+                sp_low_sum_v := unsigned('0' & sp_out_sig(7 downto 0)) +
+                                unsigned('0' & imm_lo_reg);
+                sp_nib_sum_v := unsigned('0' & sp_out_sig(3 downto 0)) +
+                                unsigned('0' & imm_lo_reg(3 downto 0));
+                flags_write_enable <= '1';
+                flags_in_sig(CPU_FLAG_Z_BIT) <= '0';
+                flags_in_sig(CPU_FLAG_N_BIT) <= '0';
+                if sp_nib_sum_v(4) = '1' then
+                    flags_in_sig(CPU_FLAG_H_BIT) <= '1';
+                else
+                    flags_in_sig(CPU_FLAG_H_BIT) <= '0';
+                end if;
+                flags_in_sig(CPU_FLAG_C_BIT) <= sp_low_sum_v(8);
+                if opcode_reg = x"E8" then
+                    sp_write_enable <= '1';
+                    sp_in_sig <= add_signed8(sp_out_sig, imm_lo_reg);
+                else
+                    pair_write_enable <= '1';
+                    pair_write_sel <= CPU_PAIR_HL;
+                    pair_write_data <= add_signed8(sp_out_sig, imm_lo_reg);
+                end if;
+                instr_complete <= '1';
+                state_next <= S_FETCH;
 
             when S_HALT =>
                 if pending_interrupt_sig = '1' then

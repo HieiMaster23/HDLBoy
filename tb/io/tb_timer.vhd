@@ -47,7 +47,8 @@ begin
 
     u_dut: entity work.timer
         generic map (
-            G_DIV_COUNTER_STEP => 4
+            G_DIV_COUNTER_STEP => 4,
+            G_DIV_COUNTER_RESET => 4
         )
         port map (
             clk => clk,
@@ -104,7 +105,7 @@ begin
             report "FAIL: timer registers should read back written values"
             severity failure;
 
-        wait_cycles(2);
+        wait_cycles(1);
         assert tima_read = x"AA"
             report "FAIL: TIMA should not increment before the selected divider falling edge"
             severity failure;
@@ -126,14 +127,9 @@ begin
             report "FAIL: TIMA overflow should hold 0x00 before reload"
             severity failure;
 
-        wait_cycles(3);
-        assert tima_read = x"00" and timer_interrupt_set = '0'
-            report "FAIL: TIMA reload should wait four cycles after overflow"
-            severity failure;
-
         wait_cycles(1);
         assert tima_read = x"42" and timer_interrupt_set = '1'
-            report "FAIL: TIMA should reload TMA and pulse interrupt after overflow delay"
+            report "FAIL: TIMA should reload TMA and pulse interrupt one M-cycle after overflow"
             severity failure;
 
         wait_cycles(1);
