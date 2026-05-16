@@ -73,16 +73,16 @@ be reused later if HRAM or other memory blocks need to move into embedded RAM.
 
 The CPU is now validated against all individual Blargg `cpu_instrs` ROMs,
 `instr_timing.gb`, the `mem_timing`/`mem_timing-2` individual plus aggregate
-ROMs, and `interrupt_time.gb` through the ROM runner. That result proves broad
-behavioral coverage plus the first timing contracts for instruction duration,
-memory access placement, and interrupt-entry latency. The immediate
-architectural work is therefore to continue into HALT behavior before making the
-PPU dependent on those contracts.
+ROMs, `interrupt_time.gb`, and `halt_bug.gb` through the ROM runner. That result
+proves broad behavioral coverage plus the first timing contracts for instruction
+duration, memory access placement, interrupt-entry latency, and the HALT case
+covered by Blargg. The immediate architectural work is therefore to checkpoint
+this phase and begin the first real PPU slice.
 
 The next architectural steps are:
 
-1. Continue CPU timing validation with HALT-specific Blargg ROMs and any later
-   imported timer-specific suites.
+1. Checkpoint the completed local CPU/timing suite and keep it as a regression
+   barrier.
 2. Extend the bus toward the full Game Boy map, including OAM and the remaining
    I/O register decode.
 3. Add real joypad behavior and continue separating implemented peripherals from

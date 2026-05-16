@@ -157,6 +157,8 @@ Current ModelSim scripts:
 - `sim/modelsim/run_cpu_blargg_09.do`
 - `sim/modelsim/run_cpu_blargg_11.do`
 - `sim/modelsim/run_cpu_instr_timing.do`
+- `sim/modelsim/run_cpu_interrupt_time.do`
+- `sim/modelsim/run_cpu_halt_bug.do`
 - `sim/modelsim/run_cpu_timing_probe.do`
 - `sim/modelsim/run_timer.do`
 - `sim/modelsim/run_cpu_all.do`
@@ -467,7 +469,9 @@ Current validation for this checkpoint:
 
 The ROM runner now supports both Blargg link-port serial output and the
 cartridge-RAM status protocol used by `mem_timing-2` at `0xA000`.
-`interrupt_time.gb` also reaches `Passed`, confirming the current interrupt
-entry path matches Blargg's 13-cycle expectation. The next Blargg-facing target
-available in the local package is `halt_bug.gb`, while local probes remain
-strictly debugging aids.
+`interrupt_time.gb` reaches `Passed`, confirming the current interrupt-entry
+path matches Blargg's 13-cycle expectation. `halt_bug.gb` also reaches `Passed`
+with the current core. That closes the local Blargg CPU/timing ladder available
+in this repository; the next meaningful project step is to checkpoint this phase
+and begin the first real PPU slice, while local probes remain strictly debugging
+aids.

@@ -74,6 +74,7 @@ O projeto já possui:
 - Blargg `mem_timing-2` individual e agregado passando via status de memória
   em `0xA000`;
 - Blargg `interrupt_time.gb` passando no runner real.
+- Blargg `halt_bug.gb` passando no runner real.
 
 ## 4. Checkpoints Confiáveis
 
@@ -150,6 +151,7 @@ Sessão atual em andamento, ainda sem checkpoint:
   memória.
 - `interrupt_time.gb` foi promovido para regressão real do Blargg e alcança
   `Passed`, confirmando os 13 ciclos esperados pelo teste.
+- `halt_bug.gb` também alcança `Passed` no runner atual.
 
 Validação rápida executada nesta sessão:
 
@@ -181,15 +183,17 @@ Validação rápida executada nesta sessão:
 - `run_cpu_mem_timing2.do` — Passed;
 - `run_cpu_mem_timing2_aggregate.do` — Passed;
 - `run_cpu_interrupt_time.do` — Passed;
+- `run_cpu_halt_bug.do` — Passed;
 - `run_cpu_timer_blargg_probe.do` — diagnóstico concluído com `LD BC,nn = 3`;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 
-Ainda falta antes de checkpoint:
+Checkpoint pronto para formalização:
 
-- decidir se este ponto já merece commit/checkpoint;
-- avançar para `halt_bug.gb`, o próximo alvo de CPU disponível no pacote
-  Blargg local.
+- a escada local de CPU/timing disponível no pacote Blargg foi concluída;
+- o conjunto de regressão relevante está registrado acima;
+- o próximo passo recomendado após o commit é abrir a primeira fatia real de
+  PPU.
 
 ## 5. Estado Atual por Área
 
@@ -436,19 +440,19 @@ Ordem prática, considerando o estado atual do core:
 19. `mem_timing-2/rom_singles/03-modify_timing.gb` — Passed
 20. `mem_timing-2/mem_timing.gb` — Passed
 21. `interrupt_time/interrupt_time.gb` — Passed
+22. `halt_bug.gb` — Passed
 
 Próximos grupos sensíveis:
 
-- `halt_bug.gb`;
 - `oam_bug`;
 - `dmg_sound`;
 - `cgb_sound`.
 
-`instr_timing.gb`, `mem_timing`, `mem_timing-2` e `interrupt_time.gb` já
-passaram depois da correção da fronteira CPU/barramento/timer, do suporte ao
-status de memória do Blargg e da confirmação do caminho de interrupção. Os
-demais grupos dependem de `HALT` exato, PPU/OAM ou APU, e pertencem às próximas
-fases.
+`instr_timing.gb`, `mem_timing`, `mem_timing-2`, `interrupt_time.gb` e
+`halt_bug.gb` já passaram depois da correção da fronteira CPU/barramento/timer,
+do suporte ao status de memória do Blargg e da confirmação do caminho de
+interrupção. Os demais grupos dependem de PPU/OAM ou APU, e pertencem às
+próximas fases.
 
 ## 8. Dependências Principais
 
@@ -679,9 +683,9 @@ Resultado:
 O próximo alvo oficial recomendado é:
 
 ```text
-Manter `instr_timing.gb`, `mem_timing`, `mem_timing-2` e `interrupt_time.gb`
-como regressões obrigatórias e avançar para `halt_bug.gb`, usando sondas locais
-apenas para explicar falhas reais.
+Manter `instr_timing.gb`, `mem_timing`, `mem_timing-2`, `interrupt_time.gb` e
+`halt_bug.gb` como regressões obrigatórias, formalizar o checkpoint desta fase e
+iniciar a primeira fatia real de PPU.
 ```
 
 Critério de sucesso:
@@ -691,6 +695,7 @@ Critério de sucesso:
 - manter `run_cpu_mem_timing.do` passando;
 - manter `run_cpu_mem_timing2.do` passando;
 - manter `run_cpu_interrupt_time.do` passando;
+- manter `run_cpu_halt_bug.do` passando;
 - manter os rápidos `03`, `04`, `05`, `06` e `08` passando;
 - manter `run_timer.do` passando;
 - manter `07-jr,jp,call,ret,rst.gb` passando;
@@ -700,6 +705,14 @@ Critério de sucesso:
 - implementar apenas a menor correção necessária em `cpu.vhd`;
 - repetir a síntese e registrar o novo custo antes de avançar para outra
   família.
+
+Primeira fatia real de PPU recomendada depois do checkpoint:
+
+```text
+Introduzir VRAM real e um produtor mínimo de background por tiles, ainda sem
+sprites, window ou DMA, para que a primeira imagem da próxima fase venha da PPU
+e não mais de writes diretos da CPU no framebuffer.
+```
 
 ## 15. Princípio de Engenharia do Projeto
 

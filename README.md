@@ -28,7 +28,7 @@ logic that runs directly on the FPGA fabric.
 | M0 | Infrastructure and environment setup | RTL, simulation, Quartus build, and JTAG programming complete |
 | M1 | VGA controller 640x480 at 60 Hz | RTL, simulation, Quartus build, and JTAG programming complete |
 | M2 | Framebuffer and pixel pipeline | RTL, simulation, Quartus build, JTAG programming, and VGA-HDMI visual hardware validation complete |
-| M3 | CPU core - Sharp LR35902 | Broad multi-cycle subset implemented; all individual Blargg `cpu_instrs`, `instr_timing`, `mem_timing`, `mem_timing-2`, and `interrupt_time` ROMs pass |
+| M3 | CPU core - Sharp LR35902 | Broad multi-cycle subset implemented; all individual Blargg `cpu_instrs`, `instr_timing`, `mem_timing`, `mem_timing-2`, `interrupt_time`, and `halt_bug` ROMs pass |
 | M4 | Memory map and bus controller | Initial bus, full WRAM, HRAM, IE/IF, and memory-ready path implemented |
 | M5 | PPU | Not started |
 | M6 | Timer, joypad, and I/O | Initial DMG timer implemented; joypad and remaining I/O still pending |
@@ -50,9 +50,10 @@ when the monitored integration checks pass.
 
 The current development focus is the transition from functionally correct CPU
 behavior toward timing-faithful CPU behavior. The individual Blargg
-`cpu_instrs`, `instr_timing`, `mem_timing`, `mem_timing-2`, and
-`interrupt_time` ROMs now pass through the ROM runner, so the next CPU
-validation layer is HALT-edge-case work before beginning the real PPU.
+`cpu_instrs`, `instr_timing`, `mem_timing`, `mem_timing-2`,
+`interrupt_time`, and `halt_bug` ROMs now pass through the ROM runner. The next
+major architecture step is to checkpoint this CPU/timing phase and begin the
+real PPU foundation.
 
 ## Building
 

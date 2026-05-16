@@ -70,7 +70,7 @@ design must move through:
 - `mem_timing` (currently passing);
 - `mem_timing-2` (currently passing);
 - `interrupt_time` (currently passing);
-- `halt_bug.gb`.
+- `halt_bug.gb` (currently passing).
 
 This is the bridge from "the CPU computes the right result" to "the CPU occupies
 the bus at the right time," which matters for a hardware reimplementation.
@@ -130,9 +130,10 @@ instruction families covered by that suite.
 `0xA000..0xA004` rather than relying on link-port serial output. The ROM runner
 therefore observes the documented signature at `0xA001..0xA003` and the final
 status byte at `0xA000`. With that runner support, the `mem_timing-2`
-individual and aggregate ROMs also reach `Passed`. The next evidence-driven
-timing target is `halt_bug.gb`, because `interrupt_time.gb` also reaches
-`Passed` with the current interrupt-entry path.
+individual and aggregate ROMs also reach `Passed`. `interrupt_time.gb` and
+`halt_bug.gb` now reach `Passed` as well, so the local Blargg timing ladder is
+complete enough to justify the next architecture step: checkpoint the CPU/timing
+phase before the real PPU depends on it.
 
 ## VGA Pinout Caution
 

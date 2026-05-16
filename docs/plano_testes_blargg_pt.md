@@ -17,7 +17,8 @@ A estrutura principal encontrada foi:
 - `mem_timing`: testes de temporização de acesso à memória.
 - `mem_timing-2`: outra versão dos testes de temporização de memória.
 - `interrupt_time`: teste de tempo de interrupções, já passando no runner atual.
-- `halt_bug.gb`: teste específico do comportamento de `HALT`.
+- `halt_bug.gb`: teste específico do comportamento de `HALT`, já passando no
+  runner atual.
 - `dmg_sound`: testes de áudio para DMG.
 - `cgb_sound`: testes de áudio para CGB.
 - `oam_bug`: testes de comportamento do bug de OAM.
@@ -207,6 +208,7 @@ Motivo:
 - `mem_timing` também já foi promovido para regressão conquistada.
 - `mem_timing-2` também já foi promovido para regressão conquistada.
 - `interrupt_time` já foi promovido para regressão conquistada.
+- `halt_bug` também já foi promovido para regressão conquistada.
 - `halt_bug` depende do comportamento exato de `HALT`.
 - `oam_bug` depende de PPU/OAM.
 - `dmg_sound` e `cgb_sound` dependem de APU.
@@ -225,8 +227,7 @@ O próximo passo de implementação deve ser:
 5. Fechar a fatia do timer inicial com `cpu_video_smoke_top`, Quartus e medição
    de recursos.
 6. Manter `instr_timing.gb` como regressão obrigatória de timing.
-7. Manter `interrupt_time` como regressão já conquistada e iniciar
-   `halt_bug.gb` como próxima etapa local.
+7. Manter `interrupt_time` e `halt_bug.gb` como regressões já conquistadas.
 
 Esse ciclo deve guiar a expansão da CPU a partir de agora.
 

@@ -222,19 +222,26 @@ CPU timing -> timer/interrupt fidelity -> real PPU -> input/ROM flow -> games
 
 The next recommended sequence is:
 
-1. keep `instr_timing`, `mem_timing`, `mem_timing-2`, and `interrupt_time` in
-   the timing regression set;
-2. refine `HALT` behavior with `halt_bug.gb`;
+1. keep `instr_timing`, `mem_timing`, `mem_timing-2`, `interrupt_time`, and
+   `halt_bug.gb` in the timing regression set;
+2. checkpoint the completed local CPU/timing ladder;
 3. import a broader timer-focused suite later if more timer coverage is needed
    than the local Blargg package provides;
 4. only after that, open the first real PPU implementation slice.
+
+The first real PPU slice should be intentionally narrow:
+
+1. real VRAM storage;
+2. tile data and tile map reads;
+3. a background-only pixel producer that feeds the existing framebuffer path;
+4. no sprites, window, STAT, or DMA yet.
 
 ## Resource Discipline
 
 The EP4CE6 is a tight target. The latest synthesized `cpu_video_smoke_top`
 checkpoint uses:
 
-- 4,157 / 6,272 logic elements;
+- 4,283 / 6,272 logic elements;
 - 111,616 / 276,480 block-memory bits;
 - 14 / 30 M9K blocks.
 

@@ -330,8 +330,8 @@ Ordem recomendada:
 3. manter `mem_timing` como regressão obrigatória já conquistada;
 4. manter `mem_timing-2` como regressão obrigatória já conquistada;
 5. manter `interrupt_time` como regressão obrigatória já conquistada;
-6. repetir a síntese após cada nova família relevante;
-7. avançar para `halt_bug.gb`;
+6. manter `halt_bug.gb` como regressão obrigatória já conquistada;
+7. repetir a síntese após cada nova família relevante;
 8. importar uma suíte específica de timer mais adiante, se quisermos ampliar a
    cobertura além do pacote Blargg local.
 
@@ -478,6 +478,7 @@ Hoje, o projeto já possui:
 - `mem_timing` individual e agregado passando;
 - `mem_timing-2` individual e agregado passando;
 - `interrupt_time.gb` passando;
+- `halt_bug.gb` passando;
 - barramento com WRAM completa;
 - serial debug;
 - timer inicial;
@@ -576,5 +577,20 @@ resultado confirma que o caminho atual de IME, prioridade, push de `PC`, vetor,
 `interrupt_ack` e retorno está coerente com o teste.
 
 Dentro do pacote Blargg local, o próximo alvo de CPU diretamente disponível é
-`halt_bug.gb`. Não há uma suíte separada de timer nesse pacote além das famílias
-já usadas e dos helpers internos dos testes de timing.
+`halt_bug.gb`, e ele também já passou no runner atual. Não há uma suíte separada
+de timer nesse pacote além das famílias já usadas e dos helpers internos dos
+testes de timing.
+
+Com isso, a escada local de CPU/timing disponível neste pacote ficou fechada:
+`cpu_instrs`, `instr_timing`, `mem_timing`, `mem_timing-2`, `interrupt_time` e
+`halt_bug` passam. O próximo passo mais coerente deixa de ser procurar outra ROM
+de CPU dentro desse mesmo pacote e passa a ser consolidar um checkpoint formal
+dessa fase antes de abrir a primeira fatia real da PPU.
+
+Essa primeira fatia real de PPU deve ser pequena e verificável:
+
+1. VRAM real;
+2. leitura de tile data;
+3. leitura de tile map;
+4. geração de background estático por tiles;
+5. ainda sem sprites, window, STAT ou DMA.
