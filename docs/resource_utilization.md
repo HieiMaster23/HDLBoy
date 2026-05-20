@@ -1094,3 +1094,46 @@ Notes:
   inactive while the LCD is disabled.
 - Compared with the dot scheduler slice, this costs 20 logic elements and no
   additional registers, block-memory bits, or M9K blocks.
+
+## Initial VRAM Mode 3 Access Blocking Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,361 | 6,272 | 70% |
+| Registers | 1,535 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 177,152 | 276,480 | 64% |
+| M9Ks | 22 | 30 | 73% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.007 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 177.365 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.501 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `bus_controller` now blocks CPU access to VRAM when LCDC bit 7 is set, the
+  effective PPU mode is Mode 3, and the CPU address is in `0x8000..0x9FFF`.
+- CPU reads from blocked VRAM return `0xFF`; CPU writes are ignored.
+- When LCDC bit 7 is clear, VRAM remains CPU-accessible even if the raw PPU
+  mode input is Mode 3.
+- This preserves the current CPU-authored background demo because the CPU fills
+  VRAM before rendering starts.
+- Compared with the LCDC enable slice, the reported logic-element count changed
+  from 4,362 to 4,361. Treat this as fitter variation from a near-zero-cost
+  control change, not as a meaningful optimization.

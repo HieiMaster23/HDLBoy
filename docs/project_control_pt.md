@@ -78,6 +78,8 @@ O projeto já possui:
 - primeiro comportamento de `LCDC` bit 7: o barramento expõe `ppu_lcd_enable`,
   `LY/STAT` são mascarados para linha zero/Mode 0 quando o LCD está desligado,
   e o renderer permanece inativo com contador zerado;
+- primeiro bloqueio de acesso CPU a VRAM durante Mode 3, enquanto o LCD está
+  ligado;
 - WRAM completa de 8 KiB com leitura registrada;
 - HRAM e stubs de I/O;
 - IE e IF básicos;
@@ -281,6 +283,11 @@ Validação rápida executada nesta sessão:
   `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
   `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
   `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do`;
+- bloqueio inicial de acesso CPU a VRAM durante Mode 3 — validado por
+  `run_bus_controller.do`, `run_ppu_background_renderer.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
+  `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
+  `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do`;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 - build Quartus completo da primeira fatia de VRAM em `2026-05-16` — Passed,
@@ -324,13 +331,19 @@ Validação rápida executada nesta sessão:
   `2026-05-20` — Passed, com `4.362 / 6.272` LEs usados (`70%`),
   `177.152 / 276.480` bits de memória (`64%`) e `22 / 30` blocos M9K usados
   (`73%`).
+- build Quartus completo após o bloqueio inicial de VRAM em Mode 3 em
+  `2026-05-20` — Passed, com `4.361 / 6.272` LEs usados (`70%`),
+  `177.152 / 276.480` bits de memória (`64%`) e `22 / 30` blocos M9K usados
+  (`73%`).
 
 Checkpoint pronto para formalização:
 
 - a escada local de CPU/timing disponível no pacote Blargg foi concluída;
 - o conjunto de regressão relevante está registrado acima;
-- o próximo passo recomendado após o commit é abrir a primeira fatia real de
-  PPU.
+- a primeira fatia real de PPU já está em andamento com scheduler por dots,
+  LCDC enable inicial e bloqueio inicial de VRAM em Mode 3;
+- o próximo passo recomendado após o commit é adicionar a memória OAM inicial
+  de 160 bytes e os bloqueios CPU durante Mode 2/3, ainda sem sprites.
 
 ## 5. Estado Atual por Área
 
@@ -1086,6 +1099,42 @@ Critério de sucesso sugerido:
   `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
   `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do` passando;
 - sintetizar e registrar custo antes de avançar para OAM/sprites.
+
+Resultado:
+
+- `bus_controller.vhd` agora bloqueia acessos de CPU a VRAM quando
+  `LCDC(7)=1`, a PPU está em Mode 3 e o endereço selecionado está em
+  `0x8000..0x9FFF`;
+- leituras bloqueadas retornam `0xFF`;
+- escritas bloqueadas são ignoradas, preservando o conteúdo anterior da VRAM;
+- com o LCD desligado, a VRAM permanece acessível mesmo que a entrada bruta de
+  modo da PPU esteja em Mode 3;
+- o comportamento visual atual permanece preservado porque a CPU carrega a VRAM
+  antes do início do render.
+
+Limitação importante:
+
+- este é um bloqueio inicial e conservador de VRAM. Ainda falta modelar OAM,
+  sprite scan, DMA, conflitos mais finos de barramento e o comportamento exato
+  de open bus por caso.
+
+Próximo alvo oficial recomendado:
+
+```text
+Adicionar a memória OAM inicial de 160 bytes em 0xFE00..0xFE9F e bloquear
+acessos de CPU durante Mode 2/3 enquanto o LCD estiver ligado, ainda sem
+renderizar sprites.
+```
+
+Critério de sucesso sugerido:
+
+- CPU deve ler/escrever OAM fora das janelas bloqueadas;
+- durante Mode 2 ou Mode 3 com LCD ligado, leituras de CPU em OAM devem retornar
+  um valor controlado e escritas devem ser ignoradas;
+- durante LCD desligado, OAM deve permanecer acessível;
+- preservar VRAM, background renderer, `LY/STAT/IF` e os tops visuais atuais;
+- manter a regressão atual passando e sintetizar antes de avançar para OAM scan
+  real.
 
 ## 15. Princípio de Engenharia do Projeto
 

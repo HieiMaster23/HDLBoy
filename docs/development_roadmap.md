@@ -94,6 +94,11 @@ The project has already completed the early foundation layers:
     - CPU-visible `LY/STAT` use line zero and Mode 0 when LCD is disabled;
     - PPU VBlank/STAT requests are masked while LCD is disabled;
     - the background renderer remains inactive while LCD is disabled.
+16. **Initial VRAM Mode 3 access blocking**
+    - CPU VRAM reads return `0xFF` during Mode 3 while LCD is enabled;
+    - CPU VRAM writes are ignored during Mode 3 while LCD is enabled;
+    - VRAM remains accessible while LCD is disabled;
+    - the CPU-authored background demo remains the visual baseline.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -277,10 +282,10 @@ The next recommended sequence is:
    baseline;
 3. preserve the new CPU-authored VRAM visual top as the first combined-system
    baseline;
-4. add the first CPU VRAM access restrictions based on PPU mode, starting with
-   Mode 3 while LCD is enabled;
+4. add the initial 160-byte OAM memory region and CPU access blocking during
+   Mode 2/3 while LCD is enabled;
 5. add remaining background-facing register behavior as needed;
-6. introduce OAM and sprite-related timing only after the background path is
+6. introduce OAM scan and sprite rendering only after OAM ownership behavior is
    stable;
 7. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
@@ -299,10 +304,11 @@ The first real VRAM slice already raised memory use to:
 - 22 / 30 M9K blocks.
 
 The current CPU/PPU visual top with scroll, scanline structure, minimal
-`LY/STAT` visibility, initial VBlank/STAT interrupt requests, and the
-dot-based PPU scheduler plus initial LCDC enable handling uses:
+`LY/STAT` visibility, initial VBlank/STAT interrupt requests, the dot-based
+PPU scheduler, initial LCDC enable handling, and initial VRAM Mode 3 access
+blocking uses:
 
-- 4,362 / 6,272 logic elements;
+- 4,361 / 6,272 logic elements;
 - 177,152 / 276,480 block-memory bits;
 - 22 / 30 M9K blocks.
 

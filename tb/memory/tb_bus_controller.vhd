@@ -243,6 +243,20 @@ begin
         assert ppu_lcd_enable = '1'
             report "FAIL: PPU LCD enable output should follow LCDC bit 7 after reset"
             severity failure;
+        ppu_current_line <= to_unsigned(16#20#, 8);
+        ppu_mode <= "11";
+        wait for 1 ns;
+        bus_read_check(x"8000", x"FF", "FAIL: CPU VRAM reads should be blocked during Mode 3 while LCD is enabled");
+        bus_write(x"8000", x"77");
+        ppu_vram_addr <= to_unsigned(0, 13);
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        assert ppu_vram_data = x"3C"
+            report "FAIL: CPU VRAM writes should be ignored during Mode 3 while LCD is enabled"
+            severity failure;
+        ppu_mode <= "00";
+        wait for 1 ns;
+        bus_read_check(x"8000", x"3C", "FAIL: VRAM should remain readable outside Mode 3");
         bus_write(x"FF40", x"00");
         assert ppu_lcd_enable = '0'
             report "FAIL: PPU LCD enable output should clear when LCDC bit 7 is zero"
@@ -250,6 +264,8 @@ begin
         ppu_current_line <= to_unsigned(16#44#, 8);
         ppu_mode <= "11";
         wait for 1 ns;
+        bus_write(x"8000", x"66");
+        bus_read_check(x"8000", x"66", "FAIL: CPU VRAM should remain accessible during Mode 3 when LCD is disabled");
         bus_read_check(x"FF44", x"00", "FAIL: LY should read as zero while LCDC bit 7 is clear");
         bus_read_check(x"FF41", x"84", "FAIL: STAT should report mode 0 and LY=LYC while LCDC bit 7 is clear");
         bus_write(x"FF40", x"80");

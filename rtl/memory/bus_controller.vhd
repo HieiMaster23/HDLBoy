@@ -19,6 +19,7 @@
 -- 2026-05-19 - Routed initial PPU mode scheduler into STAT
 -- 2026-05-20 - Added initial VBlank and STAT interrupt request generation
 -- 2026-05-20 - Added LCDC bit 7 enable gating for PPU-visible LY/STAT state
+-- 2026-05-20 - Added initial CPU VRAM access blocking during PPU Mode 3
 -- =============================================================================
 
 library ieee;
@@ -153,6 +154,7 @@ architecture rtl of bus_controller is
     signal final_passed_reg  : std_logic;
     signal vram_selected     : std_logic;
     signal vram_cpu_we       : std_logic;
+    signal vram_cpu_blocked  : std_logic;
     signal fb_selected       : std_logic;
     signal wram_selected     : std_logic;
     signal io_selected       : std_logic;
@@ -210,10 +212,13 @@ begin
     timer_write_tima <= '1' when cpu_write = '1' and cpu_addr = IO_TIMA_ADDR else '0';
     timer_write_tma <= '1' when cpu_write = '1' and cpu_addr = IO_TMA_ADDR else '0';
     timer_write_tac <= '1' when cpu_write = '1' and cpu_addr = IO_TAC_ADDR else '0';
-    vram_cpu_we <= cpu_write and vram_selected;
     ppu_effective_line <= ppu_current_line when lcdc_reg(7) = '1' else
                           (others => '0');
     ppu_effective_mode <= ppu_mode when lcdc_reg(7) = '1' else "00";
+    vram_cpu_blocked <= '1' when lcdc_reg(7) = '1' and
+                                  ppu_effective_mode = "11" and
+                                  vram_selected = '1' else '0';
+    vram_cpu_we <= cpu_write and vram_selected and not vram_cpu_blocked;
     vblank_irq_condition <= '1' when lcdc_reg(7) = '1' and
                                       ppu_effective_mode = "01" and
                                       ppu_effective_line = to_unsigned(144, 8) else '0';
@@ -258,7 +263,8 @@ begin
                            dma_reg, bgp_reg, obp0_reg, obp1_reg, wy_reg,
                            wx_reg, if_reg, ie_reg, vram_selected, wram_selected,
                            hram_selected, io_selected, vram_q, wram_q, hram_q,
-                           rom_data, ppu_effective_line, ppu_effective_mode)
+                           rom_data, ppu_effective_line, ppu_effective_mode,
+                           vram_cpu_blocked)
     begin
         if cpu_read = '1' then
             case cpu_addr is
@@ -311,7 +317,11 @@ begin
                     cpu_data_in <= ie_reg;
                 when others =>
                     if vram_selected = '1' then
-                        cpu_data_in <= vram_q;
+                        if vram_cpu_blocked = '1' then
+                            cpu_data_in <= x"FF";
+                        else
+                            cpu_data_in <= vram_q;
+                        end if;
                     elsif wram_selected = '1' then
                         cpu_data_in <= wram_q;
                     elsif io_selected = '1' then
