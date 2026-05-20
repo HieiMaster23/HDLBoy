@@ -1051,3 +1051,46 @@ Notes:
   variable Mode 3 duration, sprites, window, DMA, or LCD enable behavior.
 - Compared with the initial VBlank/STAT interrupt slice, this costs 18 logic
   elements and 10 registers, with no additional block-memory or M9K usage.
+
+## Initial LCDC Enable Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,362 | 6,272 | 70% |
+| Registers | 1,535 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 177,152 | 276,480 | 64% |
+| M9Ks | 22 | 30 | 73% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.994 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 175.574 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.500 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `bus_controller` now exposes `ppu_lcd_enable` from `LCDC(7)`.
+- When LCDC bit 7 is clear, CPU-visible `LY` is forced to zero and `STAT`
+  evaluates using Mode 0 plus line zero.
+- VBlank and STAT interrupt requests from the PPU scheduler are masked while
+  LCDC bit 7 is clear.
+- `ppu_background_renderer` now receives `lcd_enable` and holds its internal
+  state, line counter, dot counter, framebuffer write enable, busy, and done
+  inactive while the LCD is disabled.
+- Compared with the dot scheduler slice, this costs 20 logic elements and no
+  additional registers, block-memory bits, or M9K blocks.

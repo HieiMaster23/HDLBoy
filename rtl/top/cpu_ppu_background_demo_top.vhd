@@ -61,6 +61,7 @@ architecture rtl of cpu_ppu_background_demo_top is
     signal ppu_vram_data  : std_logic_vector(7 downto 0);
     signal ppu_scy        : std_logic_vector(7 downto 0);
     signal ppu_scx        : std_logic_vector(7 downto 0);
+    signal ppu_lcd_enable : std_logic;
     signal ppu_fb_we      : std_logic;
     signal ppu_fb_addr    : unsigned(14 downto 0);
     signal ppu_fb_data    : std_logic_vector(1 downto 0);
@@ -198,6 +199,7 @@ begin
             ppu_vram_data        => ppu_vram_data,
             ppu_scy              => ppu_scy,
             ppu_scx              => ppu_scx,
+            ppu_lcd_enable       => ppu_lcd_enable,
             ppu_current_line     => ppu_current_line,
             ppu_mode             => ppu_mode,
             led_pattern          => led_pattern,
@@ -218,6 +220,7 @@ begin
             clk       => clk_cpu,
             reset     => reset_cpu,
             start     => cpu_vram_ready,
+            lcd_enable => ppu_lcd_enable,
             scroll_y  => ppu_scy,
             scroll_x  => ppu_scx,
             vram_addr => ppu_vram_addr,

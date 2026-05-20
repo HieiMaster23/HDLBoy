@@ -89,6 +89,11 @@ The project has already completed the early foundation layers:
       Mode 0 at `252..455`;
     - VBlank lines `144..153` expose Mode 1 across the same dot range;
     - the current visual CPU-authored VRAM path is preserved.
+15. **Initial LCDC enable behavior**
+    - the bus exports `LCDC(7)` as `ppu_lcd_enable`;
+    - CPU-visible `LY/STAT` use line zero and Mode 0 when LCD is disabled;
+    - PPU VBlank/STAT requests are masked while LCD is disabled;
+    - the background renderer remains inactive while LCD is disabled.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -272,8 +277,8 @@ The next recommended sequence is:
    baseline;
 3. preserve the new CPU-authored VRAM visual top as the first combined-system
    baseline;
-4. connect the dot scheduler to initial LCDC enable behavior while preserving
-   the current IF/STAT contract;
+4. add the first CPU VRAM access restrictions based on PPU mode, starting with
+   Mode 3 while LCD is enabled;
 5. add remaining background-facing register behavior as needed;
 6. introduce OAM and sprite-related timing only after the background path is
    stable;
@@ -295,9 +300,9 @@ The first real VRAM slice already raised memory use to:
 
 The current CPU/PPU visual top with scroll, scanline structure, minimal
 `LY/STAT` visibility, initial VBlank/STAT interrupt requests, and the
-dot-based PPU scheduler uses:
+dot-based PPU scheduler plus initial LCDC enable handling uses:
 
-- 4,342 / 6,272 logic elements;
+- 4,362 / 6,272 logic elements;
 - 177,152 / 276,480 block-memory bits;
 - 22 / 30 M9K blocks.
 

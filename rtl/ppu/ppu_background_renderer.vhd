@@ -12,6 +12,7 @@
 -- 2026-05-19 - Added explicit scanline progression signals
 -- 2026-05-19 - Added initial PPU mode scheduler outputs
 -- 2026-05-20 - Added dot-based scanline scheduler for LY/STAT foundation
+-- 2026-05-20 - Added LCD enable input for initial LCDC bit 7 behavior
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It reads the unsigned tile map at VRAM local address 0x1800 and
@@ -30,6 +31,7 @@ entity ppu_background_renderer is
         clk           : in  std_logic;
         reset         : in  std_logic;
         start         : in  std_logic;
+        lcd_enable    : in  std_logic;
         scroll_y      : in  std_logic_vector(7 downto 0);
         scroll_x      : in  std_logic_vector(7 downto 0);
 
@@ -139,7 +141,7 @@ begin
     p_renderer: process(clk)
     begin
         if rising_edge(clk) then
-            if reset = '1' then
+            if reset = '1' or lcd_enable = '0' then
                 state_reg <= S_IDLE;
                 pixel_x_reg <= (others => '0');
                 pixel_y_reg <= (others => '0');

@@ -75,6 +75,9 @@ O projeto já possui:
 - scheduler de PPU refinado com contador lógico de dots por scanline:
   456 dots por linha, Mode 2 em `0..79`, Mode 3 em `80..251`, Mode 0 em
   `252..455` e Mode 1 durante VBlank;
+- primeiro comportamento de `LCDC` bit 7: o barramento expõe `ppu_lcd_enable`,
+  `LY/STAT` são mascarados para linha zero/Mode 0 quando o LCD está desligado,
+  e o renderer permanece inativo com contador zerado;
 - WRAM completa de 8 KiB com leitura registrada;
 - HRAM e stubs de I/O;
 - IE e IF básicos;
@@ -273,6 +276,11 @@ Validação rápida executada nesta sessão:
   `run_bus_controller.do`, `run_cpu_video_smoke_top.do`, `run_timer.do`,
   `run_cpu_instr_timing.do`, `run_cpu_interrupt_time.do` e
   `run_cpu_halt_bug.do`;
+- comportamento inicial de `LCDC` enable — validado por
+  `run_ppu_background_renderer.do`, `run_bus_controller.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
+  `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
+  `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do`;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 - build Quartus completo da primeira fatia de VRAM em `2026-05-16` — Passed,
@@ -310,6 +318,10 @@ Validação rápida executada nesta sessão:
   (`73%`).
 - build Quartus completo após o scheduler por dots da PPU em `2026-05-20` —
   Passed, com `4.342 / 6.272` LEs usados (`69%`),
+  `177.152 / 276.480` bits de memória (`64%`) e `22 / 30` blocos M9K usados
+  (`73%`).
+- build Quartus completo após o comportamento inicial de `LCDC` enable em
+  `2026-05-20` — Passed, com `4.362 / 6.272` LEs usados (`70%`),
   `177.152 / 276.480` bits de memória (`64%`) e `22 / 30` blocos M9K usados
   (`73%`).
 
@@ -1018,7 +1030,7 @@ Limitação importante:
   ele não modela FIFO, fetcher real, janela variável de Mode 3, bloqueios de
   VRAM/OAM, sprites, window, LCD enable ou DMA.
 
-Próximo alvo oficial recomendado:
+Alvo seguinte concluído:
 
 ```text
 Conectar o scheduler por dots a um primeiro modelo de LCDC enable e reset de
@@ -1032,6 +1044,44 @@ Critério de sucesso sugerido:
 - preservar o comportamento atual quando LCD estiver ligado;
 - manter VBlank/STAT/IF sem regressão nos testes existentes;
 - manter `run_ppu_background_renderer.do`, `run_bus_controller.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
+  `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
+  `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do` passando;
+- sintetizar e registrar custo antes de avançar para OAM/sprites.
+
+Resultado:
+
+- `bus_controller.vhd` agora expõe `ppu_lcd_enable` a partir de `LCDC(7)`;
+- quando `LCDC(7)=0`, leituras de `LY` retornam `0x00` e `STAT` usa linha zero
+  e Mode 0 como estado efetivo;
+- solicitações de VBlank/STAT vindas da PPU ficam mascaradas enquanto o LCD está
+  desligado;
+- `ppu_background_renderer.vhd` recebe `lcd_enable` e mantém estado, linha, dot,
+  framebuffer write e busy/done inativos quando o LCD está desligado;
+- o comportamento visual atual permanece inalterado porque o reset de `LCDC` é
+  `0x91`, com bit 7 ligado.
+
+Limitação importante:
+
+- este ainda não é o comportamento completo de ligar/desligar LCD do DMG. Falta
+  modelar atrasos e efeitos finos de enable/disable, restrições de acesso,
+  efeitos sobre janela/sprites e interação com uma FIFO real.
+
+Próximo alvo oficial recomendado:
+
+```text
+Adicionar os primeiros bloqueios de acesso CPU a VRAM/OAM por modo da PPU,
+começando por VRAM durante Mode 3, preservando o renderer de background e os
+testes visuais atuais.
+```
+
+Critério de sucesso sugerido:
+
+- quando PPU estiver em Mode 3 e LCD ligado, leituras/escritas de CPU em VRAM
+  devem seguir um comportamento controlado de bloqueio inicial;
+- quando LCD estiver desligado, VRAM deve permanecer acessível;
+- preservar o caminho de escrita CPU -> VRAM antes do início do render visual;
+- manter `run_bus_controller.do`, `run_ppu_background_renderer.do`,
   `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
   `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
   `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do` passando;

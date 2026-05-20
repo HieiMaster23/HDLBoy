@@ -37,6 +37,7 @@ architecture sim of tb_bus_controller is
     signal ppu_vram_data        : std_logic_vector(7 downto 0);
     signal ppu_scy              : std_logic_vector(7 downto 0);
     signal ppu_scx              : std_logic_vector(7 downto 0);
+    signal ppu_lcd_enable       : std_logic;
     signal ppu_current_line     : unsigned(7 downto 0) := (others => '0');
     signal ppu_mode             : std_logic_vector(1 downto 0) := "00";
     signal led_pattern          : std_logic_vector(3 downto 0);
@@ -92,6 +93,7 @@ begin
             ppu_vram_data        => ppu_vram_data,
             ppu_scy              => ppu_scy,
             ppu_scx              => ppu_scx,
+            ppu_lcd_enable       => ppu_lcd_enable,
             ppu_current_line     => ppu_current_line,
             ppu_mode             => ppu_mode,
             led_pattern          => led_pattern,
@@ -238,8 +240,26 @@ begin
         bus_read_check(x"FF07", x"FD", "FAIL: TAC stub should preserve lower control bits with upper bits high");
 
         bus_read_check(x"FF40", x"91", "FAIL: LCDC reset stub should use the DMG post-boot display default");
+        assert ppu_lcd_enable = '1'
+            report "FAIL: PPU LCD enable output should follow LCDC bit 7 after reset"
+            severity failure;
+        bus_write(x"FF40", x"00");
+        assert ppu_lcd_enable = '0'
+            report "FAIL: PPU LCD enable output should clear when LCDC bit 7 is zero"
+            severity failure;
+        ppu_current_line <= to_unsigned(16#44#, 8);
+        ppu_mode <= "11";
+        wait for 1 ns;
+        bus_read_check(x"FF44", x"00", "FAIL: LY should read as zero while LCDC bit 7 is clear");
+        bus_read_check(x"FF41", x"84", "FAIL: STAT should report mode 0 and LY=LYC while LCDC bit 7 is clear");
         bus_write(x"FF40", x"80");
+        assert ppu_lcd_enable = '1'
+            report "FAIL: PPU LCD enable output should set when LCDC bit 7 is written"
+            severity failure;
         bus_read_check(x"FF40", x"80", "FAIL: LCDC stub should read back written data");
+        ppu_current_line <= (others => '0');
+        ppu_mode <= "00";
+        wait for 1 ns;
 
         bus_write(x"FF41", x"78");
         bus_read_check(x"FF41", x"FC", "FAIL: STAT should preserve writable bits and report LY=LYC at reset");

@@ -18,6 +18,7 @@
 -- 2026-05-19 - Added minimal LY/STAT readback from PPU scanline state
 -- 2026-05-19 - Routed initial PPU mode scheduler into STAT
 -- 2026-05-20 - Added initial VBlank and STAT interrupt request generation
+-- 2026-05-20 - Added LCDC bit 7 enable gating for PPU-visible LY/STAT state
 -- =============================================================================
 
 library ieee;
@@ -47,6 +48,7 @@ entity bus_controller is
         ppu_vram_data       : out std_logic_vector(7 downto 0);
         ppu_scy             : out std_logic_vector(7 downto 0);
         ppu_scx             : out std_logic_vector(7 downto 0);
+        ppu_lcd_enable      : out std_logic;
         ppu_current_line    : in  unsigned(7 downto 0);
         ppu_mode            : in  std_logic_vector(1 downto 0);
 
@@ -141,6 +143,8 @@ architecture rtl of bus_controller is
     signal vblank_irq_condition_reg : std_logic;
     signal stat_irq_condition       : std_logic;
     signal stat_irq_condition_reg   : std_logic;
+    signal ppu_effective_line       : unsigned(7 downto 0);
+    signal ppu_effective_mode       : std_logic_vector(1 downto 0);
     signal wram              : wram_t;
     signal hram              : hram_t;
     signal led_pattern_reg   : std_logic_vector(3 downto 0);
@@ -207,13 +211,18 @@ begin
     timer_write_tma <= '1' when cpu_write = '1' and cpu_addr = IO_TMA_ADDR else '0';
     timer_write_tac <= '1' when cpu_write = '1' and cpu_addr = IO_TAC_ADDR else '0';
     vram_cpu_we <= cpu_write and vram_selected;
-    vblank_irq_condition <= '1' when ppu_mode = "01" and
-                                      ppu_current_line = to_unsigned(144, 8) else '0';
+    ppu_effective_line <= ppu_current_line when lcdc_reg(7) = '1' else
+                          (others => '0');
+    ppu_effective_mode <= ppu_mode when lcdc_reg(7) = '1' else "00";
+    vblank_irq_condition <= '1' when lcdc_reg(7) = '1' and
+                                      ppu_effective_mode = "01" and
+                                      ppu_effective_line = to_unsigned(144, 8) else '0';
     stat_irq_condition <= '1' when
-        (stat_reg(6) = '1' and ppu_current_line = unsigned(lyc_reg)) or
-        (stat_reg(5) = '1' and ppu_mode = "10") or
-        (stat_reg(4) = '1' and ppu_mode = "01") or
-        (stat_reg(3) = '1' and ppu_mode = "00") else '0';
+        lcdc_reg(7) = '1' and (
+        (stat_reg(6) = '1' and ppu_effective_line = unsigned(lyc_reg)) or
+        (stat_reg(5) = '1' and ppu_effective_mode = "10") or
+        (stat_reg(4) = '1' and ppu_effective_mode = "01") or
+        (stat_reg(3) = '1' and ppu_effective_mode = "00")) else '0';
 
     u_timer: entity work.timer
         port map (
@@ -249,7 +258,7 @@ begin
                            dma_reg, bgp_reg, obp0_reg, obp1_reg, wy_reg,
                            wx_reg, if_reg, ie_reg, vram_selected, wram_selected,
                            hram_selected, io_selected, vram_q, wram_q, hram_q,
-                           rom_data, ppu_current_line, ppu_mode)
+                           rom_data, ppu_effective_line, ppu_effective_mode)
     begin
         if cpu_read = '1' then
             case cpu_addr is
@@ -272,14 +281,14 @@ begin
                 when IO_LCDC_ADDR =>
                     cpu_data_in <= lcdc_reg;
                 when IO_STAT_ADDR =>
-                    cpu_data_in <= stat_read_value(stat_reg, ppu_current_line,
-                                                   lyc_reg, ppu_mode);
+                    cpu_data_in <= stat_read_value(stat_reg, ppu_effective_line,
+                                                   lyc_reg, ppu_effective_mode);
                 when IO_SCY_ADDR =>
                     cpu_data_in <= scy_reg;
                 when IO_SCX_ADDR =>
                     cpu_data_in <= scx_reg;
                 when IO_LY_ADDR =>
-                    cpu_data_in <= std_logic_vector(ppu_current_line);
+                    cpu_data_in <= std_logic_vector(ppu_effective_line);
                 when IO_LYC_ADDR =>
                     cpu_data_in <= lyc_reg;
                 when IO_DMA_ADDR =>
@@ -511,6 +520,7 @@ begin
     debug_fb_write_count <= std_logic_vector(fb_write_count);
     ppu_scy <= scy_reg;
     ppu_scx <= scx_reg;
+    ppu_lcd_enable <= lcdc_reg(7);
 
     display_digits <= x"1234" when final_passed_reg = '1' and checker_failed_reg = '0' else
                       x"EEEE" when checker_failed_reg = '1' else

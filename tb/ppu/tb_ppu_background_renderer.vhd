@@ -43,6 +43,7 @@ architecture sim of tb_ppu_background_renderer is
     signal sim_done   : boolean := false;
     signal reset      : std_logic := '1';
     signal start      : std_logic := '0';
+    signal lcd_enable : std_logic := '1';
     signal scroll_y   : std_logic_vector(7 downto 0) := x"00";
     signal scroll_x   : std_logic_vector(7 downto 0) := x"00";
     signal vram_addr  : unsigned(12 downto 0);
@@ -87,6 +88,7 @@ begin
             clk       => clk,
             reset     => reset,
             start     => start,
+            lcd_enable => lcd_enable,
             scroll_y  => scroll_y,
             scroll_x  => scroll_x,
             vram_addr => vram_addr,
@@ -187,6 +189,30 @@ begin
         report "=== tb_ppu_background_renderer: Starting simulation ===" severity note;
 
         wait for CLK_PERIOD * 4;
+        lcd_enable <= '0';
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+        wait for CLK_PERIOD * 16;
+        wait for 1 ns;
+
+        assert current_line = to_unsigned(0, 8)
+            report "FAIL: LCD disabled should hold LY at zero"
+            severity failure;
+        assert current_dot = to_unsigned(0, 9)
+            report "FAIL: LCD disabled should hold dot counter at zero"
+            severity failure;
+        assert ppu_mode = "00"
+            report "FAIL: LCD disabled should report Mode 0"
+            severity failure;
+        assert busy = '0' and done = '0' and fb_we = '0'
+            report "FAIL: LCD disabled should keep renderer inactive"
+            severity failure;
+
+        reset <= '1';
+        lcd_enable <= '1';
+        wait until rising_edge(clk);
         reset <= '0';
         start <= '1';
         wait until rising_edge(clk);
