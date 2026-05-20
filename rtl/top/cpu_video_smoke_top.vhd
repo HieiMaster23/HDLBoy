@@ -219,6 +219,7 @@ begin
             ppu_scx              => open,
             ppu_lcdc             => open,
             ppu_bgp              => open,
+            ppu_obp0             => open,
             ppu_lcd_enable       => open,
             ppu_oam_addr         => (others => '0'),
             ppu_oam_read         => '0',

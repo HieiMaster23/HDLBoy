@@ -54,6 +54,7 @@ architecture rtl of ppu_background_demo_top is
     signal ppu_scx        : std_logic_vector(7 downto 0);
     signal ppu_lcdc       : std_logic_vector(7 downto 0);
     signal ppu_bgp        : std_logic_vector(7 downto 0);
+    signal ppu_obp0       : std_logic_vector(7 downto 0);
     signal ppu_lcd_enable : std_logic;
     signal ppu_fb_we      : std_logic;
     signal ppu_fb_addr    : unsigned(14 downto 0);
@@ -70,6 +71,10 @@ architecture rtl of ppu_background_demo_top is
     signal ppu_oam_addr       : unsigned(7 downto 0);
     signal ppu_oam_read       : std_logic;
     signal ppu_oam_data       : std_logic_vector(7 downto 0);
+    signal ppu_scan_oam_addr  : unsigned(7 downto 0);
+    signal ppu_scan_oam_read  : std_logic;
+    signal ppu_render_oam_addr : unsigned(7 downto 0);
+    signal ppu_render_oam_read : std_logic;
     signal ppu_sprite_count   : unsigned(3 downto 0);
     signal ppu_sprite_indices : std_logic_vector(79 downto 0);
     signal ppu_sprite_debug   : std_logic;
@@ -192,6 +197,7 @@ begin
             ppu_scx              => ppu_scx,
             ppu_lcdc             => ppu_lcdc,
             ppu_bgp              => ppu_bgp,
+            ppu_obp0             => ppu_obp0,
             ppu_lcd_enable       => ppu_lcd_enable,
             ppu_oam_addr         => ppu_oam_addr,
             ppu_oam_read         => ppu_oam_read,
@@ -221,8 +227,14 @@ begin
             scroll_y  => ppu_scy,
             scroll_x  => ppu_scx,
             bgp       => ppu_bgp,
+            obp0      => ppu_obp0,
+            sprite_candidate_count   => ppu_sprite_count,
+            sprite_candidate_indices => ppu_sprite_indices,
             vram_addr => ppu_vram_addr,
             vram_data => ppu_vram_data,
+            oam_addr  => ppu_render_oam_addr,
+            oam_read  => ppu_render_oam_read,
+            oam_data  => ppu_oam_data,
             fb_we     => ppu_fb_we,
             fb_addr   => ppu_fb_addr,
             fb_data   => ppu_fb_data,
@@ -237,6 +249,9 @@ begin
 
     ppu_oam_scan_start <= '1' when ppu_mode = "10" and
                                    ppu_current_dot = to_unsigned(0, 9) else '0';
+    ppu_oam_addr <= ppu_scan_oam_addr when ppu_scan_oam_read = '1' else
+                    ppu_render_oam_addr;
+    ppu_oam_read <= ppu_scan_oam_read or ppu_render_oam_read;
 
     p_ppu_oam_scan_seen: process(clk_cpu)
     begin
@@ -256,8 +271,8 @@ begin
             start             => ppu_oam_scan_start,
             current_line      => ppu_current_line,
             lcdc              => ppu_lcdc,
-            oam_addr          => ppu_oam_addr,
-            oam_read          => ppu_oam_read,
+            oam_addr          => ppu_scan_oam_addr,
+            oam_read          => ppu_scan_oam_read,
             oam_data          => ppu_oam_data,
             candidate_count   => ppu_sprite_count,
             candidate_indices => ppu_sprite_indices,

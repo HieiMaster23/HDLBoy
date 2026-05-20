@@ -19,6 +19,7 @@ architecture sim of tb_ppu_background_renderer is
     constant CLK_PERIOD : time := 20 ns;
 
     type memory_t is array (0 to 8191) of std_logic_vector(7 downto 0);
+    type oam_t is array (0 to 255) of std_logic_vector(7 downto 0);
     type framebuffer_t is array (0 to 23039) of std_logic_vector(1 downto 0);
 
     function init_vram return memory_t is
@@ -48,8 +49,14 @@ architecture sim of tb_ppu_background_renderer is
     signal scroll_y   : std_logic_vector(7 downto 0) := x"00";
     signal scroll_x   : std_logic_vector(7 downto 0) := x"00";
     signal bgp        : std_logic_vector(7 downto 0) := x"FC";
+    signal obp0       : std_logic_vector(7 downto 0) := x"E4";
+    signal sprite_candidate_count : unsigned(3 downto 0) := (others => '0');
+    signal sprite_candidate_indices : std_logic_vector(79 downto 0) := (others => '0');
     signal vram_addr  : unsigned(12 downto 0);
     signal vram_data  : std_logic_vector(7 downto 0);
+    signal oam_addr   : unsigned(7 downto 0);
+    signal oam_read   : std_logic;
+    signal oam_data   : std_logic_vector(7 downto 0);
     signal fb_we      : std_logic;
     signal fb_addr    : unsigned(14 downto 0);
     signal fb_data    : std_logic_vector(1 downto 0);
@@ -61,6 +68,7 @@ architecture sim of tb_ppu_background_renderer is
     signal busy       : std_logic;
     signal done       : std_logic;
     signal vram_mem   : memory_t := init_vram;
+    signal oam_mem    : oam_t := (others => x"00");
     signal fb_mem     : framebuffer_t := (others => "00");
     signal line_count : integer range 0 to 144 := 0;
     signal seen_mode0 : std_logic := '0';
@@ -95,8 +103,14 @@ begin
             scroll_y  => scroll_y,
             scroll_x  => scroll_x,
             bgp       => bgp,
+            obp0      => obp0,
+            sprite_candidate_count   => sprite_candidate_count,
+            sprite_candidate_indices => sprite_candidate_indices,
             vram_addr => vram_addr,
             vram_data => vram_data,
+            oam_addr  => oam_addr,
+            oam_read  => oam_read,
+            oam_data  => oam_data,
             fb_we     => fb_we,
             fb_addr   => fb_addr,
             fb_data   => fb_data,
@@ -115,6 +129,17 @@ begin
             vram_data <= vram_mem(to_integer(vram_addr));
         end if;
     end process p_vram;
+
+    p_oam: process(clk)
+    begin
+        if rising_edge(clk) then
+            if oam_read = '1' then
+                oam_data <= oam_mem(to_integer(oam_addr));
+            else
+                oam_data <= x"00";
+            end if;
+        end if;
+    end process p_oam;
 
     p_fb: process(clk)
     begin
@@ -421,6 +446,8 @@ begin
         reset <= '1';
         wait until rising_edge(clk);
         lcdc <= x"90";
+        sprite_candidate_count <= (others => '0');
+        sprite_candidate_indices <= (others => '0');
         vram_mem(16#1800#) <= x"01";
         reset <= '0';
         start <= '1';
@@ -433,6 +460,54 @@ begin
 
         assert fb_mem(0) = "00" and fb_mem(1) = "00"
             report "FAIL: LCDC bit 0 clear should force background color 0 through BGP"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"93";
+        bgp <= x"FC";
+        obp0 <= x"E4";
+        sprite_candidate_count <= to_unsigned(1, 4);
+        sprite_candidate_indices <= (others => '0');
+        oam_mem <= (others => x"00");
+        oam_mem(0) <= x"10";
+        oam_mem(1) <= x"08";
+        oam_mem(2) <= x"02";
+        oam_mem(3) <= x"00";
+        vram_mem(16#1800#) <= x"01";
+        vram_mem(32) <= x"80";
+        vram_mem(33) <= x"00";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "01"
+            report "FAIL: first sprite candidate should overlay nonzero OBJ pixel"
+            severity failure;
+        assert fb_mem(1) = "00"
+            report "FAIL: transparent sprite pixel should preserve background"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"91";
+        sprite_candidate_count <= to_unsigned(1, 4);
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "11"
+            report "FAIL: LCDC bit 1 clear should disable sprite composition"
             severity failure;
 
         report "=== tb_ppu_background_renderer: ALL TESTS PASSED ===" severity note;

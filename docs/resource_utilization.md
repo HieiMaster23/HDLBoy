@@ -1353,3 +1353,49 @@ Notes:
   access blocking during Mode 2/3.
 - Compared with the LCDC background-control slice, this costs 56 logic elements
   and 16 registers, with no additional memory blocks.
+
+## First Sprite Pixel Fetch/Composition Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,551 | 6,272 | 73% |
+| Registers | 1,614 | 6,272 | 26% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 24.706 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 170.635 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.388 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.517 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `ppu_background_renderer` now consumes the first OAM scan candidate and fetches
+  that sprite's OAM Y, X, tile index, and attributes before writing the line.
+- The renderer fetches the selected sprite tile row through the existing PPU
+  VRAM port and overlays nonzero OBJ pixels on top of the background.
+- `OBP0` is exposed from the bus to the renderer and is used for this first OBJ
+  palette lookup.
+- `LCDC(1)` disables sprite composition, preserving the previous background-only
+  visual output when sprites are disabled.
+- Attribute bits 5 and 6 are used for initial horizontal and vertical flip.
+  OBP1 selection, priority, multi-sprite composition, ordering, window
+  interaction, and exact FIFO timing remain future work.
+- Compared with the initial OAM scan slice, this costs 113 logic elements and
+  62 registers, with no additional block-memory or M9K usage.

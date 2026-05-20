@@ -130,6 +130,11 @@ The project has already completed the early foundation layers:
       indices for the current line;
     - `LCDC(1)` disables candidate collection and `LCDC(2)` selects 8x8 versus
       8x16 sprite height.
+22. **First sprite pixel fetch/composition**
+    - the background renderer consumes the first OAM scan candidate;
+    - it fetches that sprite's OAM metadata and tile row;
+    - nonzero OBJ pixels are overlaid on the background through `OBP0`;
+    - `LCDC(1)` preserves the background-only path when sprites are disabled.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -314,9 +319,11 @@ The next recommended sequence is:
 3. preserve the new CPU-authored VRAM visual top as the first combined-system
    baseline;
 4. preserve the first PPU-side OAM scan module as the sprite-selection baseline;
-5. introduce sprite pixel fetching and composition in a small, testable slice
-   after this OAM scan checkpoint;
-6. import broader timer coverage later if the local Blargg package proves too
+5. preserve the first one-sprite fetch/composition slice as the OBJ pixel
+   baseline;
+6. expand sprite composition toward OBP1, priority, ordering, and multiple
+   candidates per line;
+7. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -336,9 +343,10 @@ The current CPU/PPU visual top with scroll, scanline structure, minimal
 `LY/STAT` visibility, initial VBlank/STAT interrupt requests, the dot-based
 PPU scheduler, initial LCDC enable handling, and initial VRAM Mode 3 access
 blocking plus initial OAM storage, continuous frame looping, BGP palette lookup,
-initial LCDC background controls, and the first PPU OAM scan uses:
+initial LCDC background controls, the first PPU OAM scan, and the first sprite
+pixel fetch/composition slice uses:
 
-- 4,438 / 6,272 logic elements;
+- 4,551 / 6,272 logic elements;
 - 179,200 / 276,480 block-memory bits;
 - 23 / 30 M9K blocks.
 

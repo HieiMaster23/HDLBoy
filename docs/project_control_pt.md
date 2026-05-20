@@ -84,6 +84,9 @@ O projeto já possui:
   Mode 2/3 quando o LCD está ligado;
 - primeiro OAM scan da PPU implementado, lendo OAM pelo lado da PPU e
   identificando ate 10 candidatos por scanline, ainda sem renderizar sprites;
+- primeira fatia de sprite pixel fetch/composition implementada, consumindo o
+  primeiro candidato do OAM scan, buscando tile de sprite e compondo pixels
+  OBJ nao-zero sobre o background via `OBP0`;
 - renderer de background em loop contínuo de frames enquanto `LCDC(7)` está
   ligado, com `done` convertido em pulso de fim de frame;
 - WRAM completa de 8 KiB com leitura registrada;
@@ -378,6 +381,10 @@ Validação rápida executada nesta sessão:
   Passed, com `4.438 / 6.272` LEs usados (`71%`),
   `179.200 / 276.480` bits de memória (`65%`) e `23 / 30` blocos M9K usados
   (`77%`).
+- build Quartus completo após a primeira fatia de sprite pixel
+  fetch/composition em `2026-05-20` — Passed, com `4.551 / 6.272` LEs usados
+  (`73%`), `179.200 / 276.480` bits de memória (`65%`) e `23 / 30` blocos M9K
+  usados (`77%`).
 
 Checkpoint pronto para formalização:
 
@@ -389,8 +396,10 @@ Checkpoint pronto para formalização:
 - o `BGP` no write do framebuffer foi aplicado e validado;
 - os controles iniciais de background por `LCDC` foram aplicados e validados;
 - o primeiro OAM scan da PPU foi implementado e validado;
-- o próximo passo recomendado é iniciar uma primeira fatia de sprite pixel
-  fetch/composition usando os candidatos do OAM scan.
+- a primeira fatia de sprite pixel fetch/composition foi implementada e
+  validada;
+- o próximo passo recomendado é expandir sprites para `OBP1`, prioridade,
+  ordenação e mais de um candidato por linha, em cortes pequenos.
 
 ## 5. Estado Atual por Área
 
@@ -543,13 +552,16 @@ Implementado:
 - lookup de `BGP` no write do framebuffer;
 - controles iniciais de background por `LCDC(3)`, `LCDC(4)` e `LCDC(0)`;
 - primeiro OAM scan da PPU detectando ate 10 candidatos por scanline;
+- primeira composição de sprite: um candidato, tile row fetch, pixels OBJ
+  nao-zero sobre o background, paleta `OBP0`;
 - display de sete segmentos mostrando `1234` em caso de sucesso.
 
 Ainda pendente:
 
 - PPU dot-accurate completa com fetcher/FIFO reais;
 - scroll completo dentro do modelo temporal real da PPU;
-- sprite pixel fetch/composition;
+- sprite composition completa: múltiplos candidatos, prioridade, ordenação e
+  `OBP1`;
 - window;
 - VBlank dot-accurate e alinhado ao LCD real;
 - STAT dot-accurate, com bloqueios e coincidência fiéis;
@@ -621,14 +633,14 @@ CPU -> barramento -> VRAM -> PPU -> framebuffer -> VGA
 Ele ainda não prova uma PPU fiel ao DMG-01. O renderer já possui scroll básico
 por `SCX`/`SCY`, progressão explícita por scanlines visíveis, scheduler inicial
 por dots, modos 2/3/0/1, solicitações iniciais de VBlank/STAT, controles
-iniciais de `LCDC`, lookup de `BGP` e primeiro OAM scan. Ainda não possui
-fetcher/FIFO real, sprite composition, window, comportamento LCD completo ou
-DMA.
+iniciais de `LCDC`, lookup de `BGP`, primeiro OAM scan e primeira composição de
+um sprite por linha via `OBP0`. Ainda não possui fetcher/FIFO real, composição
+completa de múltiplos sprites, window, comportamento LCD completo ou DMA.
 
 ### Próxima Linha de Trabalho
 
 1. Preservar a suíte Blargg de CPU/timing como regressão obrigatória.
-2. Iniciar sprite pixel fetch/composition a partir dos candidatos do OAM scan.
+2. Expandir sprite composition para prioridade, `OBP1` e múltiplos candidatos.
 3. Atualizar documentação e recursos após cada corte verificável.
 
 Depois disso:
@@ -1409,6 +1421,62 @@ Criterio de sucesso sugerido:
 - preservar a saida visual quando `LCDC(1)=0`;
 - manter regressao e Quartus fechando antes de ampliar prioridade, atributos e
   limite completo de sprites.
+
+Alvo concluido:
+
+```text
+Implementar a primeira fatia de sprite pixel fetch/composition, usando os
+candidatos do OAM scan, ainda sem buscar precisao completa de prioridade.
+```
+
+Resultado:
+
+- `bus_controller.vhd` agora expoe `ppu_obp0` para o caminho PPU;
+- `ppu_background_renderer.vhd` consome o primeiro indice candidato produzido
+  pelo OAM scan;
+- o renderer busca Y, X, tile index e atributos desse sprite pela porta OAM da
+  PPU;
+- a linha do tile de sprite e buscada pela porta VRAM da PPU antes da escrita
+  dos pixels da linha;
+- pixels OBJ com color id `00` permanecem transparentes;
+- pixels OBJ nao-zero sao compostos sobre o background usando `OBP0`;
+- `LCDC(1)=0` preserva o caminho background-only;
+- atributos de flip horizontal e vertical ja sao considerados nesta fatia;
+- os tops visuais arbitram a porta OAM da PPU entre OAM scan e renderer.
+
+Regressoes executadas:
+
+- `run_ppu_background_renderer.do` - Passed;
+- `run_bus_controller.do` - Passed;
+- `run_ppu_background_demo_top.do` - Passed;
+- `run_cpu_ppu_background_demo_top.do` - Passed;
+- `run_ppu_oam_scan.do` - Passed;
+- `run_cpu_video_smoke_top.do` - Passed;
+- build Quartus completo em `2026-05-20` - Passed, com
+  `4.551 / 6.272` LEs usados (`73%`), `179.200 / 276.480` bits de memoria
+  (`65%`) e `23 / 30` blocos M9K usados (`77%`).
+
+Limitacao importante:
+
+- esta ainda nao e a composicao completa de sprites do DMG. Falta `OBP1`,
+  prioridade BG/OBJ, ordenacao entre sprites, composicao de multiplos
+  candidatos, janela, FIFO real e timings finos de Mode 3.
+
+Proximo alvo oficial recomendado:
+
+```text
+Expandir a composicao de sprites para OBP1, prioridade basica e mais de um
+candidato por linha, mantendo cada comportamento coberto por teste.
+```
+
+Criterio de sucesso sugerido:
+
+- aplicar `OBP1` quando o atributo do sprite selecionar a segunda paleta;
+- respeitar pelo menos a prioridade inicial BG/OBJ para pixels de background
+  nao-zero;
+- compor mais de um candidato por linha de forma deterministica;
+- preservar transparencia de color id `00`;
+- manter regressao e Quartus fechando abaixo de 80% de LEs.
 
 ## 15. Princípio de Engenharia do Projeto
 

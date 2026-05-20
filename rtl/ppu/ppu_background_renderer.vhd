@@ -16,6 +16,7 @@
 -- 2026-05-20 - Converted frame completion into a continuous frame loop
 -- 2026-05-20 - Applied BGP palette lookup before framebuffer writes
 -- 2026-05-20 - Added initial LCDC background tile-map/data selection
+-- 2026-05-20 - Added first sprite fetch/composition slice for one candidate
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It renders the background tile map selected by LCDC bit 3 and the
@@ -40,9 +41,17 @@ entity ppu_background_renderer is
         scroll_y      : in  std_logic_vector(7 downto 0);
         scroll_x      : in  std_logic_vector(7 downto 0);
         bgp           : in  std_logic_vector(7 downto 0);
+        obp0          : in  std_logic_vector(7 downto 0);
+
+        sprite_candidate_count   : in  unsigned(3 downto 0);
+        sprite_candidate_indices : in  std_logic_vector(79 downto 0);
 
         vram_addr     : out unsigned(12 downto 0);
         vram_data     : in  std_logic_vector(7 downto 0);
+
+        oam_addr      : out unsigned(7 downto 0);
+        oam_read      : out std_logic;
+        oam_data      : in  std_logic_vector(7 downto 0);
 
         fb_we         : out std_logic;
         fb_addr       : out unsigned(14 downto 0);
@@ -76,6 +85,18 @@ architecture rtl of ppu_background_renderer is
     type state_t is (
         S_IDLE,
         S_MODE2,
+        S_SPRITE_Y_REQ,
+        S_SPRITE_Y_CAPTURE,
+        S_SPRITE_X_REQ,
+        S_SPRITE_X_CAPTURE,
+        S_SPRITE_TILE_REQ,
+        S_SPRITE_TILE_CAPTURE,
+        S_SPRITE_ATTR_REQ,
+        S_SPRITE_ATTR_CAPTURE,
+        S_SPRITE_LOW_REQ,
+        S_SPRITE_LOW_CAPTURE,
+        S_SPRITE_HIGH_REQ,
+        S_SPRITE_HIGH_CAPTURE,
         S_MAP_REQ,
         S_MAP_CAPTURE,
         S_TILE_LOW_REQ,
@@ -97,6 +118,14 @@ architecture rtl of ppu_background_renderer is
     signal tile_index_reg : std_logic_vector(7 downto 0);
     signal tile_low_reg   : std_logic_vector(7 downto 0);
     signal tile_high_reg  : std_logic_vector(7 downto 0);
+    signal sprite_valid_reg : std_logic;
+    signal sprite_index_reg : unsigned(7 downto 0);
+    signal sprite_y_reg     : std_logic_vector(7 downto 0);
+    signal sprite_x_reg     : std_logic_vector(7 downto 0);
+    signal sprite_tile_reg  : std_logic_vector(7 downto 0);
+    signal sprite_attr_reg  : std_logic_vector(7 downto 0);
+    signal sprite_low_reg   : std_logic_vector(7 downto 0);
+    signal sprite_high_reg  : std_logic_vector(7 downto 0);
 
     function tile_map_addr(
         x_in       : unsigned(7 downto 0);
@@ -148,6 +177,49 @@ architecture rtl of ppu_background_renderer is
         return addr_v;
     end function tile_data_addr;
 
+    function sprite_tile_data_addr(
+        tile_index_in : std_logic_vector(7 downto 0);
+        sprite_y_in   : std_logic_vector(7 downto 0);
+        attr_in       : std_logic_vector(7 downto 0);
+        line_in       : unsigned(7 downto 0);
+        tall_sprite   : std_logic;
+        high_byte_in  : std_logic)
+        return unsigned is
+        variable tile_index_v : std_logic_vector(7 downto 0);
+        variable sprite_row_v : unsigned(8 downto 0);
+        variable fetch_row_v  : unsigned(8 downto 0);
+        variable addr_v       : unsigned(12 downto 0);
+    begin
+        if tall_sprite = '1' then
+            tile_index_v := tile_index_in(7 downto 1) & '0';
+        else
+            tile_index_v := tile_index_in;
+        end if;
+
+        sprite_row_v := resize(line_in, 9) + to_unsigned(16, 9) -
+                        resize(unsigned(sprite_y_in), 9);
+        if attr_in(6) = '1' then
+            if tall_sprite = '1' then
+                fetch_row_v := to_unsigned(15, 9) - sprite_row_v;
+            else
+                fetch_row_v := to_unsigned(7, 9) - sprite_row_v;
+            end if;
+        else
+            fetch_row_v := sprite_row_v;
+        end if;
+
+        if tall_sprite = '1' and fetch_row_v(3) = '1' then
+            tile_index_v := std_logic_vector(unsigned(tile_index_v) + 1);
+        end if;
+
+        addr_v := (resize(unsigned(tile_index_v), 13) sll 4) +
+                  (resize(fetch_row_v(2 downto 0), 13) sll 1);
+        if high_byte_in = '1' then
+            addr_v := addr_v + 1;
+        end if;
+        return addr_v;
+    end function sprite_tile_data_addr;
+
     function pixel_from_tile(
         low_in  : std_logic_vector(7 downto 0);
         high_in : std_logic_vector(7 downto 0);
@@ -182,6 +254,69 @@ architecture rtl of ppu_background_renderer is
         return shade_v;
     end function apply_bgp_palette;
 
+    function apply_obj_palette(
+        color_id_in : std_logic_vector(1 downto 0);
+        palette_in  : std_logic_vector(7 downto 0))
+        return std_logic_vector is
+        variable shade_v : std_logic_vector(1 downto 0);
+    begin
+        case color_id_in is
+            when "00" =>
+                shade_v := palette_in(1 downto 0);
+            when "01" =>
+                shade_v := palette_in(3 downto 2);
+            when "10" =>
+                shade_v := palette_in(5 downto 4);
+            when others =>
+                shade_v := palette_in(7 downto 6);
+        end case;
+
+        return shade_v;
+    end function apply_obj_palette;
+
+    function sprite_covers_pixel(
+        sprite_valid_in : std_logic;
+        sprite_x_in     : std_logic_vector(7 downto 0);
+        pixel_x_in      : unsigned(7 downto 0))
+        return std_logic is
+        variable pixel_plus_8_v : unsigned(8 downto 0);
+        variable sprite_x_v     : unsigned(8 downto 0);
+    begin
+        pixel_plus_8_v := resize(pixel_x_in, 9) + to_unsigned(8, 9);
+        sprite_x_v := resize(unsigned(sprite_x_in), 9);
+
+        if sprite_valid_in = '1' and
+           pixel_plus_8_v >= sprite_x_v and
+           pixel_plus_8_v < sprite_x_v + to_unsigned(8, 9) then
+            return '1';
+        end if;
+
+        return '0';
+    end function sprite_covers_pixel;
+
+    function sprite_pixel_from_tile(
+        low_in      : std_logic_vector(7 downto 0);
+        high_in     : std_logic_vector(7 downto 0);
+        sprite_x_in : std_logic_vector(7 downto 0);
+        attr_in     : std_logic_vector(7 downto 0);
+        pixel_x_in  : unsigned(7 downto 0))
+        return std_logic_vector is
+        variable sprite_pixel_x_v : unsigned(8 downto 0);
+        variable bit_index_v      : integer range 0 to 7;
+        variable pixel_v          : std_logic_vector(1 downto 0);
+    begin
+        sprite_pixel_x_v := resize(pixel_x_in, 9) + to_unsigned(8, 9) -
+                            resize(unsigned(sprite_x_in), 9);
+        if attr_in(5) = '1' then
+            bit_index_v := to_integer(sprite_pixel_x_v(2 downto 0));
+        else
+            bit_index_v := 7 - to_integer(sprite_pixel_x_v(2 downto 0));
+        end if;
+        pixel_v(0) := low_in(bit_index_v);
+        pixel_v(1) := high_in(bit_index_v);
+        return pixel_v;
+    end function sprite_pixel_from_tile;
+
 begin
 
     p_renderer: process(clk)
@@ -196,6 +331,14 @@ begin
                 tile_index_reg <= (others => '0');
                 tile_low_reg <= (others => '0');
                 tile_high_reg <= (others => '0');
+                sprite_valid_reg <= '0';
+                sprite_index_reg <= (others => '0');
+                sprite_y_reg <= (others => '0');
+                sprite_x_reg <= (others => '0');
+                sprite_tile_reg <= (others => '0');
+                sprite_attr_reg <= (others => '0');
+                sprite_low_reg <= (others => '0');
+                sprite_high_reg <= (others => '0');
             else
                 case state_reg is
                     when S_IDLE =>
@@ -211,10 +354,59 @@ begin
                         if dot_count_reg = to_unsigned(MODE2_DOTS - 1, 9) then
                             pixel_x_reg <= (others => '0');
                             dot_count_reg <= to_unsigned(MODE3_FIRST_DOT, 9);
-                            state_reg <= S_MAP_REQ;
+                            sprite_valid_reg <= '0';
+                            sprite_index_reg <= unsigned(sprite_candidate_indices(7 downto 0));
+                            if lcdc(1) = '1' and sprite_candidate_count /= to_unsigned(0, 4) then
+                                state_reg <= S_SPRITE_Y_REQ;
+                            else
+                                state_reg <= S_MAP_REQ;
+                            end if;
                         else
                             dot_count_reg <= dot_count_reg + 1;
                         end if;
+
+                    when S_SPRITE_Y_REQ =>
+                        state_reg <= S_SPRITE_Y_CAPTURE;
+
+                    when S_SPRITE_Y_CAPTURE =>
+                        sprite_y_reg <= oam_data;
+                        state_reg <= S_SPRITE_X_REQ;
+
+                    when S_SPRITE_X_REQ =>
+                        state_reg <= S_SPRITE_X_CAPTURE;
+
+                    when S_SPRITE_X_CAPTURE =>
+                        sprite_x_reg <= oam_data;
+                        state_reg <= S_SPRITE_TILE_REQ;
+
+                    when S_SPRITE_TILE_REQ =>
+                        state_reg <= S_SPRITE_TILE_CAPTURE;
+
+                    when S_SPRITE_TILE_CAPTURE =>
+                        sprite_tile_reg <= oam_data;
+                        state_reg <= S_SPRITE_ATTR_REQ;
+
+                    when S_SPRITE_ATTR_REQ =>
+                        state_reg <= S_SPRITE_ATTR_CAPTURE;
+
+                    when S_SPRITE_ATTR_CAPTURE =>
+                        sprite_attr_reg <= oam_data;
+                        state_reg <= S_SPRITE_LOW_REQ;
+
+                    when S_SPRITE_LOW_REQ =>
+                        state_reg <= S_SPRITE_LOW_CAPTURE;
+
+                    when S_SPRITE_LOW_CAPTURE =>
+                        sprite_low_reg <= vram_data;
+                        state_reg <= S_SPRITE_HIGH_REQ;
+
+                    when S_SPRITE_HIGH_REQ =>
+                        state_reg <= S_SPRITE_HIGH_CAPTURE;
+
+                    when S_SPRITE_HIGH_CAPTURE =>
+                        sprite_high_reg <= vram_data;
+                        sprite_valid_reg <= '1';
+                        state_reg <= S_MAP_REQ;
 
                     when S_MAP_REQ =>
                         state_reg <= S_MAP_CAPTURE;
@@ -298,10 +490,13 @@ begin
 
     p_outputs: process(state_reg, pixel_x_reg, pixel_y_reg, dot_count_reg, fb_addr_reg,
                        tile_index_reg, tile_low_reg, tile_high_reg,
-                       scroll_x, scroll_y, bgp, lcdc)
+                       sprite_index_reg, sprite_valid_reg, sprite_x_reg, sprite_y_reg,
+                       sprite_tile_reg, sprite_attr_reg, sprite_low_reg, sprite_high_reg,
+                       scroll_x, scroll_y, bgp, obp0, lcdc)
         variable bg_x_v : unsigned(7 downto 0);
         variable bg_y_v : unsigned(7 downto 0);
         variable color_id_v : std_logic_vector(1 downto 0);
+        variable sprite_color_id_v : std_logic_vector(1 downto 0);
     begin
         bg_x_v := pixel_x_reg + unsigned(scroll_x);
         bg_y_v := pixel_y_reg + unsigned(scroll_y);
@@ -309,11 +504,20 @@ begin
         if lcdc(0) = '0' then
             color_id_v := "00";
         end if;
+        sprite_color_id_v := sprite_pixel_from_tile(sprite_low_reg, sprite_high_reg,
+                                                    sprite_x_reg, sprite_attr_reg,
+                                                    pixel_x_reg);
 
         vram_addr <= tile_map_addr(bg_x_v, bg_y_v, lcdc(3));
+        oam_addr <= (others => '0');
+        oam_read <= '0';
         fb_we <= '0';
         fb_addr <= fb_addr_reg;
         fb_data <= apply_bgp_palette(color_id_v, bgp);
+        if sprite_covers_pixel(sprite_valid_reg, sprite_x_reg, pixel_x_reg) = '1' and
+           sprite_color_id_v /= "00" then
+            fb_data <= apply_obj_palette(sprite_color_id_v, obp0);
+        end if;
         current_line <= pixel_y_reg;
         current_dot <= dot_count_reg;
         line_active <= '0';
@@ -328,6 +532,44 @@ begin
             when S_MODE2 =>
                 line_active <= '1';
                 ppu_mode <= "10";
+                busy <= '1';
+            when S_SPRITE_Y_REQ | S_SPRITE_Y_CAPTURE =>
+                oam_addr <= resize(sprite_index_reg(5 downto 0), 8) sll 2;
+                oam_read <= '1';
+                line_active <= '1';
+                ppu_mode <= "11";
+                busy <= '1';
+            when S_SPRITE_X_REQ | S_SPRITE_X_CAPTURE =>
+                oam_addr <= (resize(sprite_index_reg(5 downto 0), 8) sll 2) + 1;
+                oam_read <= '1';
+                line_active <= '1';
+                ppu_mode <= "11";
+                busy <= '1';
+            when S_SPRITE_TILE_REQ | S_SPRITE_TILE_CAPTURE =>
+                oam_addr <= (resize(sprite_index_reg(5 downto 0), 8) sll 2) + 2;
+                oam_read <= '1';
+                line_active <= '1';
+                ppu_mode <= "11";
+                busy <= '1';
+            when S_SPRITE_ATTR_REQ | S_SPRITE_ATTR_CAPTURE =>
+                oam_addr <= (resize(sprite_index_reg(5 downto 0), 8) sll 2) + 3;
+                oam_read <= '1';
+                line_active <= '1';
+                ppu_mode <= "11";
+                busy <= '1';
+            when S_SPRITE_LOW_REQ | S_SPRITE_LOW_CAPTURE =>
+                vram_addr <= sprite_tile_data_addr(sprite_tile_reg, sprite_y_reg,
+                                                   sprite_attr_reg,
+                                                   pixel_y_reg, lcdc(2), '0');
+                line_active <= '1';
+                ppu_mode <= "11";
+                busy <= '1';
+            when S_SPRITE_HIGH_REQ | S_SPRITE_HIGH_CAPTURE =>
+                vram_addr <= sprite_tile_data_addr(sprite_tile_reg, sprite_y_reg,
+                                                   sprite_attr_reg,
+                                                   pixel_y_reg, lcdc(2), '1');
+                line_active <= '1';
+                ppu_mode <= "11";
                 busy <= '1';
             when S_MAP_REQ | S_MAP_CAPTURE =>
                 vram_addr <= tile_map_addr(bg_x_v, bg_y_v, lcdc(3));

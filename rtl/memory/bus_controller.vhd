@@ -24,6 +24,7 @@
 -- 2026-05-20 - Exposed BGP to the PPU background renderer path
 -- 2026-05-20 - Exposed LCDC to the PPU background renderer path
 -- 2026-05-20 - Added PPU OAM read port for scanline candidate detection
+-- 2026-05-20 - Exposed OBP0 to the first sprite composition path
 -- =============================================================================
 
 library ieee;
@@ -55,6 +56,7 @@ entity bus_controller is
         ppu_scx             : out std_logic_vector(7 downto 0);
         ppu_lcdc            : out std_logic_vector(7 downto 0);
         ppu_bgp             : out std_logic_vector(7 downto 0);
+        ppu_obp0            : out std_logic_vector(7 downto 0);
         ppu_lcd_enable      : out std_logic;
         ppu_oam_addr        : in  unsigned(7 downto 0);
         ppu_oam_read        : in  std_logic;
@@ -583,6 +585,7 @@ begin
     ppu_scx <= scx_reg;
     ppu_lcdc <= lcdc_reg;
     ppu_bgp <= bgp_reg;
+    ppu_obp0 <= obp0_reg;
     ppu_lcd_enable <= lcdc_reg(7);
     ppu_oam_data <= oam_q;
 

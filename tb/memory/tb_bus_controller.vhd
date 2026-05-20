@@ -39,6 +39,7 @@ architecture sim of tb_bus_controller is
     signal ppu_scx              : std_logic_vector(7 downto 0);
     signal ppu_lcdc             : std_logic_vector(7 downto 0);
     signal ppu_bgp              : std_logic_vector(7 downto 0);
+    signal ppu_obp0             : std_logic_vector(7 downto 0);
     signal ppu_lcd_enable       : std_logic;
     signal ppu_oam_addr         : unsigned(7 downto 0) := (others => '0');
     signal ppu_oam_read         : std_logic := '0';
@@ -100,6 +101,7 @@ begin
             ppu_scx              => ppu_scx,
             ppu_lcdc             => ppu_lcdc,
             ppu_bgp              => ppu_bgp,
+            ppu_obp0             => ppu_obp0,
             ppu_lcd_enable       => ppu_lcd_enable,
             ppu_oam_addr         => ppu_oam_addr,
             ppu_oam_read         => ppu_oam_read,
@@ -443,6 +445,9 @@ begin
         bus_read_check(x"FF47", x"E4", "FAIL: BGP stub should read back written data");
         assert ppu_bgp = x"E4"
             report "FAIL: PPU BGP output should mirror written BGP data"
+            severity failure;
+        assert ppu_obp0 = x"D2"
+            report "FAIL: PPU OBP0 output should mirror written OBP0 data"
             severity failure;
         bus_read_check(x"FF48", x"D2", "FAIL: OBP0 stub should read back written data");
         bus_read_check(x"FF49", x"C1", "FAIL: OBP1 stub should read back written data");
