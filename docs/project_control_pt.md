@@ -306,6 +306,10 @@ Validação rápida executada nesta sessão:
   `run_ppu_background_renderer.do`, `run_bus_controller.do`,
   `run_ppu_background_demo_top.do`, `run_cpu_video_smoke_top.do` e
   `run_cpu_ppu_background_demo_top.do`;
+- controles iniciais de background por `LCDC` — validados por
+  `run_ppu_background_renderer.do`, `run_bus_controller.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_video_smoke_top.do` e
+  `run_cpu_ppu_background_demo_top.do`;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 - build Quartus completo da primeira fatia de VRAM em `2026-05-16` — Passed,
@@ -364,6 +368,10 @@ Validação rápida executada nesta sessão:
   Passed, com `4.342 / 6.272` LEs usados (`69%`),
   `179.200 / 276.480` bits de memória (`65%`) e `23 / 30` blocos M9K usados
   (`77%`).
+- build Quartus completo após os controles iniciais de background por `LCDC` em
+  `2026-05-20` — Passed, com `4.382 / 6.272` LEs usados (`70%`),
+  `179.200 / 276.480` bits de memória (`65%`) e `23 / 30` blocos M9K usados
+  (`77%`).
 
 Checkpoint pronto para formalização:
 
@@ -373,8 +381,9 @@ Checkpoint pronto para formalização:
   LCDC enable inicial, bloqueio inicial de VRAM em Mode 3, OAM inicial e loop
   contínuo de frames;
 - o `BGP` no write do framebuffer foi aplicado e validado;
-- o próximo passo recomendado é completar os bits de `LCDC` que afetam o
-  background antes de avançar para OAM scan/sprites.
+- os controles iniciais de background por `LCDC` foram aplicados e validados;
+- o próximo passo recomendado é implementar o primeiro OAM scan da PPU antes de
+  avançar para composição/renderização de sprites.
 
 ## 5. Estado Atual por Área
 
@@ -1286,6 +1295,52 @@ Critério de sucesso sugerido:
 - decidir a semântica inicial de `LCDC(0)` para background enable no DMG;
 - preservar a regressão BGP/scroll/frame loop;
 - manter Quartus fechado antes de avançar para OAM scan.
+
+Alvo concluído:
+
+```text
+Completar os bits de LCDC que afetam o background antes de iniciar OAM scan.
+```
+
+Resultado:
+
+- `bus_controller.vhd` agora expõe `ppu_lcdc`, espelhando o registrador CPU
+  `FF40`;
+- `ppu_background_renderer.vhd` usa `LCDC(3)` para selecionar a tile map base
+  `0x9800/0x9C00`, mapeada localmente como VRAM `0x1800/0x1C00`;
+- `LCDC(4)` seleciona tile data unsigned em VRAM local `0x0000` ou signed
+  centralizado em VRAM local `0x1000`;
+- `LCDC(0)` recebeu a semântica inicial de background disable: força color id
+  `0` antes do lookup de `BGP`;
+- os tops visuais roteiam `ppu_lcdc` do barramento para a PPU;
+- `tb_ppu_background_renderer` cobre tile map 1, modo signed de tile data e
+  background disable.
+
+Regressões executadas:
+
+- `run_ppu_background_renderer.do` — Passed;
+- `run_bus_controller.do` — Passed;
+- `run_ppu_background_demo_top.do` — Passed;
+- `run_cpu_video_smoke_top.do` — Passed;
+- `run_cpu_ppu_background_demo_top.do` — Passed;
+- build Quartus completo em `2026-05-20` — Passed, com
+  `4.382 / 6.272` LEs usados (`70%`), `179.200 / 276.480` bits de memória
+  (`65%`) e `23 / 30` blocos M9K usados (`77%`).
+
+Próximo alvo oficial recomendado:
+
+```text
+Implementar o primeiro OAM scan da PPU, detectando candidatos por scanline sem
+renderizar sprites ainda.
+```
+
+Critério de sucesso sugerido:
+
+- dar à PPU uma porta de leitura de OAM ou uma interface dedicada de scan;
+- respeitar o bloqueio CPU em Mode 2/3 já existente;
+- detectar até 10 sprites candidatos em uma linha visível;
+- preservar a saída visual de background;
+- manter regressão e Quartus fechando antes de iniciar composição de sprites.
 
 ## 15. Princípio de Engenharia do Projeto
 

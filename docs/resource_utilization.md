@@ -1264,3 +1264,46 @@ Notes:
   CPU-authored palettes to affect future rendered frames.
 - No additional memory blocks were introduced. The fitted logic count decreased
   slightly versus the continuous-frame slice due to Quartus optimization changes.
+
+## LCDC Background Control Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,382 | 6,272 | 70% |
+| Registers | 1,536 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 23.962 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 176.222 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.446 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.501 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `bus_controller` now exposes the full `LCDC` register to the PPU path as
+  `ppu_lcdc`.
+- `ppu_background_renderer` uses `LCDC(3)` to select the background tile map at
+  VRAM local `0x1800` or `0x1C00`.
+- `LCDC(4)` now selects unsigned tile data at VRAM local `0x0000` or signed tile
+  data centered at VRAM local `0x1000`.
+- `LCDC(0)` initially controls background enable by forcing background color id
+  0 through `BGP` when clear.
+- The slice costs 40 logic elements versus the BGP checkpoint and does not add
+  registers or memory blocks.

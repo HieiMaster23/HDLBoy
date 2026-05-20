@@ -44,6 +44,7 @@ architecture sim of tb_ppu_background_renderer is
     signal reset      : std_logic := '1';
     signal start      : std_logic := '0';
     signal lcd_enable : std_logic := '1';
+    signal lcdc       : std_logic_vector(7 downto 0) := x"91";
     signal scroll_y   : std_logic_vector(7 downto 0) := x"00";
     signal scroll_x   : std_logic_vector(7 downto 0) := x"00";
     signal bgp        : std_logic_vector(7 downto 0) := x"FC";
@@ -90,6 +91,7 @@ begin
             reset     => reset,
             start     => start,
             lcd_enable => lcd_enable,
+            lcdc      => lcdc,
             scroll_y  => scroll_y,
             scroll_x  => scroll_x,
             bgp       => bgp,
@@ -366,6 +368,71 @@ begin
             severity failure;
         assert fb_mem(3) = "11"
             report "FAIL: BGP identity should map background color 3 to shade 3"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"99";
+        bgp <= x"FC";
+        vram_mem(16) <= x"AA";
+        vram_mem(17) <= x"AA";
+        vram_mem(16#1800#) <= x"00";
+        vram_mem(16#1C00#) <= x"01";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "11"
+            report "FAIL: LCDC bit 3 should select tile map 1 at VRAM 0x1C00"
+            severity failure;
+        assert fb_mem(1) = "00"
+            report "FAIL: LCDC bit 3 tile map 1 selection should render tile 1 data"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"81";
+        vram_mem(0) <= x"00";
+        vram_mem(1) <= x"00";
+        vram_mem(16#1000#) <= x"AA";
+        vram_mem(16#1001#) <= x"AA";
+        vram_mem(16#1800#) <= x"00";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "11"
+            report "FAIL: LCDC bit 4 clear should use signed tile data base at VRAM 0x1000"
+            severity failure;
+        assert fb_mem(1) = "00"
+            report "FAIL: signed tile data mode should render the selected tile row"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"90";
+        vram_mem(16#1800#) <= x"01";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "00" and fb_mem(1) = "00"
+            report "FAIL: LCDC bit 0 clear should force background color 0 through BGP"
             severity failure;
 
         report "=== tb_ppu_background_renderer: ALL TESTS PASSED ===" severity note;

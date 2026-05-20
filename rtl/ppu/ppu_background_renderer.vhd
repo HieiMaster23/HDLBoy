@@ -15,10 +15,11 @@
 -- 2026-05-20 - Added LCD enable input for initial LCDC bit 7 behavior
 -- 2026-05-20 - Converted frame completion into a continuous frame loop
 -- 2026-05-20 - Applied BGP palette lookup before framebuffer writes
+-- 2026-05-20 - Added initial LCDC background tile-map/data selection
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
--- pipeline. It reads the unsigned tile map at VRAM local address 0x1800 and
--- unsigned tile data at VRAM local address 0x0000, then fills the framebuffer
+-- pipeline. It renders the background tile map selected by LCDC bit 3 and the
+-- tile data addressing mode selected by LCDC bit 4, then fills the framebuffer
 -- one visible scanline at a time after start. After the first start pulse, the
 -- renderer loops continuously while LCD is enabled. The dot scheduler exposes
 -- the DMG 456-dot line structure for LY/STAT/IF work while the pixel fetch path
@@ -35,6 +36,7 @@ entity ppu_background_renderer is
         reset         : in  std_logic;
         start         : in  std_logic;
         lcd_enable    : in  std_logic;
+        lcdc          : in  std_logic_vector(7 downto 0);
         scroll_y      : in  std_logic_vector(7 downto 0);
         scroll_x      : in  std_logic_vector(7 downto 0);
         bgp           : in  std_logic_vector(7 downto 0);
@@ -66,7 +68,10 @@ architecture rtl of ppu_background_renderer is
     constant MODE3_FIRST_DOT   : integer := MODE2_DOTS;
     constant MODE3_LAST_DOT    : integer := MODE2_DOTS + MODE3_DOTS - 1;
     constant VBLANK_LAST_LINE  : integer := 153;
-    constant TILE_MAP_BASE     : unsigned(12 downto 0) := to_unsigned(16#1800#, 13);
+    constant TILE_MAP_0_BASE    : unsigned(12 downto 0) := to_unsigned(16#1800#, 13);
+    constant TILE_MAP_1_BASE    : unsigned(12 downto 0) := to_unsigned(16#1C00#, 13);
+    constant TILE_DATA_SIGNED_ZERO_BASE : unsigned(12 downto 0) :=
+        to_unsigned(16#1000#, 13);
 
     type state_t is (
         S_IDLE,
@@ -94,16 +99,24 @@ architecture rtl of ppu_background_renderer is
     signal tile_high_reg  : std_logic_vector(7 downto 0);
 
     function tile_map_addr(
-        x_in : unsigned(7 downto 0);
-        y_in : unsigned(7 downto 0))
+        x_in       : unsigned(7 downto 0);
+        y_in       : unsigned(7 downto 0);
+        use_map_1  : std_logic)
         return unsigned is
         variable tile_x_v : unsigned(4 downto 0);
         variable tile_y_v : unsigned(4 downto 0);
+        variable base_v   : unsigned(12 downto 0);
         variable addr_v   : unsigned(12 downto 0);
     begin
         tile_x_v := x_in(7 downto 3);
         tile_y_v := y_in(7 downto 3);
-        addr_v := TILE_MAP_BASE + resize(tile_y_v & "00000", 13) +
+        if use_map_1 = '1' then
+            base_v := TILE_MAP_1_BASE;
+        else
+            base_v := TILE_MAP_0_BASE;
+        end if;
+
+        addr_v := base_v + resize(tile_y_v & "00000", 13) +
                   resize(tile_x_v, 13);
         return addr_v;
     end function tile_map_addr;
@@ -111,13 +124,22 @@ architecture rtl of ppu_background_renderer is
     function tile_data_addr(
         tile_index_in : std_logic_vector(7 downto 0);
         y_in          : unsigned(7 downto 0);
-        high_byte_in  : std_logic)
+        high_byte_in  : std_logic;
+        unsigned_mode_in : std_logic)
         return unsigned is
         variable tile_base_v : unsigned(12 downto 0);
         variable row_base_v  : unsigned(12 downto 0);
         variable addr_v      : unsigned(12 downto 0);
+        variable signed_offset_v : signed(12 downto 0);
     begin
-        tile_base_v := resize(unsigned(tile_index_in), 13) sll 4;
+        if unsigned_mode_in = '1' then
+            tile_base_v := resize(unsigned(tile_index_in), 13) sll 4;
+        else
+            signed_offset_v := resize(signed(tile_index_in), 13) sll 4;
+            tile_base_v := unsigned(signed(TILE_DATA_SIGNED_ZERO_BASE) +
+                                    signed_offset_v);
+        end if;
+
         row_base_v := resize(unsigned(y_in(2 downto 0)), 13) sll 1;
         addr_v := tile_base_v + row_base_v;
         if high_byte_in = '1' then
@@ -276,7 +298,7 @@ begin
 
     p_outputs: process(state_reg, pixel_x_reg, pixel_y_reg, dot_count_reg, fb_addr_reg,
                        tile_index_reg, tile_low_reg, tile_high_reg,
-                       scroll_x, scroll_y, bgp)
+                       scroll_x, scroll_y, bgp, lcdc)
         variable bg_x_v : unsigned(7 downto 0);
         variable bg_y_v : unsigned(7 downto 0);
         variable color_id_v : std_logic_vector(1 downto 0);
@@ -284,8 +306,11 @@ begin
         bg_x_v := pixel_x_reg + unsigned(scroll_x);
         bg_y_v := pixel_y_reg + unsigned(scroll_y);
         color_id_v := pixel_from_tile(tile_low_reg, tile_high_reg, bg_x_v);
+        if lcdc(0) = '0' then
+            color_id_v := "00";
+        end if;
 
-        vram_addr <= tile_map_addr(bg_x_v, bg_y_v);
+        vram_addr <= tile_map_addr(bg_x_v, bg_y_v, lcdc(3));
         fb_we <= '0';
         fb_addr <= fb_addr_reg;
         fb_data <= apply_bgp_palette(color_id_v, bgp);
@@ -305,17 +330,19 @@ begin
                 ppu_mode <= "10";
                 busy <= '1';
             when S_MAP_REQ | S_MAP_CAPTURE =>
-                vram_addr <= tile_map_addr(bg_x_v, bg_y_v);
+                vram_addr <= tile_map_addr(bg_x_v, bg_y_v, lcdc(3));
                 line_active <= '1';
                 ppu_mode <= "11";
                 busy <= '1';
             when S_TILE_LOW_REQ | S_TILE_LOW_CAPTURE =>
-                vram_addr <= tile_data_addr(tile_index_reg, bg_y_v, '0');
+                vram_addr <= tile_data_addr(tile_index_reg, bg_y_v, '0',
+                                            lcdc(4));
                 line_active <= '1';
                 ppu_mode <= "11";
                 busy <= '1';
             when S_TILE_HIGH_REQ | S_TILE_HIGH_CAPTURE =>
-                vram_addr <= tile_data_addr(tile_index_reg, bg_y_v, '1');
+                vram_addr <= tile_data_addr(tile_index_reg, bg_y_v, '1',
+                                            lcdc(4));
                 line_active <= '1';
                 ppu_mode <= "11";
                 busy <= '1';

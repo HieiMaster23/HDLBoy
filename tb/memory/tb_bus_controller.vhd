@@ -37,6 +37,7 @@ architecture sim of tb_bus_controller is
     signal ppu_vram_data        : std_logic_vector(7 downto 0);
     signal ppu_scy              : std_logic_vector(7 downto 0);
     signal ppu_scx              : std_logic_vector(7 downto 0);
+    signal ppu_lcdc             : std_logic_vector(7 downto 0);
     signal ppu_bgp              : std_logic_vector(7 downto 0);
     signal ppu_lcd_enable       : std_logic;
     signal ppu_current_line     : unsigned(7 downto 0) := (others => '0');
@@ -94,6 +95,7 @@ begin
             ppu_vram_data        => ppu_vram_data,
             ppu_scy              => ppu_scy,
             ppu_scx              => ppu_scx,
+            ppu_lcdc             => ppu_lcdc,
             ppu_bgp              => ppu_bgp,
             ppu_lcd_enable       => ppu_lcd_enable,
             ppu_current_line     => ppu_current_line,
@@ -242,6 +244,9 @@ begin
         bus_read_check(x"FF07", x"FD", "FAIL: TAC stub should preserve lower control bits with upper bits high");
 
         bus_read_check(x"FF40", x"91", "FAIL: LCDC reset stub should use the DMG post-boot display default");
+        assert ppu_lcdc = x"91"
+            report "FAIL: PPU LCDC output should mirror the reset LCDC value"
+            severity failure;
         assert ppu_lcd_enable = '1'
             report "FAIL: PPU LCD enable output should follow LCDC bit 7 after reset"
             severity failure;
@@ -297,6 +302,9 @@ begin
         bus_write(x"FF40", x"80");
         assert ppu_lcd_enable = '1'
             report "FAIL: PPU LCD enable output should set when LCDC bit 7 is written"
+            severity failure;
+        assert ppu_lcdc = x"80"
+            report "FAIL: PPU LCDC output should mirror written LCDC data"
             severity failure;
         bus_read_check(x"FF40", x"80", "FAIL: LCDC stub should read back written data");
         ppu_current_line <= (others => '0');
