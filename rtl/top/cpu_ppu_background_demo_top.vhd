@@ -69,6 +69,7 @@ architecture rtl of cpu_ppu_background_demo_top is
     signal ppu_mode       : std_logic_vector(1 downto 0);
     signal ppu_busy       : std_logic;
     signal ppu_done       : std_logic;
+    signal ppu_frame_seen : std_logic;
 
     signal led_pattern    : std_logic_vector(3 downto 0);
     signal cpu_vram_ready : std_logic;
@@ -140,6 +141,17 @@ begin
     end process p_vga_reset_sync;
 
     reset_vga <= reset_vga_sync;
+
+    p_ppu_frame_seen: process(clk_cpu)
+    begin
+        if rising_edge(clk_cpu) then
+            if reset_cpu = '1' then
+                ppu_frame_seen <= '0';
+            elsif ppu_done = '1' then
+                ppu_frame_seen <= '1';
+            end if;
+        end if;
+    end process p_ppu_frame_seen;
 
     u_cpu: entity work.cpu
         port map (
@@ -281,7 +293,7 @@ begin
 
     led(0) <= not pll_locked;
     led(1) <= not cpu_vram_ready;
-    led(2) <= not ppu_done;
+    led(2) <= not ppu_frame_seen;
     led(3) <= '1';
 
 end architecture rtl;

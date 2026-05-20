@@ -105,6 +105,12 @@ The project has already completed the early foundation layers:
     - CPU OAM writes are ignored during Mode 2/3 while LCD is enabled;
     - OAM remains accessible while LCD is disabled;
     - the unusable `0xFEA0..0xFEFF` range remains open-bus high.
+18. **Continuous PPU frame loop**
+    - after the first start pulse, the background renderer loops continuously
+      while LCD is enabled;
+    - `done` is now a one-cycle frame-complete pulse;
+    - visual tops latch the pulse for stable LED debug indication;
+    - LCD disable still holds the renderer inactive at line 0, dot 0.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -288,12 +294,13 @@ The next recommended sequence is:
    baseline;
 3. preserve the new CPU-authored VRAM visual top as the first combined-system
    baseline;
-4. add the first PPU-side OAM scan module, detecting per-line sprite candidates
+4. apply BGP palette lookup before framebuffer writes;
+5. add remaining background-facing LCDC register behavior as needed;
+6. add the first PPU-side OAM scan module, detecting per-line sprite candidates
    without rendering sprites yet;
-5. add remaining background-facing register behavior as needed;
-6. introduce sprite pixel fetching and composition only after OAM scan behavior
+7. introduce sprite pixel fetching and composition only after OAM scan behavior
    is stable;
-7. import broader timer coverage later if the local Blargg package proves too
+8. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -312,9 +319,9 @@ The first real VRAM slice already raised memory use to:
 The current CPU/PPU visual top with scroll, scanline structure, minimal
 `LY/STAT` visibility, initial VBlank/STAT interrupt requests, the dot-based
 PPU scheduler, initial LCDC enable handling, and initial VRAM Mode 3 access
-blocking plus initial OAM storage uses:
+blocking plus initial OAM storage and continuous frame looping uses:
 
-- 4,344 / 6,272 logic elements;
+- 4,357 / 6,272 logic elements;
 - 179,200 / 276,480 block-memory bits;
 - 23 / 30 M9K blocks.
 

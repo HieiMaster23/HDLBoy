@@ -13,13 +13,15 @@
 -- 2026-05-19 - Added initial PPU mode scheduler outputs
 -- 2026-05-20 - Added dot-based scanline scheduler for LY/STAT foundation
 -- 2026-05-20 - Added LCD enable input for initial LCDC bit 7 behavior
+-- 2026-05-20 - Converted frame completion into a continuous frame loop
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It reads the unsigned tile map at VRAM local address 0x1800 and
 -- unsigned tile data at VRAM local address 0x0000, then fills the framebuffer
--- one visible scanline at a time after start. The dot scheduler exposes the
--- DMG 456-dot line structure for LY/STAT/IF work while the pixel fetch path is
--- still intentionally simple and background-only.
+-- one visible scanline at a time after start. After the first start pulse, the
+-- renderer loops continuously while LCD is enabled. The dot scheduler exposes
+-- the DMG 456-dot line structure for LY/STAT/IF work while the pixel fetch path
+-- is still intentionally simple and background-only.
 -- =============================================================================
 
 library ieee;
@@ -237,7 +239,11 @@ begin
                         end if;
 
                     when S_DONE =>
-                        state_reg <= S_DONE;
+                        pixel_x_reg <= (others => '0');
+                        pixel_y_reg <= (others => '0');
+                        dot_count_reg <= (others => '0');
+                        fb_addr_reg <= (others => '0');
+                        state_reg <= S_MODE2;
 
                     when others =>
                         state_reg <= S_IDLE;
@@ -314,6 +320,7 @@ begin
             when S_DONE =>
                 ppu_mode <= "01";
                 done <= '1';
+                busy <= '1';
             when others =>
                 null;
         end case;

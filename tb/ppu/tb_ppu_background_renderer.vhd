@@ -218,8 +218,8 @@ begin
         wait until rising_edge(clk);
         start <= '0';
 
+        wait for 1 ns;
         wait until done = '1';
-        wait until rising_edge(clk);
         wait for 1 ns;
 
         assert line_count = 144
@@ -238,6 +238,14 @@ begin
             severity failure;
         assert current_dot = to_unsigned(455, 9)
             report "FAIL: renderer should finish at the last dot of the VBlank line"
+            severity failure;
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        assert done = '0' and busy = '1'
+            report "FAIL: frame done should be a one-cycle pulse in continuous mode"
+            severity failure;
+        assert current_line = to_unsigned(0, 8) and current_dot = to_unsigned(0, 9)
+            report "FAIL: renderer should restart at line 0 dot 0 after frame done"
             severity failure;
         assert fb_mem(0) = "11"
             report "FAIL: first checkerboard pixel should be black"
@@ -264,8 +272,8 @@ begin
         wait until rising_edge(clk);
         start <= '0';
 
+        wait for 1 ns;
         wait until done = '1';
-        wait until rising_edge(clk);
         wait for 1 ns;
 
         assert line_count = 144
@@ -285,6 +293,12 @@ begin
         assert fb_mem(8) = "00"
             report "FAIL: SCX=8 should move the first checkerboard tile out of the left edge"
             severity failure;
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        assert done = '0' and current_line = to_unsigned(0, 8) and
+               current_dot = to_unsigned(0, 9)
+            report "FAIL: SCX render should continue with a new frame after done pulse"
+            severity failure;
 
         reset <= '1';
         wait until rising_edge(clk);
@@ -295,8 +309,8 @@ begin
         wait until rising_edge(clk);
         start <= '0';
 
+        wait for 1 ns;
         wait until done = '1';
-        wait until rising_edge(clk);
         wait for 1 ns;
 
         assert line_count = 144
@@ -315,6 +329,12 @@ begin
             severity failure;
         assert fb_mem(1) = "11"
             report "FAIL: SCY=1 should invert the first checkerboard row"
+            severity failure;
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        assert done = '0' and current_line = to_unsigned(0, 8) and
+               current_dot = to_unsigned(0, 9)
+            report "FAIL: SCY render should continue with a new frame after done pulse"
             severity failure;
 
         report "=== tb_ppu_background_renderer: ALL TESTS PASSED ===" severity note;

@@ -1182,3 +1182,45 @@ Notes:
   this board.
 - Compared with the VRAM Mode 3 blocking slice, this adds one M9K block and
   2,048 memory bits while keeping logic use in the same class.
+
+## Continuous PPU Frame Loop Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,357 | 6,272 | 69% |
+| Registers | 1,536 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 23.048 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 178.965 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.440 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.500 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `ppu_background_renderer` now loops continuously while LCDC bit 7 is enabled.
+- `done` is now a one-cycle frame-complete pulse instead of a permanent terminal
+  state.
+- The visual tops latch the pulse into `ppu_frame_seen` for stable LED debug
+  indication without making the PPU core one-shot again.
+- `start` remains a kick signal for the first frame so demo tops can finish
+  authoring VRAM before the renderer starts.
+- Compared with the initial OAM slice, this costs 13 logic elements and one
+  register, with no additional memory blocks.

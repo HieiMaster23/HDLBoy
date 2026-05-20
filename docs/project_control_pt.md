@@ -82,6 +82,8 @@ O projeto já possui:
   ligado;
 - OAM inicial exposta em `0xFE00..0xFE9F`, com bloqueio de acesso CPU durante
   Mode 2/3 quando o LCD está ligado;
+- renderer de background em loop contínuo de frames enquanto `LCDC(7)` está
+  ligado, com `done` convertido em pulso de fim de frame;
 - WRAM completa de 8 KiB com leitura registrada;
 - HRAM e stubs de I/O;
 - IE e IF básicos;
@@ -295,6 +297,11 @@ Validação rápida executada nesta sessão:
   `run_cpu_ppu_background_demo_top.do`, `run_cpu_video_smoke_top.do`,
   `run_timer.do`, `run_cpu_instr_timing.do`, `run_cpu_interrupt_time.do` e
   `run_cpu_halt_bug.do`;
+- loop contínuo de frames da PPU — validado por
+  `run_ppu_background_renderer.do`, `run_bus_controller.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
+  `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
+  `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do`;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 - build Quartus completo da primeira fatia de VRAM em `2026-05-16` — Passed,
@@ -345,15 +352,20 @@ Validação rápida executada nesta sessão:
 - build Quartus completo após a OAM inicial em `2026-05-20` — Passed, com
   `4.344 / 6.272` LEs usados (`69%`), `179.200 / 276.480` bits de memória
   (`65%`) e `23 / 30` blocos M9K usados (`77%`).
+- build Quartus completo após o loop contínuo de frames da PPU em
+  `2026-05-20` — Passed, com `4.357 / 6.272` LEs usados (`69%`),
+  `179.200 / 276.480` bits de memória (`65%`) e `23 / 30` blocos M9K usados
+  (`77%`).
 
 Checkpoint pronto para formalização:
 
 - a escada local de CPU/timing disponível no pacote Blargg foi concluída;
 - o conjunto de regressão relevante está registrado acima;
 - a primeira fatia real de PPU já está em andamento com scheduler por dots,
-  LCDC enable inicial, bloqueio inicial de VRAM em Mode 3 e OAM inicial;
-- o próximo passo recomendado após o commit é adicionar o primeiro OAM scan
-  mínimo, ainda sem composição/renderização de sprites.
+  LCDC enable inicial, bloqueio inicial de VRAM em Mode 3, OAM inicial e loop
+  contínuo de frames;
+- o próximo passo recomendado após o commit é aplicar `BGP` no write do
+  framebuffer antes de avançar para OAM scan/sprites.
 
 ## 5. Estado Atual por Área
 
@@ -1180,6 +1192,46 @@ Critério de sucesso sugerido:
 - detectar até 10 sprites candidatos para uma linha visível;
 - não alterar a saída visual de background ainda;
 - manter regressão e Quartus fechando antes de iniciar composição de sprites.
+
+Alvo seguinte concluído:
+
+```text
+Transformar o renderer de background de one-shot para loop contínuo de frames
+enquanto LCDC bit 7 estiver ligado, preservando os tops visuais atuais.
+```
+
+Resultado:
+
+- `ppu_background_renderer.vhd` agora reinicia automaticamente em line 0, dot 0
+  após a linha 153, dot 455;
+- `done` deixou de ser estado terminal permanente e virou pulso de um ciclo no
+  fim do frame;
+- `start` continua sendo usado como kick inicial, o que preserva os demos que
+  precisam carregar VRAM antes do primeiro frame;
+- `lcd_enable=0` ainda segura o renderer inativo com linha/dot zerados;
+- os tops visuais registram o pulso de frame em `ppu_frame_seen` para manter o
+  LED de debug estável sem mudar a semântica limpa do núcleo.
+
+Limitação importante:
+
+- o renderer ainda é uma base simples de background. Ainda faltam `BGP` no
+  caminho de write do framebuffer, seleção real por bits de `LCDC`, fetcher/FIFO
+  de pixels, window, sprites e DMA.
+
+Próximo alvo oficial recomendado:
+
+```text
+Aplicar o registrador BGP no write do framebuffer, convertendo o color id de
+tile em shade final de 2 bits antes de gravar o pixel.
+```
+
+Critério de sucesso sugerido:
+
+- expor `BGP` do barramento para o renderer;
+- mapear color id `00/01/10/11` pelos pares de bits de `BGP`;
+- preservar o padrão visual atual quando `BGP = 0xFC`;
+- adicionar teste específico mudando `BGP` e verificando o framebuffer;
+- manter regressão e Quartus fechando.
 
 ## 15. Princípio de Engenharia do Projeto
 

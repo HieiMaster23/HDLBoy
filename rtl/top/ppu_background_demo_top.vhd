@@ -60,6 +60,7 @@ architecture rtl of ppu_background_demo_top is
     signal ppu_mode       : std_logic_vector(1 downto 0);
     signal ppu_busy       : std_logic;
     signal ppu_done       : std_logic;
+    signal ppu_frame_seen : std_logic;
 
     signal fb_addr_b      : unsigned(14 downto 0);
     signal fb_data_b      : std_logic_vector(1 downto 0);
@@ -132,6 +133,17 @@ begin
     end process p_vga_reset_sync;
 
     reset_vga <= reset_vga_sync;
+
+    p_ppu_frame_seen: process(clk_cpu)
+    begin
+        if rising_edge(clk_cpu) then
+            if reset_cpu = '1' then
+                ppu_frame_seen <= '0';
+            elsif ppu_done = '1' then
+                ppu_frame_seen <= '1';
+            end if;
+        end if;
+    end process p_ppu_frame_seen;
 
     u_loader: entity work.ppu_demo_loader
         port map (
@@ -248,7 +260,7 @@ begin
 
     led(0) <= not pll_locked;
     led(1) <= not loader_done;
-    led(2) <= not ppu_done;
+    led(2) <= not ppu_frame_seen;
     led(3) <= '1';
 
 end architecture rtl;
