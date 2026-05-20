@@ -217,6 +217,7 @@ begin
             ppu_vram_data        => ppu_vram_data,
             ppu_scy              => open,
             ppu_scx              => open,
+            ppu_bgp              => open,
             ppu_lcd_enable       => open,
             ppu_current_line     => (others => '0'),
             ppu_mode             => "00",

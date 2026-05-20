@@ -21,6 +21,7 @@
 -- 2026-05-20 - Added LCDC bit 7 enable gating for PPU-visible LY/STAT state
 -- 2026-05-20 - Added initial CPU VRAM access blocking during PPU Mode 3
 -- 2026-05-20 - Added initial OAM storage and CPU access blocking by PPU mode
+-- 2026-05-20 - Exposed BGP to the PPU background renderer path
 -- =============================================================================
 
 library ieee;
@@ -50,6 +51,7 @@ entity bus_controller is
         ppu_vram_data       : out std_logic_vector(7 downto 0);
         ppu_scy             : out std_logic_vector(7 downto 0);
         ppu_scx             : out std_logic_vector(7 downto 0);
+        ppu_bgp             : out std_logic_vector(7 downto 0);
         ppu_lcd_enable      : out std_logic;
         ppu_current_line    : in  unsigned(7 downto 0);
         ppu_mode            : in  std_logic_vector(1 downto 0);
@@ -570,6 +572,7 @@ begin
     debug_fb_write_count <= std_logic_vector(fb_write_count);
     ppu_scy <= scy_reg;
     ppu_scx <= scx_reg;
+    ppu_bgp <= bgp_reg;
     ppu_lcd_enable <= lcdc_reg(7);
 
     display_digits <= x"1234" when final_passed_reg = '1' and checker_failed_reg = '0' else

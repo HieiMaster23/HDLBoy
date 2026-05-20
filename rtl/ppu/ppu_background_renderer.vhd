@@ -14,6 +14,7 @@
 -- 2026-05-20 - Added dot-based scanline scheduler for LY/STAT foundation
 -- 2026-05-20 - Added LCD enable input for initial LCDC bit 7 behavior
 -- 2026-05-20 - Converted frame completion into a continuous frame loop
+-- 2026-05-20 - Applied BGP palette lookup before framebuffer writes
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It reads the unsigned tile map at VRAM local address 0x1800 and
@@ -36,6 +37,7 @@ entity ppu_background_renderer is
         lcd_enable    : in  std_logic;
         scroll_y      : in  std_logic_vector(7 downto 0);
         scroll_x      : in  std_logic_vector(7 downto 0);
+        bgp           : in  std_logic_vector(7 downto 0);
 
         vram_addr     : out unsigned(12 downto 0);
         vram_data     : in  std_logic_vector(7 downto 0);
@@ -137,6 +139,26 @@ architecture rtl of ppu_background_renderer is
         pixel_v(1) := high_in(bit_index_v);
         return pixel_v;
     end function pixel_from_tile;
+
+    function apply_bgp_palette(
+        color_id_in : std_logic_vector(1 downto 0);
+        bgp_in      : std_logic_vector(7 downto 0))
+        return std_logic_vector is
+        variable shade_v : std_logic_vector(1 downto 0);
+    begin
+        case color_id_in is
+            when "00" =>
+                shade_v := bgp_in(1 downto 0);
+            when "01" =>
+                shade_v := bgp_in(3 downto 2);
+            when "10" =>
+                shade_v := bgp_in(5 downto 4);
+            when others =>
+                shade_v := bgp_in(7 downto 6);
+        end case;
+
+        return shade_v;
+    end function apply_bgp_palette;
 
 begin
 
@@ -254,17 +276,19 @@ begin
 
     p_outputs: process(state_reg, pixel_x_reg, pixel_y_reg, dot_count_reg, fb_addr_reg,
                        tile_index_reg, tile_low_reg, tile_high_reg,
-                       scroll_x, scroll_y)
+                       scroll_x, scroll_y, bgp)
         variable bg_x_v : unsigned(7 downto 0);
         variable bg_y_v : unsigned(7 downto 0);
+        variable color_id_v : std_logic_vector(1 downto 0);
     begin
         bg_x_v := pixel_x_reg + unsigned(scroll_x);
         bg_y_v := pixel_y_reg + unsigned(scroll_y);
+        color_id_v := pixel_from_tile(tile_low_reg, tile_high_reg, bg_x_v);
 
         vram_addr <= tile_map_addr(bg_x_v, bg_y_v);
         fb_we <= '0';
         fb_addr <= fb_addr_reg;
-        fb_data <= pixel_from_tile(tile_low_reg, tile_high_reg, bg_x_v);
+        fb_data <= apply_bgp_palette(color_id_v, bgp);
         current_line <= pixel_y_reg;
         current_dot <= dot_count_reg;
         line_active <= '0';

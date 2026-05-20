@@ -1224,3 +1224,43 @@ Notes:
   authoring VRAM before the renderer starts.
 - Compared with the initial OAM slice, this costs 13 logic elements and one
   register, with no additional memory blocks.
+
+## BGP Palette Lookup Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,342 | 6,272 | 69% |
+| Registers | 1,536 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.271 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 177.321 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.373 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.510 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `bus_controller` now exposes the `BGP` register to the PPU path as `ppu_bgp`.
+- `ppu_background_renderer` converts the 2-bit background tile color id into
+  the final 2-bit framebuffer shade using the DMG BGP bit pairs.
+- The default `BGP = 0xFC` preserves the existing visual baseline while allowing
+  CPU-authored palettes to affect future rendered frames.
+- No additional memory blocks were introduced. The fitted logic count decreased
+  slightly versus the continuous-frame slice due to Quartus optimization changes.

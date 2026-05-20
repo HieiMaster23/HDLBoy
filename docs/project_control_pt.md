@@ -302,6 +302,10 @@ Validação rápida executada nesta sessão:
   `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
   `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
   `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do`;
+- lookup de paleta `BGP` no write do framebuffer — validado por
+  `run_ppu_background_renderer.do`, `run_bus_controller.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_video_smoke_top.do` e
+  `run_cpu_ppu_background_demo_top.do`;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 - build Quartus completo da primeira fatia de VRAM em `2026-05-16` — Passed,
@@ -356,6 +360,10 @@ Validação rápida executada nesta sessão:
   `2026-05-20` — Passed, com `4.357 / 6.272` LEs usados (`69%`),
   `179.200 / 276.480` bits de memória (`65%`) e `23 / 30` blocos M9K usados
   (`77%`).
+- build Quartus completo após o lookup de paleta `BGP` em `2026-05-20` —
+  Passed, com `4.342 / 6.272` LEs usados (`69%`),
+  `179.200 / 276.480` bits de memória (`65%`) e `23 / 30` blocos M9K usados
+  (`77%`).
 
 Checkpoint pronto para formalização:
 
@@ -364,8 +372,9 @@ Checkpoint pronto para formalização:
 - a primeira fatia real de PPU já está em andamento com scheduler por dots,
   LCDC enable inicial, bloqueio inicial de VRAM em Mode 3, OAM inicial e loop
   contínuo de frames;
-- o próximo passo recomendado após o commit é aplicar `BGP` no write do
-  framebuffer antes de avançar para OAM scan/sprites.
+- o `BGP` no write do framebuffer foi aplicado e validado;
+- o próximo passo recomendado é completar os bits de `LCDC` que afetam o
+  background antes de avançar para OAM scan/sprites.
 
 ## 5. Estado Atual por Área
 
@@ -1214,9 +1223,8 @@ Resultado:
 
 Limitação importante:
 
-- o renderer ainda é uma base simples de background. Ainda faltam `BGP` no
-  caminho de write do framebuffer, seleção real por bits de `LCDC`, fetcher/FIFO
-  de pixels, window, sprites e DMA.
+- o renderer ainda é uma base simples de background. Ainda faltam seleção real
+  por bits de `LCDC`, fetcher/FIFO de pixels, window, sprites e DMA.
 
 Próximo alvo oficial recomendado:
 
@@ -1232,6 +1240,52 @@ Critério de sucesso sugerido:
 - preservar o padrão visual atual quando `BGP = 0xFC`;
 - adicionar teste específico mudando `BGP` e verificando o framebuffer;
 - manter regressão e Quartus fechando.
+
+Alvo concluído:
+
+```text
+Aplicar o registrador BGP no write do framebuffer, convertendo o color id de
+tile em shade final de 2 bits antes de gravar o pixel.
+```
+
+Resultado:
+
+- `bus_controller.vhd` agora expõe `ppu_bgp`, espelhando o registrador CPU
+  `FF47`;
+- `ppu_background_renderer.vhd` recebe `bgp` e aplica os pares de bits do DMG:
+  color id `00 -> BGP(1 downto 0)`, `01 -> BGP(3 downto 2)`,
+  `10 -> BGP(5 downto 4)` e `11 -> BGP(7 downto 6)`;
+- o valor padrão `BGP = 0xFC` preserva a imagem visual anterior;
+- `tb_ppu_background_renderer` agora testa explicitamente uma paleta identidade
+  `BGP = 0xE4` com pixels `00/01/10/11`;
+- `tb_bus_controller` confirma que `ppu_bgp` acompanha o reset e a escrita em
+  `FF47`;
+- os tops visuais roteiam `ppu_bgp` do barramento para a PPU.
+
+Regressões executadas:
+
+- `run_ppu_background_renderer.do` — Passed;
+- `run_bus_controller.do` — Passed;
+- `run_ppu_background_demo_top.do` — Passed;
+- `run_cpu_video_smoke_top.do` — Passed;
+- `run_cpu_ppu_background_demo_top.do` — Passed;
+- build Quartus completo em `2026-05-20` — Passed, com
+  `4.342 / 6.272` LEs usados (`69%`), `179.200 / 276.480` bits de memória
+  (`65%`) e `23 / 30` blocos M9K usados (`77%`).
+
+Próximo alvo oficial recomendado:
+
+```text
+Completar os bits de LCDC que afetam o background antes de iniciar OAM scan.
+```
+
+Critério de sucesso sugerido:
+
+- aplicar `LCDC(3)` para selecionar tile map base `0x9800/0x9C00`;
+- aplicar `LCDC(4)` para selecionar modo unsigned/signed de tile data;
+- decidir a semântica inicial de `LCDC(0)` para background enable no DMG;
+- preservar a regressão BGP/scroll/frame loop;
+- manter Quartus fechado antes de avançar para OAM scan.
 
 ## 15. Princípio de Engenharia do Projeto
 

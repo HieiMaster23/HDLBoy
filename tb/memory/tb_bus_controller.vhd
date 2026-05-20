@@ -37,6 +37,7 @@ architecture sim of tb_bus_controller is
     signal ppu_vram_data        : std_logic_vector(7 downto 0);
     signal ppu_scy              : std_logic_vector(7 downto 0);
     signal ppu_scx              : std_logic_vector(7 downto 0);
+    signal ppu_bgp              : std_logic_vector(7 downto 0);
     signal ppu_lcd_enable       : std_logic;
     signal ppu_current_line     : unsigned(7 downto 0) := (others => '0');
     signal ppu_mode             : std_logic_vector(1 downto 0) := "00";
@@ -93,6 +94,7 @@ begin
             ppu_vram_data        => ppu_vram_data,
             ppu_scy              => ppu_scy,
             ppu_scx              => ppu_scx,
+            ppu_bgp              => ppu_bgp,
             ppu_lcd_enable       => ppu_lcd_enable,
             ppu_current_line     => ppu_current_line,
             ppu_mode             => ppu_mode,
@@ -404,10 +406,16 @@ begin
         bus_read_check(x"FF0F", x"E2", "FAIL: STAT LYC interrupt should request IF bit 1");
 
         bus_read_check(x"FF47", x"FC", "FAIL: BGP reset stub should use the common DMG default");
+        assert ppu_bgp = x"FC"
+            report "FAIL: PPU BGP output should mirror the reset BGP value"
+            severity failure;
         bus_write(x"FF47", x"E4");
         bus_write(x"FF48", x"D2");
         bus_write(x"FF49", x"C1");
         bus_read_check(x"FF47", x"E4", "FAIL: BGP stub should read back written data");
+        assert ppu_bgp = x"E4"
+            report "FAIL: PPU BGP output should mirror written BGP data"
+            severity failure;
         bus_read_check(x"FF48", x"D2", "FAIL: OBP0 stub should read back written data");
         bus_read_check(x"FF49", x"C1", "FAIL: OBP1 stub should read back written data");
 

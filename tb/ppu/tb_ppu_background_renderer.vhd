@@ -46,6 +46,7 @@ architecture sim of tb_ppu_background_renderer is
     signal lcd_enable : std_logic := '1';
     signal scroll_y   : std_logic_vector(7 downto 0) := x"00";
     signal scroll_x   : std_logic_vector(7 downto 0) := x"00";
+    signal bgp        : std_logic_vector(7 downto 0) := x"FC";
     signal vram_addr  : unsigned(12 downto 0);
     signal vram_data  : std_logic_vector(7 downto 0);
     signal fb_we      : std_logic;
@@ -91,6 +92,7 @@ begin
             lcd_enable => lcd_enable,
             scroll_y  => scroll_y,
             scroll_x  => scroll_x,
+            bgp       => bgp,
             vram_addr => vram_addr,
             vram_data => vram_data,
             fb_we     => fb_we,
@@ -335,6 +337,35 @@ begin
         assert done = '0' and current_line = to_unsigned(0, 8) and
                current_dot = to_unsigned(0, 9)
             report "FAIL: SCY render should continue with a new frame after done pulse"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        scroll_x <= x"00";
+        scroll_y <= x"00";
+        bgp <= x"E4";
+        vram_mem(16) <= x"55";
+        vram_mem(17) <= x"33";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "00"
+            report "FAIL: BGP identity should map background color 0 to shade 0"
+            severity failure;
+        assert fb_mem(1) = "01"
+            report "FAIL: BGP identity should map background color 1 to shade 1"
+            severity failure;
+        assert fb_mem(2) = "10"
+            report "FAIL: BGP identity should map background color 2 to shade 2"
+            severity failure;
+        assert fb_mem(3) = "11"
+            report "FAIL: BGP identity should map background color 3 to shade 3"
             severity failure;
 
         report "=== tb_ppu_background_renderer: ALL TESTS PASSED ===" severity note;
