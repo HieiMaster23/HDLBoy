@@ -323,9 +323,11 @@ The next recommended sequence is:
    baseline;
 6. preserve the first OBP1/BG-priority/two-candidate sprite composition slice as
    the initial multi-OBJ baseline;
-7. expand sprite composition toward full 10-candidate coverage, DMG ordering
-   details, and window interaction;
-8. import broader timer coverage later if the local Blargg package proves too
+7. preserve the full 10-candidate sprite composition slice as the first complete
+   per-line OBJ candidate baseline;
+8. reduce sprite composition cost before adding Window or a more faithful FIFO;
+9. refine DMG ordering details and then add Window interaction;
+10. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -347,14 +349,15 @@ PPU scheduler, initial LCDC enable handling, and initial VRAM Mode 3 access
 blocking plus initial OAM storage, continuous frame looping, BGP palette lookup,
 initial LCDC background controls, the first PPU OAM scan, the first sprite
 pixel fetch/composition slice, and the OBP1/BG-priority/two-candidate sprite
-composition slice uses:
+composition slice, expanded to all 10 per-line OBJ candidates, uses:
 
-- 4,649 / 6,272 logic elements;
+- 5,286 / 6,272 logic elements;
 - 179,200 / 276,480 block-memory bits;
 - 23 / 30 M9K blocks.
 
-The PPU phase is therefore memory-sensitive before it becomes logic-heavy. New
-work should prefer:
+The PPU phase is now both memory-sensitive and logic-sensitive. The 10-candidate
+sprite slice is above the 80% logic caution threshold, so new work should
+prefer:
 
 - shared CPU states instead of duplicated datapaths;
 - inferred RAMs instead of large register arrays;

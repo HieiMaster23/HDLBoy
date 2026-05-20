@@ -626,6 +626,49 @@ begin
 
         reset <= '1';
         wait until rising_edge(clk);
+        lcdc <= x"93";
+        bgp <= x"FC";
+        obp0 <= x"E4";
+        sprite_candidate_count <= to_unsigned(10, 4);
+        sprite_candidate_indices <= (others => '0');
+        sprite_candidate_indices(15 downto 8) <= x"01";
+        sprite_candidate_indices(23 downto 16) <= x"02";
+        sprite_candidate_indices(31 downto 24) <= x"03";
+        sprite_candidate_indices(39 downto 32) <= x"04";
+        sprite_candidate_indices(47 downto 40) <= x"05";
+        sprite_candidate_indices(55 downto 48) <= x"06";
+        sprite_candidate_indices(63 downto 56) <= x"07";
+        sprite_candidate_indices(71 downto 64) <= x"08";
+        sprite_candidate_indices(79 downto 72) <= x"09";
+        oam_mem <= (others => x"00");
+        for i in 0 to 9 loop
+            oam_mem(i * 4) <= x"10";
+            oam_mem(i * 4 + 1) <= x"08";
+            oam_mem(i * 4 + 2) <= std_logic_vector(to_unsigned(i + 2, 8));
+            oam_mem(i * 4 + 3) <= x"00";
+            vram_mem((i + 2) * 16) <= x"00";
+            vram_mem((i + 2) * 16 + 1) <= x"00";
+        end loop;
+        vram_mem(0) <= x"00";
+        vram_mem(1) <= x"00";
+        vram_mem(16#1800#) <= x"00";
+        vram_mem(11 * 16) <= x"80";
+        vram_mem(11 * 16 + 1) <= x"00";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "01"
+            report "FAIL: renderer should compose through the tenth sprite candidate"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
         lcdc <= x"91";
         sprite_candidate_count <= to_unsigned(1, 4);
         vram_mem(16) <= x"AA";

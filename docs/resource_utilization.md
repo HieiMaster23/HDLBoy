@@ -1446,3 +1446,50 @@ Notes:
   future work.
 - Compared with the first sprite pixel fetch/composition slice, this costs 98
   logic elements and 56 registers, with no additional block-memory or M9K usage.
+
+## Full 10-Candidate Sprite Composition Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 5,286 | 6,272 | 84% |
+| Registers | 1,935 | 6,272 | 31% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 26.370 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 178.275 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.502 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `ppu_background_renderer` now stores up to the 10 per-line sprite candidates
+  produced by `ppu_oam_scan`, matching the DMG scanline candidate limit.
+- The renderer still composes candidates in OAM-scan order and uses the first
+  visible nontransparent OBJ pixel that is not hidden by BG priority.
+- The slot storage was kept compact by retaining per-slot X, attributes, and
+  fetched tile-row bytes only. Sprite Y and tile index are now single current
+  fetch registers because they are not needed after each candidate row is read.
+- The directed renderer test now covers a line with 10 candidates where the
+  tenth candidate is the first visible OBJ pixel.
+- Compared with the two-candidate composition slice, this costs 637 logic
+  elements and 265 registers, with no additional block-memory or M9K usage.
+- At 84% logic utilization, this checkpoint is above the project's 80% resource
+  caution threshold. Before adding Window or a more faithful FIFO, the next PPU
+  step should look for a lower-cost sprite composition structure.

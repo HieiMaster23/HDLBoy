@@ -18,6 +18,7 @@
 -- 2026-05-20 - Added initial LCDC background tile-map/data selection
 -- 2026-05-20 - Added first sprite fetch/composition slice for one candidate
 -- 2026-05-20 - Added OBP1, BG/OBJ priority, and two-candidate composition
+-- 2026-05-20 - Expanded sprite composition storage to the 10 per-line candidates
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It renders the background tile map selected by LCDC bit 3 and the
@@ -83,7 +84,7 @@ architecture rtl of ppu_background_renderer is
     constant TILE_MAP_1_BASE    : unsigned(12 downto 0) := to_unsigned(16#1C00#, 13);
     constant TILE_DATA_SIGNED_ZERO_BASE : unsigned(12 downto 0) :=
         to_unsigned(16#1000#, 13);
-    constant MAX_COMPOSE_SPRITES : integer := 2;
+    constant MAX_COMPOSE_SPRITES : integer := 10;
 
     type sprite_byte_array_t is array (0 to MAX_COMPOSE_SPRITES - 1)
         of std_logic_vector(7 downto 0);
@@ -129,9 +130,9 @@ architecture rtl of ppu_background_renderer is
     signal sprite_valid_reg : sprite_valid_array_t;
     signal sprite_index_reg : unsigned(7 downto 0);
     signal sprite_slot_reg  : integer range 0 to MAX_COMPOSE_SPRITES - 1;
-    signal sprite_y_reg     : sprite_byte_array_t;
+    signal sprite_y_reg     : std_logic_vector(7 downto 0);
     signal sprite_x_reg     : sprite_byte_array_t;
-    signal sprite_tile_reg  : sprite_byte_array_t;
+    signal sprite_tile_reg  : std_logic_vector(7 downto 0);
     signal sprite_attr_reg  : sprite_byte_array_t;
     signal sprite_low_reg   : sprite_byte_array_t;
     signal sprite_high_reg  : sprite_byte_array_t;
@@ -374,15 +375,15 @@ begin
                 tile_high_reg <= (others => '0');
                 for i in 0 to MAX_COMPOSE_SPRITES - 1 loop
                     sprite_valid_reg(i) <= '0';
-                    sprite_y_reg(i) <= (others => '0');
                     sprite_x_reg(i) <= (others => '0');
-                    sprite_tile_reg(i) <= (others => '0');
                     sprite_attr_reg(i) <= (others => '0');
                     sprite_low_reg(i) <= (others => '0');
                     sprite_high_reg(i) <= (others => '0');
                 end loop;
                 sprite_index_reg <= (others => '0');
                 sprite_slot_reg <= 0;
+                sprite_y_reg <= (others => '0');
+                sprite_tile_reg <= (others => '0');
             else
                 case state_reg is
                     when S_IDLE =>
@@ -417,7 +418,7 @@ begin
                         state_reg <= S_SPRITE_Y_CAPTURE;
 
                     when S_SPRITE_Y_CAPTURE =>
-                        sprite_y_reg(sprite_slot_reg) <= oam_data;
+                        sprite_y_reg <= oam_data;
                         state_reg <= S_SPRITE_X_REQ;
 
                     when S_SPRITE_X_REQ =>
@@ -431,7 +432,7 @@ begin
                         state_reg <= S_SPRITE_TILE_CAPTURE;
 
                     when S_SPRITE_TILE_CAPTURE =>
-                        sprite_tile_reg(sprite_slot_reg) <= oam_data;
+                        sprite_tile_reg <= oam_data;
                         state_reg <= S_SPRITE_ATTR_REQ;
 
                     when S_SPRITE_ATTR_REQ =>
@@ -633,16 +634,16 @@ begin
                 ppu_mode <= "11";
                 busy <= '1';
             when S_SPRITE_LOW_REQ | S_SPRITE_LOW_CAPTURE =>
-                vram_addr <= sprite_tile_data_addr(sprite_tile_reg(sprite_slot_reg),
-                                                   sprite_y_reg(sprite_slot_reg),
+                vram_addr <= sprite_tile_data_addr(sprite_tile_reg,
+                                                   sprite_y_reg,
                                                    sprite_attr_reg(sprite_slot_reg),
                                                    pixel_y_reg, lcdc(2), '0');
                 line_active <= '1';
                 ppu_mode <= "11";
                 busy <= '1';
             when S_SPRITE_HIGH_REQ | S_SPRITE_HIGH_CAPTURE =>
-                vram_addr <= sprite_tile_data_addr(sprite_tile_reg(sprite_slot_reg),
-                                                   sprite_y_reg(sprite_slot_reg),
+                vram_addr <= sprite_tile_data_addr(sprite_tile_reg,
+                                                   sprite_y_reg,
                                                    sprite_attr_reg(sprite_slot_reg),
                                                    pixel_y_reg, lcdc(2), '1');
                 line_active <= '1';

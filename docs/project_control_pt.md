@@ -1688,3 +1688,58 @@ Proximo passo recomendado:
 2. refinar a ordenacao de sprites para aproximar melhor o DMG;
 3. preparar a interacao com Window antes de tentar uma FIFO mais fiel;
 4. manter esta fatia como baseline automatizado de `OBP1` e prioridade.
+
+## 20. Sprite Composition com 10 Candidatos
+
+Nesta etapa expandimos a fatia anterior de 2 sprites para os 10 candidatos por
+scanline que o OAM scan ja produzia.
+
+Alteracoes feitas:
+
+- `MAX_COMPOSE_SPRITES` passou de 2 para 10 no `ppu_background_renderer`;
+- o renderer agora busca e armazena os 10 candidatos da scanline atual;
+- a regra de composicao continua simples e deterministica: ordem recebida do OAM
+  scan, primeiro pixel OBJ nao transparente visivel vence;
+- a regra de `OBP0`/`OBP1` e prioridade BG/OBJ da fatia anterior foi preservada;
+- foi feita uma otimizacao de registradores: Y e tile index do sprite viraram
+  registradores do fetch corrente, nao arrays por slot, porque nao sao usados na
+  composicao depois que a linha do tile foi lida.
+
+Teste novo:
+
+- `tb_ppu_background_renderer` agora cobre 10 candidatos na mesma linha, com os
+  9 primeiros transparentes e o decimo sendo o primeiro pixel OBJ visivel.
+
+Regressoes executadas:
+
+- `run_ppu_background_renderer.do` passou;
+- `run_bus_controller.do` passou;
+- `run_ppu_oam_scan.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou.
+
+Resultado de sintese:
+
+- 5,286 / 6,272 LEs, 84%;
+- 1,935 registradores;
+- 179,200 / 276,480 bits de memoria, 65%;
+- 23 / 30 M9Ks, 77%;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 26.370 ns no clock VGA e 178.275 ns no clock CPU;
+- pior hold slack: 0.452 ns no clock CPU e 0.502 ns no clock VGA.
+
+Conclusao tecnica:
+
+A funcionalidade cabe e passa, mas cruzou o limite de alerta de 80% de LEs. A
+otimizacao de Y/tile reduziu o custo de 5,445 LEs para 5,286 LEs, mas ainda
+temos pouco espaco para Window, FIFO fiel, DMA e integracao final.
+
+Proximo passo recomendado:
+
+1. reduzir custo da composicao de sprites antes de adicionar novas camadas;
+2. estudar uma estrutura sequencial/compacta para escolha do sprite visivel;
+3. depois refinar ordenacao DMG e interacao com Window;
+4. manter esta versao como baseline funcional de 10 candidatos.
