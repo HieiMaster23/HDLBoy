@@ -1007,3 +1007,47 @@ Notes:
   LCD enable behavior, OAM, sprites, and DMA are still future work.
 - Compared with the initial mode scheduler slice, this costs 24 logic elements
   and 2 registers, with no additional block-memory or M9K usage.
+
+## PPU Dot Scheduler Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,342 | 6,272 | 69% |
+| Registers | 1,535 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 177,152 | 276,480 | 64% |
+| M9Ks | 22 | 30 | 73% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.133 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 174.629 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.502 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.451 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- The background renderer now carries a logical dot counter for each scanline.
+- Visible lines use 456 dots: Mode 2 at dots `0..79`, Mode 3 at `80..251`,
+  and Mode 0 at `252..455`.
+- VBlank lines `144..153` report Mode 1 and also advance through the same
+  `0..455` dot range.
+- The renderer exposes `current_dot` for simulation and future debug probes.
+- This is still a scheduler foundation. The background fetch path remains the
+  existing simple renderer and does not yet model the real FIFO/fetcher,
+  variable Mode 3 duration, sprites, window, DMA, or LCD enable behavior.
+- Compared with the initial VBlank/STAT interrupt slice, this costs 18 logic
+  elements and 10 registers, with no additional block-memory or M9K usage.

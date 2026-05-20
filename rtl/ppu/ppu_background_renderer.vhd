@@ -11,11 +11,14 @@
 -- 2026-05-18 - Added SCX/SCY background coordinate offsets
 -- 2026-05-19 - Added explicit scanline progression signals
 -- 2026-05-19 - Added initial PPU mode scheduler outputs
+-- 2026-05-20 - Added dot-based scanline scheduler for LY/STAT foundation
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It reads the unsigned tile map at VRAM local address 0x1800 and
 -- unsigned tile data at VRAM local address 0x0000, then fills the framebuffer
--- one visible scanline at a time after start.
+-- one visible scanline at a time after start. The dot scheduler exposes the
+-- DMG 456-dot line structure for LY/STAT/IF work while the pixel fetch path is
+-- still intentionally simple and background-only.
 -- =============================================================================
 
 library ieee;
@@ -38,6 +41,7 @@ entity ppu_background_renderer is
         fb_data       : out std_logic_vector(1 downto 0);
 
         current_line  : out unsigned(7 downto 0);
+        current_dot   : out unsigned(8 downto 0);
         line_active   : out std_logic;
         line_done     : out std_logic;
         ppu_mode      : out std_logic_vector(1 downto 0);
@@ -50,12 +54,17 @@ architecture rtl of ppu_background_renderer is
 
     constant SCREEN_WIDTH      : integer := 160;
     constant SCREEN_HEIGHT     : integer := 144;
+    constant DOTS_PER_LINE     : integer := 456;
+    constant MODE2_DOTS        : integer := 80;
+    constant MODE3_DOTS        : integer := 172;
+    constant MODE3_FIRST_DOT   : integer := MODE2_DOTS;
+    constant MODE3_LAST_DOT    : integer := MODE2_DOTS + MODE3_DOTS - 1;
     constant VBLANK_LAST_LINE  : integer := 153;
     constant TILE_MAP_BASE     : unsigned(12 downto 0) := to_unsigned(16#1800#, 13);
 
     type state_t is (
         S_IDLE,
-        S_LINE_START,
+        S_MODE2,
         S_MAP_REQ,
         S_MAP_CAPTURE,
         S_TILE_LOW_REQ,
@@ -63,7 +72,8 @@ architecture rtl of ppu_background_renderer is
         S_TILE_HIGH_REQ,
         S_TILE_HIGH_CAPTURE,
         S_WRITE_PIXEL,
-        S_LINE_DONE,
+        S_MODE3_TAIL,
+        S_HBLANK,
         S_VBLANK,
         S_DONE
     );
@@ -71,6 +81,7 @@ architecture rtl of ppu_background_renderer is
     signal state_reg      : state_t;
     signal pixel_x_reg    : unsigned(7 downto 0);
     signal pixel_y_reg    : unsigned(7 downto 0);
+    signal dot_count_reg  : unsigned(8 downto 0);
     signal fb_addr_reg    : unsigned(14 downto 0);
     signal tile_index_reg : std_logic_vector(7 downto 0);
     signal tile_low_reg   : std_logic_vector(7 downto 0);
@@ -132,6 +143,7 @@ begin
                 state_reg <= S_IDLE;
                 pixel_x_reg <= (others => '0');
                 pixel_y_reg <= (others => '0');
+                dot_count_reg <= (others => '0');
                 fb_addr_reg <= (others => '0');
                 tile_index_reg <= (others => '0');
                 tile_low_reg <= (others => '0');
@@ -141,14 +153,20 @@ begin
                     when S_IDLE =>
                         pixel_x_reg <= (others => '0');
                         pixel_y_reg <= (others => '0');
+                        dot_count_reg <= (others => '0');
                         fb_addr_reg <= (others => '0');
                         if start = '1' then
-                            state_reg <= S_LINE_START;
+                            state_reg <= S_MODE2;
                         end if;
 
-                    when S_LINE_START =>
-                        pixel_x_reg <= (others => '0');
-                        state_reg <= S_MAP_REQ;
+                    when S_MODE2 =>
+                        if dot_count_reg = to_unsigned(MODE2_DOTS - 1, 9) then
+                            pixel_x_reg <= (others => '0');
+                            dot_count_reg <= to_unsigned(MODE3_FIRST_DOT, 9);
+                            state_reg <= S_MAP_REQ;
+                        else
+                            dot_count_reg <= dot_count_reg + 1;
+                        end if;
 
                     when S_MAP_REQ =>
                         state_reg <= S_MAP_CAPTURE;
@@ -173,27 +191,47 @@ begin
 
                     when S_WRITE_PIXEL =>
                         if pixel_x_reg = to_unsigned(SCREEN_WIDTH - 1, 8) then
-                            state_reg <= S_LINE_DONE;
+                            dot_count_reg <= to_unsigned(MODE3_FIRST_DOT + SCREEN_WIDTH, 9);
+                            state_reg <= S_MODE3_TAIL;
                         else
                             pixel_x_reg <= pixel_x_reg + 1;
+                            dot_count_reg <= dot_count_reg + 1;
                             state_reg <= S_MAP_REQ;
                         end if;
                         fb_addr_reg <= fb_addr_reg + 1;
 
-                    when S_LINE_DONE =>
-                        if pixel_y_reg = to_unsigned(SCREEN_HEIGHT - 1, 8) then
-                            pixel_y_reg <= to_unsigned(SCREEN_HEIGHT, 8);
-                            state_reg <= S_VBLANK;
+                    when S_MODE3_TAIL =>
+                        if dot_count_reg = to_unsigned(MODE3_LAST_DOT, 9) then
+                            dot_count_reg <= to_unsigned(MODE3_LAST_DOT + 1, 9);
+                            state_reg <= S_HBLANK;
                         else
-                            pixel_y_reg <= pixel_y_reg + 1;
-                            state_reg <= S_LINE_START;
+                            dot_count_reg <= dot_count_reg + 1;
+                        end if;
+
+                    when S_HBLANK =>
+                        if dot_count_reg = to_unsigned(DOTS_PER_LINE - 1, 9) then
+                            dot_count_reg <= (others => '0');
+                            if pixel_y_reg = to_unsigned(SCREEN_HEIGHT - 1, 8) then
+                                pixel_y_reg <= to_unsigned(SCREEN_HEIGHT, 8);
+                                state_reg <= S_VBLANK;
+                            else
+                                pixel_y_reg <= pixel_y_reg + 1;
+                                state_reg <= S_MODE2;
+                            end if;
+                        else
+                            dot_count_reg <= dot_count_reg + 1;
                         end if;
 
                     when S_VBLANK =>
-                        if pixel_y_reg = to_unsigned(VBLANK_LAST_LINE, 8) then
-                            state_reg <= S_DONE;
+                        if dot_count_reg = to_unsigned(DOTS_PER_LINE - 1, 9) then
+                            if pixel_y_reg = to_unsigned(VBLANK_LAST_LINE, 8) then
+                                state_reg <= S_DONE;
+                            else
+                                pixel_y_reg <= pixel_y_reg + 1;
+                                dot_count_reg <= (others => '0');
+                            end if;
                         else
-                            pixel_y_reg <= pixel_y_reg + 1;
+                            dot_count_reg <= dot_count_reg + 1;
                         end if;
 
                     when S_DONE =>
@@ -206,7 +244,7 @@ begin
         end if;
     end process p_renderer;
 
-    p_outputs: process(state_reg, pixel_x_reg, pixel_y_reg, fb_addr_reg,
+    p_outputs: process(state_reg, pixel_x_reg, pixel_y_reg, dot_count_reg, fb_addr_reg,
                        tile_index_reg, tile_low_reg, tile_high_reg,
                        scroll_x, scroll_y)
         variable bg_x_v : unsigned(7 downto 0);
@@ -220,6 +258,7 @@ begin
         fb_addr <= fb_addr_reg;
         fb_data <= pixel_from_tile(tile_low_reg, tile_high_reg, bg_x_v);
         current_line <= pixel_y_reg;
+        current_dot <= dot_count_reg;
         line_active <= '0';
         line_done <= '0';
         ppu_mode <= "00";
@@ -229,7 +268,7 @@ begin
         case state_reg is
             when S_IDLE =>
                 null;
-            when S_LINE_START =>
+            when S_MODE2 =>
                 line_active <= '1';
                 ppu_mode <= "10";
                 busy <= '1';
@@ -253,12 +292,21 @@ begin
                 line_active <= '1';
                 ppu_mode <= "11";
                 busy <= '1';
-            when S_LINE_DONE =>
-                line_done <= '1';
+            when S_MODE3_TAIL =>
+                line_active <= '1';
+                ppu_mode <= "11";
+                busy <= '1';
+            when S_HBLANK =>
+                line_active <= '1';
+                if dot_count_reg = to_unsigned(DOTS_PER_LINE - 1, 9) then
+                    line_done <= '1';
+                end if;
                 ppu_mode <= "00";
                 busy <= '1';
             when S_VBLANK =>
-                line_done <= '1';
+                if dot_count_reg = to_unsigned(DOTS_PER_LINE - 1, 9) then
+                    line_done <= '1';
+                end if;
                 ppu_mode <= "01";
                 busy <= '1';
             when S_DONE =>

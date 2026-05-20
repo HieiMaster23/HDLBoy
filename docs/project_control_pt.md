@@ -72,6 +72,9 @@ O projeto já possui:
 - `LY` e `STAT` mínimos conectados à progressão de scanline da PPU;
 - scheduler inicial de modos da PPU conectado ao campo de modo de `STAT`;
 - primeira geração de interrupções VBlank/STAT a partir do scheduler da PPU;
+- scheduler de PPU refinado com contador lógico de dots por scanline:
+  456 dots por linha, Mode 2 em `0..79`, Mode 3 em `80..251`, Mode 0 em
+  `252..455` e Mode 1 durante VBlank;
 - WRAM completa de 8 KiB com leitura registrada;
 - HRAM e stubs de I/O;
 - IE e IF básicos;
@@ -265,6 +268,11 @@ Validação rápida executada nesta sessão:
   `run_cpu_ppu_background_demo_top.do`, `run_cpu_video_smoke_top.do`,
   `run_timer.do`, `run_cpu_timing_probe.do`, `run_cpu_instr_timing.do`,
   `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do`;
+- scheduler por dots da PPU — validado por `run_ppu_background_renderer.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
+  `run_bus_controller.do`, `run_cpu_video_smoke_top.do`, `run_timer.do`,
+  `run_cpu_instr_timing.do`, `run_cpu_interrupt_time.do` e
+  `run_cpu_halt_bug.do`;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 - build Quartus completo da primeira fatia de VRAM em `2026-05-16` — Passed,
@@ -298,6 +306,10 @@ Validação rápida executada nesta sessão:
   (`73%`).
 - build Quartus completo após as interrupções iniciais VBlank/STAT em
   `2026-05-20` — Passed, com `4.324 / 6.272` LEs usados (`69%`),
+  `177.152 / 276.480` bits de memória (`64%`) e `22 / 30` blocos M9K usados
+  (`73%`).
+- build Quartus completo após o scheduler por dots da PPU em `2026-05-20` —
+  Passed, com `4.342 / 6.272` LEs usados (`69%`),
   `177.152 / 276.480` bits de memória (`64%`) e `22 / 30` blocos M9K usados
   (`73%`).
 
@@ -967,7 +979,7 @@ Limitação importante:
   duração variável de Mode 3, HBlank restante por dot, LCD enable ou os detalhes
   finos de bloqueio de STAT do hardware original.
 
-Próximo alvo oficial recomendado:
+Alvo seguinte concluído:
 
 ```text
 Refinar a PPU de scheduler por linha para um scheduler por dots, mantendo o
@@ -983,6 +995,46 @@ Critério de sucesso sugerido:
 - preservar IF bit 0 e IF bit 1 já implementados;
 - não adicionar sprites, window ou DMA nesta fatia;
 - manter as regressões visuais e Blargg de CPU/timing passando;
+- sintetizar e registrar custo antes de avançar para OAM/sprites.
+
+Resultado:
+
+- `ppu_background_renderer.vhd` agora possui um contador lógico de dots de
+  `0..455` por scanline;
+- o renderer expõe `current_dot` para testbenches e futuras sondas;
+- Mode 2 cobre os dots `0..79` das linhas visíveis;
+- Mode 3 cobre os dots `80..251` das linhas visíveis;
+- Mode 0 cobre os dots `252..455` das linhas visíveis;
+- Mode 1 cobre as linhas `144..153`, também com contagem de `0..455`;
+- o caminho visual CPU -> VRAM -> PPU -> framebuffer -> VGA foi preservado;
+- VBlank/STAT/IF continuam passando pelo contrato existente do barramento;
+- o build Quartus completo passou com `4.342 / 6.272` LEs,
+  `177.152 / 276.480` bits de memória e `22 / 30` M9Ks.
+
+Limitação importante:
+
+- o contador de dots já estabelece a estrutura temporal observável para
+  `LY/STAT/IF`, mas o fetch de pixels ainda é o renderer simples de background:
+  ele não modela FIFO, fetcher real, janela variável de Mode 3, bloqueios de
+  VRAM/OAM, sprites, window, LCD enable ou DMA.
+
+Próximo alvo oficial recomendado:
+
+```text
+Conectar o scheduler por dots a um primeiro modelo de LCDC enable e reset de
+LY/STAT, preservando o caminho visual e sem adicionar sprites, window ou DMA.
+```
+
+Critério de sucesso sugerido:
+
+- respeitar o bit 7 de `LCDC` como liga/desliga inicial do LCD;
+- quando LCD estiver desligado, manter `LY=0` e modo coerente para a fase atual;
+- preservar o comportamento atual quando LCD estiver ligado;
+- manter VBlank/STAT/IF sem regressão nos testes existentes;
+- manter `run_ppu_background_renderer.do`, `run_bus_controller.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
+  `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
+  `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do` passando;
 - sintetizar e registrar custo antes de avançar para OAM/sprites.
 
 ## 15. Princípio de Engenharia do Projeto

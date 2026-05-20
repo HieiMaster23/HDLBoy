@@ -226,6 +226,7 @@ begin
             fb_addr   => ppu_fb_addr,
             fb_data   => ppu_fb_data,
             current_line => ppu_current_line,
+            current_dot  => open,
             line_active  => open,
             line_done    => open,
             ppu_mode     => ppu_mode,

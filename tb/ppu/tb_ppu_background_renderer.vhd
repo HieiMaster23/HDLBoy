@@ -51,6 +51,7 @@ architecture sim of tb_ppu_background_renderer is
     signal fb_addr    : unsigned(14 downto 0);
     signal fb_data    : std_logic_vector(1 downto 0);
     signal current_line : unsigned(7 downto 0);
+    signal current_dot  : unsigned(8 downto 0);
     signal line_active  : std_logic;
     signal line_done    : std_logic;
     signal ppu_mode     : std_logic_vector(1 downto 0);
@@ -63,6 +64,10 @@ architecture sim of tb_ppu_background_renderer is
     signal seen_mode1 : std_logic := '0';
     signal seen_mode2 : std_logic := '0';
     signal seen_mode3 : std_logic := '0';
+    signal mode2_dot_ok : std_logic := '0';
+    signal mode3_dot_ok : std_logic := '0';
+    signal mode0_dot_ok : std_logic := '0';
+    signal mode1_dot_ok : std_logic := '0';
 
 begin
 
@@ -90,6 +95,7 @@ begin
             fb_addr   => fb_addr,
             fb_data   => fb_data,
             current_line => current_line,
+            current_dot  => current_dot,
             line_active  => line_active,
             line_done    => line_done,
             ppu_mode     => ppu_mode,
@@ -136,16 +142,39 @@ begin
                 seen_mode1 <= '0';
                 seen_mode2 <= '0';
                 seen_mode3 <= '0';
+                mode2_dot_ok <= '0';
+                mode3_dot_ok <= '0';
+                mode0_dot_ok <= '0';
+                mode1_dot_ok <= '0';
             else
                 case ppu_mode is
                     when "00" =>
                         seen_mode0 <= '1';
+                        if current_dot >= to_unsigned(252, 9) and
+                           current_dot <= to_unsigned(455, 9) and
+                           current_line < to_unsigned(144, 8) then
+                            mode0_dot_ok <= '1';
+                        end if;
                     when "01" =>
                         seen_mode1 <= '1';
+                        if current_line >= to_unsigned(144, 8) and
+                           current_line <= to_unsigned(153, 8) and
+                           current_dot <= to_unsigned(455, 9) then
+                            mode1_dot_ok <= '1';
+                        end if;
                     when "10" =>
                         seen_mode2 <= '1';
+                        if current_dot <= to_unsigned(79, 9) and
+                           current_line < to_unsigned(144, 8) then
+                            mode2_dot_ok <= '1';
+                        end if;
                     when "11" =>
                         seen_mode3 <= '1';
+                        if current_dot >= to_unsigned(80, 9) and
+                           current_dot <= to_unsigned(251, 9) and
+                           current_line < to_unsigned(144, 8) then
+                            mode3_dot_ok <= '1';
+                        end if;
                     when others =>
                         null;
                 end case;
@@ -176,6 +205,13 @@ begin
         assert seen_mode0 = '1' and seen_mode1 = '1' and
                seen_mode2 = '1' and seen_mode3 = '1'
             report "FAIL: renderer should expose modes 0, 1, 2, and 3"
+            severity failure;
+        assert mode2_dot_ok = '1' and mode3_dot_ok = '1' and
+               mode0_dot_ok = '1' and mode1_dot_ok = '1'
+            report "FAIL: renderer should expose dot-based mode windows"
+            severity failure;
+        assert current_dot = to_unsigned(455, 9)
+            report "FAIL: renderer should finish at the last dot of the VBlank line"
             severity failure;
         assert fb_mem(0) = "11"
             report "FAIL: first checkerboard pixel should be black"
@@ -213,6 +249,10 @@ begin
                seen_mode2 = '1' and seen_mode3 = '1'
             report "FAIL: SCX render should expose modes 0, 1, 2, and 3"
             severity failure;
+        assert mode2_dot_ok = '1' and mode3_dot_ok = '1' and
+               mode0_dot_ok = '1' and mode1_dot_ok = '1'
+            report "FAIL: SCX render should expose dot-based mode windows"
+            severity failure;
         assert fb_mem(0) = "00"
             report "FAIL: SCX=8 should move the first visible pixel into tile-map column 1"
             severity failure;
@@ -239,6 +279,10 @@ begin
         assert seen_mode0 = '1' and seen_mode1 = '1' and
                seen_mode2 = '1' and seen_mode3 = '1'
             report "FAIL: SCY render should expose modes 0, 1, 2, and 3"
+            severity failure;
+        assert mode2_dot_ok = '1' and mode3_dot_ok = '1' and
+               mode0_dot_ok = '1' and mode1_dot_ok = '1'
+            report "FAIL: SCY render should expose dot-based mode windows"
             severity failure;
         assert fb_mem(0) = "00"
             report "FAIL: SCY=1 should move the first visible pixel to tile row 1"

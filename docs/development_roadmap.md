@@ -83,6 +83,12 @@ The project has already completed the early foundation layers:
     - enabled STAT Mode 0, Mode 1, Mode 2, and `LY=LYC` sources now request
       IF bit 1;
     - requests are edge-detected at the current line-level scheduler boundary.
+14. **Initial dot-based PPU scheduler**
+    - the renderer now carries a logical 456-dot counter per scanline;
+    - visible lines expose Mode 2 at dots `0..79`, Mode 3 at `80..251`, and
+      Mode 0 at `252..455`;
+    - VBlank lines `144..153` expose Mode 1 across the same dot range;
+    - the current visual CPU-authored VRAM path is preserved.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -266,8 +272,8 @@ The next recommended sequence is:
    baseline;
 3. preserve the new CPU-authored VRAM visual top as the first combined-system
    baseline;
-4. refine the line-level scheduler toward real dot counts while preserving the
-   current IF/STAT contract;
+4. connect the dot scheduler to initial LCDC enable behavior while preserving
+   the current IF/STAT contract;
 5. add remaining background-facing register behavior as needed;
 6. introduce OAM and sprite-related timing only after the background path is
    stable;
@@ -288,10 +294,10 @@ The first real VRAM slice already raised memory use to:
 - 22 / 30 M9K blocks.
 
 The current CPU/PPU visual top with scroll, scanline structure, minimal
-`LY/STAT` visibility, the initial PPU mode scheduler, and initial VBlank/STAT
-interrupt requests uses:
+`LY/STAT` visibility, initial VBlank/STAT interrupt requests, and the
+dot-based PPU scheduler uses:
 
-- 4,324 / 6,272 logic elements;
+- 4,342 / 6,272 logic elements;
 - 177,152 / 276,480 block-memory bits;
 - 22 / 30 M9K blocks.
 
