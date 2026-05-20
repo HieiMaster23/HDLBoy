@@ -321,9 +321,11 @@ The next recommended sequence is:
 4. preserve the first PPU-side OAM scan module as the sprite-selection baseline;
 5. preserve the first one-sprite fetch/composition slice as the OBJ pixel
    baseline;
-6. expand sprite composition toward OBP1, priority, ordering, and multiple
-   candidates per line;
-7. import broader timer coverage later if the local Blargg package proves too
+6. preserve the first OBP1/BG-priority/two-candidate sprite composition slice as
+   the initial multi-OBJ baseline;
+7. expand sprite composition toward full 10-candidate coverage, DMG ordering
+   details, and window interaction;
+8. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -343,10 +345,11 @@ The current CPU/PPU visual top with scroll, scanline structure, minimal
 `LY/STAT` visibility, initial VBlank/STAT interrupt requests, the dot-based
 PPU scheduler, initial LCDC enable handling, and initial VRAM Mode 3 access
 blocking plus initial OAM storage, continuous frame looping, BGP palette lookup,
-initial LCDC background controls, the first PPU OAM scan, and the first sprite
-pixel fetch/composition slice uses:
+initial LCDC background controls, the first PPU OAM scan, the first sprite
+pixel fetch/composition slice, and the OBP1/BG-priority/two-candidate sprite
+composition slice uses:
 
-- 4,551 / 6,272 logic elements;
+- 4,649 / 6,272 logic elements;
 - 179,200 / 276,480 block-memory bits;
 - 23 / 30 M9K blocks.
 

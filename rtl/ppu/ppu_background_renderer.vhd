@@ -17,6 +17,7 @@
 -- 2026-05-20 - Applied BGP palette lookup before framebuffer writes
 -- 2026-05-20 - Added initial LCDC background tile-map/data selection
 -- 2026-05-20 - Added first sprite fetch/composition slice for one candidate
+-- 2026-05-20 - Added OBP1, BG/OBJ priority, and two-candidate composition
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It renders the background tile map selected by LCDC bit 3 and the
@@ -42,6 +43,7 @@ entity ppu_background_renderer is
         scroll_x      : in  std_logic_vector(7 downto 0);
         bgp           : in  std_logic_vector(7 downto 0);
         obp0          : in  std_logic_vector(7 downto 0);
+        obp1          : in  std_logic_vector(7 downto 0);
 
         sprite_candidate_count   : in  unsigned(3 downto 0);
         sprite_candidate_indices : in  std_logic_vector(79 downto 0);
@@ -81,6 +83,12 @@ architecture rtl of ppu_background_renderer is
     constant TILE_MAP_1_BASE    : unsigned(12 downto 0) := to_unsigned(16#1C00#, 13);
     constant TILE_DATA_SIGNED_ZERO_BASE : unsigned(12 downto 0) :=
         to_unsigned(16#1000#, 13);
+    constant MAX_COMPOSE_SPRITES : integer := 2;
+
+    type sprite_byte_array_t is array (0 to MAX_COMPOSE_SPRITES - 1)
+        of std_logic_vector(7 downto 0);
+    type sprite_valid_array_t is array (0 to MAX_COMPOSE_SPRITES - 1)
+        of std_logic;
 
     type state_t is (
         S_IDLE,
@@ -118,14 +126,15 @@ architecture rtl of ppu_background_renderer is
     signal tile_index_reg : std_logic_vector(7 downto 0);
     signal tile_low_reg   : std_logic_vector(7 downto 0);
     signal tile_high_reg  : std_logic_vector(7 downto 0);
-    signal sprite_valid_reg : std_logic;
+    signal sprite_valid_reg : sprite_valid_array_t;
     signal sprite_index_reg : unsigned(7 downto 0);
-    signal sprite_y_reg     : std_logic_vector(7 downto 0);
-    signal sprite_x_reg     : std_logic_vector(7 downto 0);
-    signal sprite_tile_reg  : std_logic_vector(7 downto 0);
-    signal sprite_attr_reg  : std_logic_vector(7 downto 0);
-    signal sprite_low_reg   : std_logic_vector(7 downto 0);
-    signal sprite_high_reg  : std_logic_vector(7 downto 0);
+    signal sprite_slot_reg  : integer range 0 to MAX_COMPOSE_SPRITES - 1;
+    signal sprite_y_reg     : sprite_byte_array_t;
+    signal sprite_x_reg     : sprite_byte_array_t;
+    signal sprite_tile_reg  : sprite_byte_array_t;
+    signal sprite_attr_reg  : sprite_byte_array_t;
+    signal sprite_low_reg   : sprite_byte_array_t;
+    signal sprite_high_reg  : sprite_byte_array_t;
 
     function tile_map_addr(
         x_in       : unsigned(7 downto 0);
@@ -219,6 +228,38 @@ architecture rtl of ppu_background_renderer is
         end if;
         return addr_v;
     end function sprite_tile_data_addr;
+
+    function sprite_candidate_index_at(
+        indices_in : std_logic_vector(79 downto 0);
+        slot_in    : integer)
+        return unsigned is
+        variable index_v : unsigned(7 downto 0);
+    begin
+        case slot_in is
+            when 0 =>
+                index_v := unsigned(indices_in(7 downto 0));
+            when 1 =>
+                index_v := unsigned(indices_in(15 downto 8));
+            when 2 =>
+                index_v := unsigned(indices_in(23 downto 16));
+            when 3 =>
+                index_v := unsigned(indices_in(31 downto 24));
+            when 4 =>
+                index_v := unsigned(indices_in(39 downto 32));
+            when 5 =>
+                index_v := unsigned(indices_in(47 downto 40));
+            when 6 =>
+                index_v := unsigned(indices_in(55 downto 48));
+            when 7 =>
+                index_v := unsigned(indices_in(63 downto 56));
+            when 8 =>
+                index_v := unsigned(indices_in(71 downto 64));
+            when others =>
+                index_v := unsigned(indices_in(79 downto 72));
+        end case;
+
+        return index_v;
+    end function sprite_candidate_index_at;
 
     function pixel_from_tile(
         low_in  : std_logic_vector(7 downto 0);
@@ -331,14 +372,17 @@ begin
                 tile_index_reg <= (others => '0');
                 tile_low_reg <= (others => '0');
                 tile_high_reg <= (others => '0');
-                sprite_valid_reg <= '0';
+                for i in 0 to MAX_COMPOSE_SPRITES - 1 loop
+                    sprite_valid_reg(i) <= '0';
+                    sprite_y_reg(i) <= (others => '0');
+                    sprite_x_reg(i) <= (others => '0');
+                    sprite_tile_reg(i) <= (others => '0');
+                    sprite_attr_reg(i) <= (others => '0');
+                    sprite_low_reg(i) <= (others => '0');
+                    sprite_high_reg(i) <= (others => '0');
+                end loop;
                 sprite_index_reg <= (others => '0');
-                sprite_y_reg <= (others => '0');
-                sprite_x_reg <= (others => '0');
-                sprite_tile_reg <= (others => '0');
-                sprite_attr_reg <= (others => '0');
-                sprite_low_reg <= (others => '0');
-                sprite_high_reg <= (others => '0');
+                sprite_slot_reg <= 0;
             else
                 case state_reg is
                     when S_IDLE =>
@@ -354,8 +398,12 @@ begin
                         if dot_count_reg = to_unsigned(MODE2_DOTS - 1, 9) then
                             pixel_x_reg <= (others => '0');
                             dot_count_reg <= to_unsigned(MODE3_FIRST_DOT, 9);
-                            sprite_valid_reg <= '0';
-                            sprite_index_reg <= unsigned(sprite_candidate_indices(7 downto 0));
+                            for i in 0 to MAX_COMPOSE_SPRITES - 1 loop
+                                sprite_valid_reg(i) <= '0';
+                            end loop;
+                            sprite_slot_reg <= 0;
+                            sprite_index_reg <= sprite_candidate_index_at(
+                                sprite_candidate_indices, 0);
                             if lcdc(1) = '1' and sprite_candidate_count /= to_unsigned(0, 4) then
                                 state_reg <= S_SPRITE_Y_REQ;
                             else
@@ -369,44 +417,52 @@ begin
                         state_reg <= S_SPRITE_Y_CAPTURE;
 
                     when S_SPRITE_Y_CAPTURE =>
-                        sprite_y_reg <= oam_data;
+                        sprite_y_reg(sprite_slot_reg) <= oam_data;
                         state_reg <= S_SPRITE_X_REQ;
 
                     when S_SPRITE_X_REQ =>
                         state_reg <= S_SPRITE_X_CAPTURE;
 
                     when S_SPRITE_X_CAPTURE =>
-                        sprite_x_reg <= oam_data;
+                        sprite_x_reg(sprite_slot_reg) <= oam_data;
                         state_reg <= S_SPRITE_TILE_REQ;
 
                     when S_SPRITE_TILE_REQ =>
                         state_reg <= S_SPRITE_TILE_CAPTURE;
 
                     when S_SPRITE_TILE_CAPTURE =>
-                        sprite_tile_reg <= oam_data;
+                        sprite_tile_reg(sprite_slot_reg) <= oam_data;
                         state_reg <= S_SPRITE_ATTR_REQ;
 
                     when S_SPRITE_ATTR_REQ =>
                         state_reg <= S_SPRITE_ATTR_CAPTURE;
 
                     when S_SPRITE_ATTR_CAPTURE =>
-                        sprite_attr_reg <= oam_data;
+                        sprite_attr_reg(sprite_slot_reg) <= oam_data;
                         state_reg <= S_SPRITE_LOW_REQ;
 
                     when S_SPRITE_LOW_REQ =>
                         state_reg <= S_SPRITE_LOW_CAPTURE;
 
                     when S_SPRITE_LOW_CAPTURE =>
-                        sprite_low_reg <= vram_data;
+                        sprite_low_reg(sprite_slot_reg) <= vram_data;
                         state_reg <= S_SPRITE_HIGH_REQ;
 
                     when S_SPRITE_HIGH_REQ =>
                         state_reg <= S_SPRITE_HIGH_CAPTURE;
 
                     when S_SPRITE_HIGH_CAPTURE =>
-                        sprite_high_reg <= vram_data;
-                        sprite_valid_reg <= '1';
-                        state_reg <= S_MAP_REQ;
+                        sprite_high_reg(sprite_slot_reg) <= vram_data;
+                        sprite_valid_reg(sprite_slot_reg) <= '1';
+                        if sprite_slot_reg = MAX_COMPOSE_SPRITES - 1 or
+                           sprite_candidate_count <= to_unsigned(sprite_slot_reg + 1, 4) then
+                            state_reg <= S_MAP_REQ;
+                        else
+                            sprite_slot_reg <= sprite_slot_reg + 1;
+                            sprite_index_reg <= sprite_candidate_index_at(
+                                sprite_candidate_indices, sprite_slot_reg + 1);
+                            state_reg <= S_SPRITE_Y_REQ;
+                        end if;
 
                     when S_MAP_REQ =>
                         state_reg <= S_MAP_CAPTURE;
@@ -490,13 +546,15 @@ begin
 
     p_outputs: process(state_reg, pixel_x_reg, pixel_y_reg, dot_count_reg, fb_addr_reg,
                        tile_index_reg, tile_low_reg, tile_high_reg,
-                       sprite_index_reg, sprite_valid_reg, sprite_x_reg, sprite_y_reg,
+                       sprite_index_reg, sprite_slot_reg, sprite_valid_reg, sprite_x_reg, sprite_y_reg,
                        sprite_tile_reg, sprite_attr_reg, sprite_low_reg, sprite_high_reg,
-                       scroll_x, scroll_y, bgp, obp0, lcdc)
+                       scroll_x, scroll_y, bgp, obp0, obp1, lcdc)
         variable bg_x_v : unsigned(7 downto 0);
         variable bg_y_v : unsigned(7 downto 0);
         variable color_id_v : std_logic_vector(1 downto 0);
         variable sprite_color_id_v : std_logic_vector(1 downto 0);
+        variable shade_v : std_logic_vector(1 downto 0);
+        variable sprite_selected_v : std_logic;
     begin
         bg_x_v := pixel_x_reg + unsigned(scroll_x);
         bg_y_v := pixel_y_reg + unsigned(scroll_y);
@@ -504,20 +562,37 @@ begin
         if lcdc(0) = '0' then
             color_id_v := "00";
         end if;
-        sprite_color_id_v := sprite_pixel_from_tile(sprite_low_reg, sprite_high_reg,
-                                                    sprite_x_reg, sprite_attr_reg,
-                                                    pixel_x_reg);
+        sprite_color_id_v := "00";
+        shade_v := apply_bgp_palette(color_id_v, bgp);
+        sprite_selected_v := '0';
+
+        for i in 0 to MAX_COMPOSE_SPRITES - 1 loop
+            if sprite_selected_v = '0' and
+               sprite_covers_pixel(sprite_valid_reg(i), sprite_x_reg(i), pixel_x_reg) = '1' then
+                sprite_color_id_v := sprite_pixel_from_tile(sprite_low_reg(i),
+                                                            sprite_high_reg(i),
+                                                            sprite_x_reg(i),
+                                                            sprite_attr_reg(i),
+                                                            pixel_x_reg);
+                if sprite_color_id_v /= "00" then
+                    if sprite_attr_reg(i)(7) = '0' or color_id_v = "00" then
+                        if sprite_attr_reg(i)(4) = '1' then
+                            shade_v := apply_obj_palette(sprite_color_id_v, obp1);
+                        else
+                            shade_v := apply_obj_palette(sprite_color_id_v, obp0);
+                        end if;
+                        sprite_selected_v := '1';
+                    end if;
+                end if;
+            end if;
+        end loop;
 
         vram_addr <= tile_map_addr(bg_x_v, bg_y_v, lcdc(3));
         oam_addr <= (others => '0');
         oam_read <= '0';
         fb_we <= '0';
         fb_addr <= fb_addr_reg;
-        fb_data <= apply_bgp_palette(color_id_v, bgp);
-        if sprite_covers_pixel(sprite_valid_reg, sprite_x_reg, pixel_x_reg) = '1' and
-           sprite_color_id_v /= "00" then
-            fb_data <= apply_obj_palette(sprite_color_id_v, obp0);
-        end if;
+        fb_data <= shade_v;
         current_line <= pixel_y_reg;
         current_dot <= dot_count_reg;
         line_active <= '0';
@@ -558,15 +633,17 @@ begin
                 ppu_mode <= "11";
                 busy <= '1';
             when S_SPRITE_LOW_REQ | S_SPRITE_LOW_CAPTURE =>
-                vram_addr <= sprite_tile_data_addr(sprite_tile_reg, sprite_y_reg,
-                                                   sprite_attr_reg,
+                vram_addr <= sprite_tile_data_addr(sprite_tile_reg(sprite_slot_reg),
+                                                   sprite_y_reg(sprite_slot_reg),
+                                                   sprite_attr_reg(sprite_slot_reg),
                                                    pixel_y_reg, lcdc(2), '0');
                 line_active <= '1';
                 ppu_mode <= "11";
                 busy <= '1';
             when S_SPRITE_HIGH_REQ | S_SPRITE_HIGH_CAPTURE =>
-                vram_addr <= sprite_tile_data_addr(sprite_tile_reg, sprite_y_reg,
-                                                   sprite_attr_reg,
+                vram_addr <= sprite_tile_data_addr(sprite_tile_reg(sprite_slot_reg),
+                                                   sprite_y_reg(sprite_slot_reg),
+                                                   sprite_attr_reg(sprite_slot_reg),
                                                    pixel_y_reg, lcdc(2), '1');
                 line_active <= '1';
                 ppu_mode <= "11";

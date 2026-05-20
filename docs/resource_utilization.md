@@ -1399,3 +1399,50 @@ Notes:
   interaction, and exact FIFO timing remain future work.
 - Compared with the initial OAM scan slice, this costs 113 logic elements and
   62 registers, with no additional block-memory or M9K usage.
+
+## Sprite Palette/Priority/Two-Candidate Composition Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,649 | 6,272 | 74% |
+| Registers | 1,670 | 6,272 | 27% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 22.991 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 177.401 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.425 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.503 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `bus_controller` now exposes `OBP1` to the PPU path.
+- `ppu_background_renderer` stores two small sprite composition slots for the
+  current line and fetches up to the first two OAM scan candidates.
+- Sprite composition now selects `OBP0` or `OBP1` from attribute bit 4.
+- Attribute bit 7 implements the initial BG/OBJ priority rule: OBJ pixels marked
+  behind BG are hidden by nonzero background color ids and remain visible over
+  background color id 0.
+- Within this first two-candidate slice, candidates are composed in the order
+  supplied by OAM scan, and the first visible nontransparent OBJ pixel wins.
+- This is still not the final DMG OBJ pipeline: full 10-candidate composition,
+  DMG sprite ordering details, window interaction, and exact FIFO timing remain
+  future work.
+- Compared with the first sprite pixel fetch/composition slice, this costs 98
+  logic elements and 56 registers, with no additional block-memory or M9K usage.

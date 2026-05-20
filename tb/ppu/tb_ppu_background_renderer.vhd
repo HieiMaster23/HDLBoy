@@ -50,6 +50,7 @@ architecture sim of tb_ppu_background_renderer is
     signal scroll_x   : std_logic_vector(7 downto 0) := x"00";
     signal bgp        : std_logic_vector(7 downto 0) := x"FC";
     signal obp0       : std_logic_vector(7 downto 0) := x"E4";
+    signal obp1       : std_logic_vector(7 downto 0) := x"E4";
     signal sprite_candidate_count : unsigned(3 downto 0) := (others => '0');
     signal sprite_candidate_indices : std_logic_vector(79 downto 0) := (others => '0');
     signal vram_addr  : unsigned(12 downto 0);
@@ -104,6 +105,7 @@ begin
             scroll_x  => scroll_x,
             bgp       => bgp,
             obp0      => obp0,
+            obp1      => obp1,
             sprite_candidate_count   => sprite_candidate_count,
             sprite_candidate_indices => sprite_candidate_indices,
             vram_addr => vram_addr,
@@ -495,8 +497,140 @@ begin
 
         reset <= '1';
         wait until rising_edge(clk);
+        lcdc <= x"93";
+        bgp <= x"FC";
+        obp0 <= x"E4";
+        obp1 <= x"1B";
+        sprite_candidate_count <= to_unsigned(1, 4);
+        sprite_candidate_indices <= (others => '0');
+        oam_mem <= (others => x"00");
+        oam_mem(0) <= x"10";
+        oam_mem(1) <= x"08";
+        oam_mem(2) <= x"02";
+        oam_mem(3) <= x"10";
+        vram_mem(0) <= x"00";
+        vram_mem(1) <= x"00";
+        vram_mem(16#1800#) <= x"00";
+        vram_mem(32) <= x"80";
+        vram_mem(33) <= x"00";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "10"
+            report "FAIL: sprite attr bit 4 should select OBP1"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"93";
+        bgp <= x"FC";
+        obp0 <= x"E4";
+        sprite_candidate_count <= to_unsigned(1, 4);
+        sprite_candidate_indices <= (others => '0');
+        oam_mem <= (others => x"00");
+        oam_mem(0) <= x"10";
+        oam_mem(1) <= x"08";
+        oam_mem(2) <= x"02";
+        oam_mem(3) <= x"80";
+        vram_mem(16) <= x"AA";
+        vram_mem(17) <= x"AA";
+        vram_mem(16#1800#) <= x"01";
+        vram_mem(32) <= x"80";
+        vram_mem(33) <= x"00";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "11"
+            report "FAIL: sprite priority bit should leave nonzero BG pixels in front"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"93";
+        bgp <= x"FC";
+        obp0 <= x"E4";
+        sprite_candidate_count <= to_unsigned(1, 4);
+        sprite_candidate_indices <= (others => '0');
+        oam_mem <= (others => x"00");
+        oam_mem(0) <= x"10";
+        oam_mem(1) <= x"08";
+        oam_mem(2) <= x"02";
+        oam_mem(3) <= x"80";
+        vram_mem(0) <= x"00";
+        vram_mem(1) <= x"00";
+        vram_mem(16#1800#) <= x"00";
+        vram_mem(32) <= x"80";
+        vram_mem(33) <= x"00";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "01"
+            report "FAIL: sprite priority bit should still show over BG color 0"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"93";
+        bgp <= x"FC";
+        obp0 <= x"E4";
+        obp1 <= x"1B";
+        sprite_candidate_count <= to_unsigned(2, 4);
+        sprite_candidate_indices <= (others => '0');
+        sprite_candidate_indices(15 downto 8) <= x"01";
+        oam_mem <= (others => x"00");
+        oam_mem(0) <= x"10";
+        oam_mem(1) <= x"08";
+        oam_mem(2) <= x"02";
+        oam_mem(3) <= x"00";
+        oam_mem(4) <= x"10";
+        oam_mem(5) <= x"08";
+        oam_mem(6) <= x"03";
+        oam_mem(7) <= x"00";
+        vram_mem(0) <= x"00";
+        vram_mem(1) <= x"00";
+        vram_mem(16#1800#) <= x"00";
+        vram_mem(32) <= x"00";
+        vram_mem(33) <= x"00";
+        vram_mem(48) <= x"80";
+        vram_mem(49) <= x"00";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "01"
+            report "FAIL: renderer should continue to the second sprite candidate when the first is transparent"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
         lcdc <= x"91";
         sprite_candidate_count <= to_unsigned(1, 4);
+        vram_mem(16) <= x"AA";
+        vram_mem(17) <= x"AA";
+        vram_mem(16#1800#) <= x"01";
         reset <= '0';
         start <= '1';
         wait until rising_edge(clk);

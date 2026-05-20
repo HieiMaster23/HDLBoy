@@ -55,6 +55,7 @@ architecture rtl of ppu_background_demo_top is
     signal ppu_lcdc       : std_logic_vector(7 downto 0);
     signal ppu_bgp        : std_logic_vector(7 downto 0);
     signal ppu_obp0       : std_logic_vector(7 downto 0);
+    signal ppu_obp1       : std_logic_vector(7 downto 0);
     signal ppu_lcd_enable : std_logic;
     signal ppu_fb_we      : std_logic;
     signal ppu_fb_addr    : unsigned(14 downto 0);
@@ -198,6 +199,7 @@ begin
             ppu_lcdc             => ppu_lcdc,
             ppu_bgp              => ppu_bgp,
             ppu_obp0             => ppu_obp0,
+            ppu_obp1             => ppu_obp1,
             ppu_lcd_enable       => ppu_lcd_enable,
             ppu_oam_addr         => ppu_oam_addr,
             ppu_oam_read         => ppu_oam_read,
@@ -228,6 +230,7 @@ begin
             scroll_x  => ppu_scx,
             bgp       => ppu_bgp,
             obp0      => ppu_obp0,
+            obp1      => ppu_obp1,
             sprite_candidate_count   => ppu_sprite_count,
             sprite_candidate_indices => ppu_sprite_indices,
             vram_addr => ppu_vram_addr,

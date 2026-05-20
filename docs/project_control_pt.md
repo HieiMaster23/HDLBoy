@@ -1634,3 +1634,57 @@ Próximo passo técnico:
 - avançar para as próximas ROMs Blargg de temporização;
 - não criar testes locais como substitutos de aceite;
 - usar sondas locais apenas para explicar falhas que aparecerem nas ROMs reais.
+
+## 19. Primeira Expansao de Sprite Composition
+
+Nesta etapa fechamos a fatia recomendada depois do primeiro OBJ pixel: `OBP1`,
+prioridade basica BG/OBJ e mais de um candidato por linha.
+
+Alteracoes feitas:
+
+- `bus_controller.vhd` agora expoe `ppu_obp1` para o caminho PPU;
+- `ppu_background_renderer.vhd` agora possui dois slots pequenos de sprite para
+  composicao da scanline atual;
+- o renderer busca ate os dois primeiros candidatos vindos do OAM scan;
+- atributo bit 4 seleciona `OBP0` ou `OBP1`;
+- atributo bit 7 implementa a primeira regra de prioridade: sprite atras do BG
+  nao sobrescreve BG com color id diferente de zero, mas ainda aparece sobre BG
+  color id zero;
+- a composicao e deterministica nesta fatia: candidatos sao avaliados na ordem
+  recebida do OAM scan, e o primeiro pixel OBJ nao transparente visivel vence.
+
+Testes executados:
+
+- `run_ppu_background_renderer.do` passou, cobrindo `OBP1`, prioridade sobre BG
+  nao zero, prioridade sobre BG zero e segundo candidato quando o primeiro e
+  transparente;
+- `run_bus_controller.do` passou, incluindo espelhamento de `OBP1`;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- `run_ppu_oam_scan.do` passou;
+- build Quartus completo passou.
+
+Resultado de sintese:
+
+- 4,649 / 6,272 LEs, 74%;
+- 1,670 registradores;
+- 179,200 / 276,480 bits de memoria, 65%;
+- 23 / 30 M9Ks, 77%;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 22.991 ns no clock VGA e 177.401 ns no clock CPU;
+- pior hold slack: 0.425 ns no clock CPU e 0.503 ns no clock VGA.
+
+Conclusao tecnica:
+
+A fatia aumenta o custo em 98 LEs e 56 registradores em relacao ao checkpoint de
+um sprite, sem adicionar M9K. O projeto permanece dentro do orcamento, mas ja
+esta na faixa em que cada nova expansao de PPU deve ser medida.
+
+Proximo passo recomendado:
+
+1. expandir de 2 para ate 10 candidatos com cuidado de custo;
+2. refinar a ordenacao de sprites para aproximar melhor o DMG;
+3. preparar a interacao com Window antes de tentar uma FIFO mais fiel;
+4. manter esta fatia como baseline automatizado de `OBP1` e prioridade.
