@@ -40,6 +40,9 @@ architecture sim of tb_bus_controller is
     signal ppu_lcdc             : std_logic_vector(7 downto 0);
     signal ppu_bgp              : std_logic_vector(7 downto 0);
     signal ppu_lcd_enable       : std_logic;
+    signal ppu_oam_addr         : unsigned(7 downto 0) := (others => '0');
+    signal ppu_oam_read         : std_logic := '0';
+    signal ppu_oam_data         : std_logic_vector(7 downto 0);
     signal ppu_current_line     : unsigned(7 downto 0) := (others => '0');
     signal ppu_mode             : std_logic_vector(1 downto 0) := "00";
     signal led_pattern          : std_logic_vector(3 downto 0);
@@ -98,6 +101,9 @@ begin
             ppu_lcdc             => ppu_lcdc,
             ppu_bgp              => ppu_bgp,
             ppu_lcd_enable       => ppu_lcd_enable,
+            ppu_oam_addr         => ppu_oam_addr,
+            ppu_oam_read         => ppu_oam_read,
+            ppu_oam_data         => ppu_oam_data,
             ppu_current_line     => ppu_current_line,
             ppu_mode             => ppu_mode,
             led_pattern          => led_pattern,
@@ -269,6 +275,20 @@ begin
         bus_read_check(x"FE00", x"12", "FAIL: OAM first byte should read back written data");
         bus_write(x"FE9F", x"AB");
         bus_read_check(x"FE9F", x"AB", "FAIL: OAM last byte should read back written data");
+        ppu_oam_addr <= x"00";
+        ppu_oam_read <= '1';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        assert ppu_oam_data = x"12"
+            report "FAIL: PPU OAM read port should observe OAM first byte"
+            severity failure;
+        ppu_oam_addr <= x"9F";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        assert ppu_oam_data = x"AB"
+            report "FAIL: PPU OAM read port should observe OAM last byte"
+            severity failure;
+        ppu_oam_read <= '0';
         bus_write(x"FEA0", x"44");
         bus_read_check(x"FEA0", x"FF", "FAIL: unusable OAM shadow area should read as open bus high");
         ppu_mode <= "10";

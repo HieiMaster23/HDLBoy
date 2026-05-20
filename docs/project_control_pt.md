@@ -82,6 +82,8 @@ O projeto já possui:
   ligado;
 - OAM inicial exposta em `0xFE00..0xFE9F`, com bloqueio de acesso CPU durante
   Mode 2/3 quando o LCD está ligado;
+- primeiro OAM scan da PPU implementado, lendo OAM pelo lado da PPU e
+  identificando ate 10 candidatos por scanline, ainda sem renderizar sprites;
 - renderer de background em loop contínuo de frames enquanto `LCDC(7)` está
   ligado, com `done` convertido em pulso de fim de frame;
 - WRAM completa de 8 KiB com leitura registrada;
@@ -372,6 +374,10 @@ Validação rápida executada nesta sessão:
   `2026-05-20` — Passed, com `4.382 / 6.272` LEs usados (`70%`),
   `179.200 / 276.480` bits de memória (`65%`) e `23 / 30` blocos M9K usados
   (`77%`).
+- build Quartus completo após o primeiro OAM scan da PPU em `2026-05-20` —
+  Passed, com `4.438 / 6.272` LEs usados (`71%`),
+  `179.200 / 276.480` bits de memória (`65%`) e `23 / 30` blocos M9K usados
+  (`77%`).
 
 Checkpoint pronto para formalização:
 
@@ -382,8 +388,9 @@ Checkpoint pronto para formalização:
   contínuo de frames;
 - o `BGP` no write do framebuffer foi aplicado e validado;
 - os controles iniciais de background por `LCDC` foram aplicados e validados;
-- o próximo passo recomendado é implementar o primeiro OAM scan da PPU antes de
-  avançar para composição/renderização de sprites.
+- o primeiro OAM scan da PPU foi implementado e validado;
+- o próximo passo recomendado é iniciar uma primeira fatia de sprite pixel
+  fetch/composition usando os candidatos do OAM scan.
 
 ## 5. Estado Atual por Área
 
@@ -526,19 +533,23 @@ Implementado:
   framebuffer -> VGA;
 - validação visual em hardware real do top integrado, confirmando que a imagem
   exibida já depende de conteúdo escrito pela CPU e lido pela PPU;
-- progressão explícita por 144 scanlines visíveis no renderer de background,
-  ainda sem temporização por dot;
+- progressão explícita por 144 scanlines visíveis no renderer de background;
+- scheduler inicial por dots com 456 dots por linha;
 - `LY` e `STAT` mínimos visíveis pela CPU;
 - modos iniciais 2, 3, 0 e 1 visíveis em `STAT`;
 - IF bit 0 solicitado na entrada de VBlank inicial;
 - IF bit 1 solicitado por condições STAT habilitadas;
+- loop contínuo de frames enquanto `LCDC(7)` está ligado;
+- lookup de `BGP` no write do framebuffer;
+- controles iniciais de background por `LCDC(3)`, `LCDC(4)` e `LCDC(0)`;
+- primeiro OAM scan da PPU detectando ate 10 candidatos por scanline;
 - display de sete segmentos mostrando `1234` em caso de sucesso.
 
 Ainda pendente:
 
-- PPU dot-accurate com modos reais;
+- PPU dot-accurate completa com fetcher/FIFO reais;
 - scroll completo dentro do modelo temporal real da PPU;
-- sprites;
+- sprite pixel fetch/composition;
 - window;
 - VBlank dot-accurate e alinhado ao LCD real;
 - STAT dot-accurate, com bloqueios e coincidência fiéis;
@@ -608,14 +619,16 @@ CPU -> barramento -> VRAM -> PPU -> framebuffer -> VGA
 ```
 
 Ele ainda não prova uma PPU fiel ao DMG-01. O renderer já possui scroll básico
-por `SCX`/`SCY`, progressão explícita por scanlines visíveis, um scheduler
-inicial de modos 2, 3, 0 e 1, e solicitações iniciais de VBlank/STAT. Ainda não
-possui temporização por dot, sprites, window, comportamento LCD completo ou DMA.
+por `SCX`/`SCY`, progressão explícita por scanlines visíveis, scheduler inicial
+por dots, modos 2/3/0/1, solicitações iniciais de VBlank/STAT, controles
+iniciais de `LCDC`, lookup de `BGP` e primeiro OAM scan. Ainda não possui
+fetcher/FIFO real, sprite composition, window, comportamento LCD completo ou
+DMA.
 
 ### Próxima Linha de Trabalho
 
 1. Preservar a suíte Blargg de CPU/timing como regressão obrigatória.
-2. Refinar o scheduler de modos em direção a contagens reais de dot.
+2. Iniciar sprite pixel fetch/composition a partir dos candidatos do OAM scan.
 3. Atualizar documentação e recursos após cada corte verificável.
 
 Depois disso:
@@ -1341,6 +1354,61 @@ Critério de sucesso sugerido:
 - detectar até 10 sprites candidatos em uma linha visível;
 - preservar a saída visual de background;
 - manter regressão e Quartus fechando antes de iniciar composição de sprites.
+
+Alvo concluido:
+
+```text
+Implementar o primeiro OAM scan da PPU, detectando candidatos por scanline sem
+renderizar sprites ainda.
+```
+
+Resultado:
+
+- criado `rtl/ppu/ppu_oam_scan.vhd`;
+- `bus_controller.vhd` agora expoe uma porta de leitura OAM para a PPU,
+  preservando o bloqueio de acesso da CPU durante Mode 2/3;
+- o scanner inicia no pulso de Mode 2 dot zero das linhas visiveis;
+- a varredura percorre os 40 sprites em 80 ciclos, usando um ciclo para pedir o
+  byte Y e outro para capturar/avaliar;
+- a deteccao usa `LY + 16`, o byte Y do sprite e `LCDC(2)` para selecionar
+  altura 8x8 ou 8x16;
+- ate 10 indices de sprites candidatos sao registrados por scanline;
+- `LCDC(1)` desabilita a coleta de candidatos quando sprites estao desligados;
+- os tops visuais preservam a saida de background e usam LED de debug apenas
+  para manter a atividade do scan observavel.
+
+Regressoes executadas:
+
+- `run_ppu_oam_scan.do` - Passed;
+- `run_bus_controller.do` - Passed;
+- `run_ppu_background_demo_top.do` - Passed;
+- `run_cpu_video_smoke_top.do` - Passed;
+- `run_cpu_ppu_background_demo_top.do` - Passed;
+- build Quartus completo em `2026-05-20` - Passed, com
+  `4.438 / 6.272` LEs usados (`71%`), `179.200 / 276.480` bits de memoria
+  (`65%`) e `23 / 30` blocos M9K usados (`77%`).
+
+Limitacao importante:
+
+- esta fatia apenas seleciona candidatos de sprite. Ainda nao ha fetch de tile
+  de sprite, FIFO/composicao com background, prioridade, atributos, DMA OAM ou
+  comportamento de OAM bug.
+
+Proximo alvo oficial recomendado:
+
+```text
+Implementar a primeira fatia de sprite pixel fetch/composition, usando os
+candidatos do OAM scan, ainda sem buscar precisao completa de prioridade.
+```
+
+Criterio de sucesso sugerido:
+
+- consumir os indices candidatos produzidos pelo OAM scan;
+- buscar os bytes de tile do primeiro sprite candidato visivel;
+- compor um primeiro sprite sobre o background de forma controlada;
+- preservar a saida visual quando `LCDC(1)=0`;
+- manter regressao e Quartus fechando antes de ampliar prioridade, atributos e
+  limite completo de sprites.
 
 ## 15. Princípio de Engenharia do Projeto
 

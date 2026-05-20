@@ -15,6 +15,7 @@ vcom -93 ../../rtl/memory/vram.vhd
 vcom -93 ../../rtl/memory/bus_controller.vhd
 vcom -93 ../../rtl/ppu/ppu_demo_loader.vhd
 vcom -93 ../../rtl/ppu/ppu_background_renderer.vhd
+vcom -93 ../../rtl/ppu/ppu_oam_scan.vhd
 vcom -93 ../../rtl/top/ppu_background_demo_top.vhd
 vcom -93 ../../tb/integration/tb_ppu_background_demo_top.vhd
 

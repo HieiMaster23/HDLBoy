@@ -123,6 +123,13 @@ The project has already completed the early foundation layers:
     - `LCDC(4)` selects unsigned versus signed tile data addressing;
     - `LCDC(0)` initially forces background color id 0 when background display
       is disabled.
+21. **Initial PPU OAM scan**
+    - `ppu_oam_scan` reads OAM through a dedicated PPU-side port;
+    - the scanner starts at visible-line Mode 2 dot zero;
+    - it scans 40 sprite Y bytes over 80 cycles and records up to 10 candidate
+      indices for the current line;
+    - `LCDC(1)` disables candidate collection and `LCDC(2)` selects 8x8 versus
+      8x16 sprite height.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -306,10 +313,9 @@ The next recommended sequence is:
    baseline;
 3. preserve the new CPU-authored VRAM visual top as the first combined-system
    baseline;
-4. add the first PPU-side OAM scan module, detecting per-line sprite candidates
-   without rendering sprites yet;
-5. introduce sprite pixel fetching and composition only after OAM scan behavior
-   is stable;
+4. preserve the first PPU-side OAM scan module as the sprite-selection baseline;
+5. introduce sprite pixel fetching and composition in a small, testable slice
+   after this OAM scan checkpoint;
 6. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
@@ -330,9 +336,9 @@ The current CPU/PPU visual top with scroll, scanline structure, minimal
 `LY/STAT` visibility, initial VBlank/STAT interrupt requests, the dot-based
 PPU scheduler, initial LCDC enable handling, and initial VRAM Mode 3 access
 blocking plus initial OAM storage, continuous frame looping, BGP palette lookup,
-and initial LCDC background controls uses:
+initial LCDC background controls, and the first PPU OAM scan uses:
 
-- 4,382 / 6,272 logic elements;
+- 4,438 / 6,272 logic elements;
 - 179,200 / 276,480 block-memory bits;
 - 23 / 30 M9K blocks.
 

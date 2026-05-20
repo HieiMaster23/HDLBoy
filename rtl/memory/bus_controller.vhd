@@ -23,6 +23,7 @@
 -- 2026-05-20 - Added initial OAM storage and CPU access blocking by PPU mode
 -- 2026-05-20 - Exposed BGP to the PPU background renderer path
 -- 2026-05-20 - Exposed LCDC to the PPU background renderer path
+-- 2026-05-20 - Added PPU OAM read port for scanline candidate detection
 -- =============================================================================
 
 library ieee;
@@ -55,6 +56,9 @@ entity bus_controller is
         ppu_lcdc            : out std_logic_vector(7 downto 0);
         ppu_bgp             : out std_logic_vector(7 downto 0);
         ppu_lcd_enable      : out std_logic;
+        ppu_oam_addr        : in  unsigned(7 downto 0);
+        ppu_oam_read        : in  std_logic;
+        ppu_oam_data        : out std_logic_vector(7 downto 0);
         ppu_current_line    : in  unsigned(7 downto 0);
         ppu_mode            : in  std_logic_vector(1 downto 0);
 
@@ -172,6 +176,7 @@ architecture rtl of bus_controller is
     signal oam_selected      : std_logic;
     signal oam_cpu_blocked   : std_logic;
     signal oam_cpu_we        : std_logic;
+    signal oam_read_addr     : unsigned(7 downto 0);
     signal io_selected       : std_logic;
     signal hram_selected     : std_logic;
     signal sync_read_selected: std_logic;
@@ -245,6 +250,8 @@ begin
                                  (ppu_effective_mode = "10" or
                                   ppu_effective_mode = "11") else '0';
     oam_cpu_we <= cpu_write and oam_selected and not oam_cpu_blocked;
+    oam_read_addr <= ppu_oam_addr when ppu_oam_read = '1' else
+                     unsigned(cpu_addr(7 downto 0));
     vblank_irq_condition <= '1' when lcdc_reg(7) = '1' and
                                       ppu_effective_mode = "01" and
                                       ppu_effective_line = to_unsigned(144, 8) else '0';
@@ -542,7 +549,7 @@ begin
                 oam(to_integer(unsigned(cpu_addr(7 downto 0)))) <= cpu_data_out;
             end if;
 
-            oam_q <= oam(to_integer(unsigned(cpu_addr(7 downto 0))));
+            oam_q <= oam(to_integer(oam_read_addr));
         end if;
     end process p_oam;
 
@@ -577,6 +584,7 @@ begin
     ppu_lcdc <= lcdc_reg;
     ppu_bgp <= bgp_reg;
     ppu_lcd_enable <= lcdc_reg(7);
+    ppu_oam_data <= oam_q;
 
     display_digits <= x"1234" when final_passed_reg = '1' and checker_failed_reg = '0' else
                       x"EEEE" when checker_failed_reg = '1' else

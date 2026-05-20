@@ -1307,3 +1307,49 @@ Notes:
   0 through `BGP` when clear.
 - The slice costs 40 logic elements versus the BGP checkpoint and does not add
   registers or memory blocks.
+
+## Initial PPU OAM Scan Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,438 | 6,272 | 71% |
+| Registers | 1,552 | 6,272 | 25% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.444 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 174.984 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.451 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.485 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `ppu_oam_scan` adds the first PPU-side OAM scan engine.
+- The scanner runs from the Mode 2 dot-zero pulse and scans 40 sprite entries in
+  80 cycles, matching the current Mode 2 budget.
+- Candidate detection uses the sprite Y coordinate, the current scanline, and
+  `LCDC(2)` for 8x8 versus 8x16 sprite height.
+- The scanner records up to 10 candidate sprite indices for the current line,
+  matching the DMG per-scanline sprite limit.
+- Candidate collection is gated by `LCDC(1)`, so sprite-disabled operation does
+  not evaluate unused OAM contents.
+- `bus_controller` now exposes a PPU OAM read port while preserving CPU OAM
+  access blocking during Mode 2/3.
+- Compared with the LCDC background-control slice, this costs 56 logic elements
+  and 16 registers, with no additional memory blocks.

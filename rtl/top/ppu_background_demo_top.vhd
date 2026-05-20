@@ -59,10 +59,20 @@ architecture rtl of ppu_background_demo_top is
     signal ppu_fb_addr    : unsigned(14 downto 0);
     signal ppu_fb_data    : std_logic_vector(1 downto 0);
     signal ppu_current_line : unsigned(7 downto 0);
+    signal ppu_current_dot  : unsigned(8 downto 0);
     signal ppu_mode       : std_logic_vector(1 downto 0);
     signal ppu_busy       : std_logic;
     signal ppu_done       : std_logic;
     signal ppu_frame_seen : std_logic;
+    signal ppu_oam_scan_start : std_logic;
+    signal ppu_oam_scan_done  : std_logic;
+    signal ppu_oam_scan_seen  : std_logic;
+    signal ppu_oam_addr       : unsigned(7 downto 0);
+    signal ppu_oam_read       : std_logic;
+    signal ppu_oam_data       : std_logic_vector(7 downto 0);
+    signal ppu_sprite_count   : unsigned(3 downto 0);
+    signal ppu_sprite_indices : std_logic_vector(79 downto 0);
+    signal ppu_sprite_debug   : std_logic;
 
     signal fb_addr_b      : unsigned(14 downto 0);
     signal fb_data_b      : std_logic_vector(1 downto 0);
@@ -183,6 +193,9 @@ begin
             ppu_lcdc             => ppu_lcdc,
             ppu_bgp              => ppu_bgp,
             ppu_lcd_enable       => ppu_lcd_enable,
+            ppu_oam_addr         => ppu_oam_addr,
+            ppu_oam_read         => ppu_oam_read,
+            ppu_oam_data         => ppu_oam_data,
             ppu_current_line     => ppu_current_line,
             ppu_mode             => ppu_mode,
             led_pattern          => unused_led_pattern,
@@ -214,12 +227,42 @@ begin
             fb_addr   => ppu_fb_addr,
             fb_data   => ppu_fb_data,
             current_line => ppu_current_line,
-            current_dot  => open,
+            current_dot  => ppu_current_dot,
             line_active  => open,
             line_done    => open,
             ppu_mode     => ppu_mode,
             busy      => ppu_busy,
             done      => ppu_done
+        );
+
+    ppu_oam_scan_start <= '1' when ppu_mode = "10" and
+                                   ppu_current_dot = to_unsigned(0, 9) else '0';
+
+    p_ppu_oam_scan_seen: process(clk_cpu)
+    begin
+        if rising_edge(clk_cpu) then
+            if reset_cpu = '1' then
+                ppu_oam_scan_seen <= '0';
+            elsif ppu_oam_scan_done = '1' then
+                ppu_oam_scan_seen <= '1';
+            end if;
+        end if;
+    end process p_ppu_oam_scan_seen;
+
+    u_ppu_oam_scan: entity work.ppu_oam_scan
+        port map (
+            clk               => clk_cpu,
+            reset             => reset_cpu,
+            start             => ppu_oam_scan_start,
+            current_line      => ppu_current_line,
+            lcdc              => ppu_lcdc,
+            oam_addr          => ppu_oam_addr,
+            oam_read          => ppu_oam_read,
+            oam_data          => ppu_oam_data,
+            candidate_count   => ppu_sprite_count,
+            candidate_indices => ppu_sprite_indices,
+            busy              => open,
+            done              => ppu_oam_scan_done
         );
 
     u_framebuffer: entity work.framebuffer
@@ -263,10 +306,11 @@ begin
     vga_r <= dither_channel(vga_r_i, pixel_x(0), pixel_y(0));
     vga_g <= dither_channel(vga_g_i, pixel_x(0), pixel_y(0));
     vga_b <= dither_channel(vga_b_i, pixel_x(0), pixel_y(0));
+    ppu_sprite_debug <= ppu_sprite_count(0) xor ppu_sprite_indices(0);
 
     led(0) <= not pll_locked;
     led(1) <= not loader_done;
     led(2) <= not ppu_frame_seen;
-    led(3) <= '1';
+    led(3) <= not (ppu_oam_scan_seen xor ppu_sprite_debug);
 
 end architecture rtl;
