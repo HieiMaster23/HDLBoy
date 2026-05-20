@@ -20,6 +20,7 @@
 -- 2026-05-20 - Added initial VBlank and STAT interrupt request generation
 -- 2026-05-20 - Added LCDC bit 7 enable gating for PPU-visible LY/STAT state
 -- 2026-05-20 - Added initial CPU VRAM access blocking during PPU Mode 3
+-- 2026-05-20 - Added initial OAM storage and CPU access blocking by PPU mode
 -- =============================================================================
 
 library ieee;
@@ -77,6 +78,8 @@ architecture rtl of bus_controller is
     constant WRAM_LAST_ADDR     : std_logic_vector(15 downto 0) := x"DFFF";
     constant ECHO_BASE_ADDR     : std_logic_vector(15 downto 0) := x"E000";
     constant ECHO_LAST_ADDR     : std_logic_vector(15 downto 0) := x"FDFF";
+    constant OAM_BASE_ADDR      : std_logic_vector(15 downto 0) := x"FE00";
+    constant OAM_LAST_ADDR      : std_logic_vector(15 downto 0) := x"FE9F";
     constant IO_JOYP_ADDR       : std_logic_vector(15 downto 0) := x"FF00";
     constant IO_SB_ADDR         : std_logic_vector(15 downto 0) := x"FF01";
     constant IO_SC_ADDR         : std_logic_vector(15 downto 0) := x"FF02";
@@ -106,10 +109,14 @@ architecture rtl of bus_controller is
     constant PASS_CODE          : std_logic_vector(7 downto 0)  := x"A5";
     constant EXPECTED_FB_WRITES : unsigned(7 downto 0) := to_unsigned(64, 8);
     constant WRAM_LAST_INDEX    : integer := 8191;
+    constant OAM_LAST_INDEX     : integer := 255;
     constant HRAM_LAST_INDEX    : integer := 126;
 
     type wram_t is array (0 to WRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
+    type oam_t is array (0 to OAM_LAST_INDEX) of std_logic_vector(7 downto 0);
     type hram_t is array (0 to HRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
+
+    attribute ramstyle : string;
 
     signal io_led_reg        : std_logic_vector(7 downto 0);
     signal io_status_reg     : std_logic_vector(7 downto 0);
@@ -147,6 +154,7 @@ architecture rtl of bus_controller is
     signal ppu_effective_line       : unsigned(7 downto 0);
     signal ppu_effective_mode       : std_logic_vector(1 downto 0);
     signal wram              : wram_t;
+    signal oam               : oam_t;
     signal hram              : hram_t;
     signal led_pattern_reg   : std_logic_vector(3 downto 0);
     signal fb_write_count    : unsigned(7 downto 0);
@@ -157,6 +165,9 @@ architecture rtl of bus_controller is
     signal vram_cpu_blocked  : std_logic;
     signal fb_selected       : std_logic;
     signal wram_selected     : std_logic;
+    signal oam_selected      : std_logic;
+    signal oam_cpu_blocked   : std_logic;
+    signal oam_cpu_we        : std_logic;
     signal io_selected       : std_logic;
     signal hram_selected     : std_logic;
     signal sync_read_selected: std_logic;
@@ -164,7 +175,10 @@ architecture rtl of bus_controller is
     signal sync_read_addr    : std_logic_vector(15 downto 0);
     signal vram_q            : std_logic_vector(7 downto 0);
     signal wram_q            : std_logic_vector(7 downto 0);
+    signal oam_q             : std_logic_vector(7 downto 0);
     signal hram_q            : std_logic_vector(7 downto 0);
+
+    attribute ramstyle of oam : signal is "M9K";
 
     function stat_read_value(
         stat_writable_in : std_logic_vector(7 downto 0);
@@ -196,11 +210,14 @@ begin
                                unsigned(cpu_addr) <= unsigned(WRAM_LAST_ADDR)) or
                               (unsigned(cpu_addr) >= unsigned(ECHO_BASE_ADDR) and
                                unsigned(cpu_addr) <= unsigned(ECHO_LAST_ADDR)) else '0';
+    oam_selected <= '1' when unsigned(cpu_addr) >= unsigned(OAM_BASE_ADDR) and
+                             unsigned(cpu_addr) <= unsigned(OAM_LAST_ADDR) else '0';
     io_selected <= '1' when unsigned(cpu_addr) >= unsigned(IO_JOYP_ADDR) and
                             unsigned(cpu_addr) <= unsigned(IO_LAST_ADDR) else '0';
     hram_selected <= '1' when unsigned(cpu_addr) >= unsigned(HRAM_BASE_ADDR) and
                               unsigned(cpu_addr) <= unsigned(HRAM_LAST_ADDR) else '0';
     sync_read_selected <= '1' when vram_selected = '1' or
+                                   oam_selected = '1' or
                                    wram_selected = '1' or
                                    (hram_selected = '1' and
                                     cpu_addr /= IO_LED_ADDR and
@@ -219,6 +236,11 @@ begin
                                   ppu_effective_mode = "11" and
                                   vram_selected = '1' else '0';
     vram_cpu_we <= cpu_write and vram_selected and not vram_cpu_blocked;
+    oam_cpu_blocked <= '1' when lcdc_reg(7) = '1' and
+                                 oam_selected = '1' and
+                                 (ppu_effective_mode = "10" or
+                                  ppu_effective_mode = "11") else '0';
+    oam_cpu_we <= cpu_write and oam_selected and not oam_cpu_blocked;
     vblank_irq_condition <= '1' when lcdc_reg(7) = '1' and
                                       ppu_effective_mode = "01" and
                                       ppu_effective_line = to_unsigned(144, 8) else '0';
@@ -262,9 +284,10 @@ begin
                            lcdc_reg, stat_reg, scy_reg, scx_reg, lyc_reg,
                            dma_reg, bgp_reg, obp0_reg, obp1_reg, wy_reg,
                            wx_reg, if_reg, ie_reg, vram_selected, wram_selected,
-                           hram_selected, io_selected, vram_q, wram_q, hram_q,
+                           oam_selected, hram_selected, io_selected, vram_q,
+                           wram_q, oam_q, hram_q,
                            rom_data, ppu_effective_line, ppu_effective_mode,
-                           vram_cpu_blocked)
+                           vram_cpu_blocked, oam_cpu_blocked)
     begin
         if cpu_read = '1' then
             case cpu_addr is
@@ -324,6 +347,12 @@ begin
                         end if;
                     elsif wram_selected = '1' then
                         cpu_data_in <= wram_q;
+                    elsif oam_selected = '1' then
+                        if oam_cpu_blocked = '1' then
+                            cpu_data_in <= x"FF";
+                        else
+                            cpu_data_in <= oam_q;
+                        end if;
                     elsif io_selected = '1' then
                         cpu_data_in <= x"FF";
                     elsif hram_selected = '1' then
@@ -501,6 +530,17 @@ begin
             wram_q <= wram(to_integer(unsigned(cpu_addr(12 downto 0))));
         end if;
     end process p_wram;
+
+    p_oam: process(clk)
+    begin
+        if rising_edge(clk) then
+            if oam_cpu_we = '1' then
+                oam(to_integer(unsigned(cpu_addr(7 downto 0)))) <= cpu_data_out;
+            end if;
+
+            oam_q <= oam(to_integer(unsigned(cpu_addr(7 downto 0))));
+        end if;
+    end process p_oam;
 
     p_hram: process(clk)
     begin

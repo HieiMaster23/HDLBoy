@@ -1137,3 +1137,48 @@ Notes:
 - Compared with the LCDC enable slice, the reported logic-element count changed
   from 4,362 to 4,361. Treat this as fitter variation from a near-zero-cost
   control change, not as a meaningful optimization.
+
+## Initial OAM Storage and Access Blocking Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,344 | 6,272 | 69% |
+| Registers | 1,535 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.532 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 174.644 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.499 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `bus_controller` now exposes the CPU OAM window at `0xFE00..0xFE9F`.
+- CPU OAM reads return `0xFF` during Mode 2 or Mode 3 while LCDC bit 7 is set;
+  CPU OAM writes are ignored in the same modes.
+- OAM remains CPU-accessible while LCDC bit 7 is clear.
+- The unusable `0xFEA0..0xFEFF` range remains unmapped and reads as `0xFF`.
+- The physical RAM is intentionally inferred as 256 x 8 bits in one M9K block
+  while only the DMG-visible 160-byte OAM window is decoded. The first 160-byte
+  template synthesized as distributed logic and pushed the design to 96% logic
+  utilization, so the M9K-backed template is the correct resource trade-off for
+  this board.
+- Compared with the VRAM Mode 3 blocking slice, this adds one M9K block and
+  2,048 memory bits while keeping logic use in the same class.

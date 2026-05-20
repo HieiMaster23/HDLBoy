@@ -80,6 +80,8 @@ O projeto já possui:
   e o renderer permanece inativo com contador zerado;
 - primeiro bloqueio de acesso CPU a VRAM durante Mode 3, enquanto o LCD está
   ligado;
+- OAM inicial exposta em `0xFE00..0xFE9F`, com bloqueio de acesso CPU durante
+  Mode 2/3 quando o LCD está ligado;
 - WRAM completa de 8 KiB com leitura registrada;
 - HRAM e stubs de I/O;
 - IE e IF básicos;
@@ -288,6 +290,11 @@ Validação rápida executada nesta sessão:
   `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
   `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_instr_timing.do`,
   `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do`;
+- OAM inicial com bloqueio CPU durante Mode 2/3 — validada por
+  `run_bus_controller.do`, `run_ppu_background_demo_top.do`,
+  `run_cpu_ppu_background_demo_top.do`, `run_cpu_video_smoke_top.do`,
+  `run_timer.do`, `run_cpu_instr_timing.do`, `run_cpu_interrupt_time.do` e
+  `run_cpu_halt_bug.do`;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 - build Quartus completo da primeira fatia de VRAM em `2026-05-16` — Passed,
@@ -335,15 +342,18 @@ Validação rápida executada nesta sessão:
   `2026-05-20` — Passed, com `4.361 / 6.272` LEs usados (`70%`),
   `177.152 / 276.480` bits de memória (`64%`) e `22 / 30` blocos M9K usados
   (`73%`).
+- build Quartus completo após a OAM inicial em `2026-05-20` — Passed, com
+  `4.344 / 6.272` LEs usados (`69%`), `179.200 / 276.480` bits de memória
+  (`65%`) e `23 / 30` blocos M9K usados (`77%`).
 
 Checkpoint pronto para formalização:
 
 - a escada local de CPU/timing disponível no pacote Blargg foi concluída;
 - o conjunto de regressão relevante está registrado acima;
 - a primeira fatia real de PPU já está em andamento com scheduler por dots,
-  LCDC enable inicial e bloqueio inicial de VRAM em Mode 3;
-- o próximo passo recomendado após o commit é adicionar a memória OAM inicial
-  de 160 bytes e os bloqueios CPU durante Mode 2/3, ainda sem sprites.
+  LCDC enable inicial, bloqueio inicial de VRAM em Mode 3 e OAM inicial;
+- o próximo passo recomendado após o commit é adicionar o primeiro OAM scan
+  mínimo, ainda sem composição/renderização de sprites.
 
 ## 5. Estado Atual por Área
 
@@ -1135,6 +1145,41 @@ Critério de sucesso sugerido:
 - preservar VRAM, background renderer, `LY/STAT/IF` e os tops visuais atuais;
 - manter a regressão atual passando e sintetizar antes de avançar para OAM scan
   real.
+
+Resultado:
+
+- `bus_controller.vhd` agora decodifica OAM em `0xFE00..0xFE9F`;
+- CPU pode ler/escrever OAM fora das janelas bloqueadas;
+- leituras CPU em OAM retornam `0xFF` durante Mode 2 ou Mode 3 com LCD ligado;
+- escritas CPU em OAM durante Mode 2 ou Mode 3 com LCD ligado são ignoradas;
+- com LCD desligado, OAM permanece acessível mesmo se a entrada bruta de modo
+  estiver em Mode 2 ou Mode 3;
+- `0xFEA0..0xFEFF` continua como região não usável e lê `0xFF`;
+- para evitar explodir LEs, a memória física foi inferida como RAM M9K de
+  256 bytes, expondo somente a janela DMG real de 160 bytes.
+
+Limitação importante:
+
+- ainda não existe porta PPU dedicada para OAM scan, nem seleção de 10 sprites
+  por scanline, nem DMA OAM real. Esta fatia estabelece apenas armazenamento e
+  ownership inicial pelo barramento.
+
+Próximo alvo oficial recomendado:
+
+```text
+Adicionar o primeiro OAM scan mínimo, lendo a OAM pelo lado da PPU e
+identificando sprites candidatos por LY, ainda sem renderizar sprites nem
+misturar pixels ao background.
+```
+
+Critério de sucesso sugerido:
+
+- adicionar uma porta de leitura PPU para OAM ou um módulo `ppu_oam_scan`
+  mínimo com acesso controlado;
+- preservar o bloqueio CPU em Mode 2/3;
+- detectar até 10 sprites candidatos para uma linha visível;
+- não alterar a saída visual de background ainda;
+- manter regressão e Quartus fechando antes de iniciar composição de sprites.
 
 ## 15. Princípio de Engenharia do Projeto
 

@@ -99,6 +99,12 @@ The project has already completed the early foundation layers:
     - CPU VRAM writes are ignored during Mode 3 while LCD is enabled;
     - VRAM remains accessible while LCD is disabled;
     - the CPU-authored background demo remains the visual baseline.
+17. **Initial OAM storage and access blocking**
+    - CPU OAM is decoded at `0xFE00..0xFE9F`;
+    - CPU OAM reads return `0xFF` during Mode 2/3 while LCD is enabled;
+    - CPU OAM writes are ignored during Mode 2/3 while LCD is enabled;
+    - OAM remains accessible while LCD is disabled;
+    - the unusable `0xFEA0..0xFEFF` range remains open-bus high.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -282,11 +288,11 @@ The next recommended sequence is:
    baseline;
 3. preserve the new CPU-authored VRAM visual top as the first combined-system
    baseline;
-4. add the initial 160-byte OAM memory region and CPU access blocking during
-   Mode 2/3 while LCD is enabled;
+4. add the first PPU-side OAM scan module, detecting per-line sprite candidates
+   without rendering sprites yet;
 5. add remaining background-facing register behavior as needed;
-6. introduce OAM scan and sprite rendering only after OAM ownership behavior is
-   stable;
+6. introduce sprite pixel fetching and composition only after OAM scan behavior
+   is stable;
 7. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
@@ -306,11 +312,11 @@ The first real VRAM slice already raised memory use to:
 The current CPU/PPU visual top with scroll, scanline structure, minimal
 `LY/STAT` visibility, initial VBlank/STAT interrupt requests, the dot-based
 PPU scheduler, initial LCDC enable handling, and initial VRAM Mode 3 access
-blocking uses:
+blocking plus initial OAM storage uses:
 
-- 4,361 / 6,272 logic elements;
-- 177,152 / 276,480 block-memory bits;
-- 22 / 30 M9K blocks.
+- 4,344 / 6,272 logic elements;
+- 179,200 / 276,480 block-memory bits;
+- 23 / 30 M9K blocks.
 
 The PPU phase is therefore memory-sensitive before it becomes logic-heavy. New
 work should prefer:

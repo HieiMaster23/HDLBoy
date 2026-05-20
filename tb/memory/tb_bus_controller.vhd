@@ -257,6 +257,28 @@ begin
         ppu_mode <= "00";
         wait for 1 ns;
         bus_read_check(x"8000", x"3C", "FAIL: VRAM should remain readable outside Mode 3");
+
+        bus_write(x"FE00", x"12");
+        bus_read_check(x"FE00", x"12", "FAIL: OAM first byte should read back written data");
+        bus_write(x"FE9F", x"AB");
+        bus_read_check(x"FE9F", x"AB", "FAIL: OAM last byte should read back written data");
+        bus_write(x"FEA0", x"44");
+        bus_read_check(x"FEA0", x"FF", "FAIL: unusable OAM shadow area should read as open bus high");
+        ppu_mode <= "10";
+        wait for 1 ns;
+        bus_read_check(x"FE00", x"FF", "FAIL: CPU OAM reads should be blocked during Mode 2 while LCD is enabled");
+        bus_write(x"FE00", x"34");
+        ppu_mode <= "00";
+        wait for 1 ns;
+        bus_read_check(x"FE00", x"12", "FAIL: CPU OAM writes should be ignored during Mode 2 while LCD is enabled");
+        ppu_mode <= "11";
+        wait for 1 ns;
+        bus_read_check(x"FE9F", x"FF", "FAIL: CPU OAM reads should be blocked during Mode 3 while LCD is enabled");
+        bus_write(x"FE9F", x"56");
+        ppu_mode <= "00";
+        wait for 1 ns;
+        bus_read_check(x"FE9F", x"AB", "FAIL: CPU OAM writes should be ignored during Mode 3 while LCD is enabled");
+
         bus_write(x"FF40", x"00");
         assert ppu_lcd_enable = '0'
             report "FAIL: PPU LCD enable output should clear when LCDC bit 7 is zero"
@@ -266,6 +288,8 @@ begin
         wait for 1 ns;
         bus_write(x"8000", x"66");
         bus_read_check(x"8000", x"66", "FAIL: CPU VRAM should remain accessible during Mode 3 when LCD is disabled");
+        bus_write(x"FE00", x"78");
+        bus_read_check(x"FE00", x"78", "FAIL: CPU OAM should remain accessible during Mode 3 when LCD is disabled");
         bus_read_check(x"FF44", x"00", "FAIL: LY should read as zero while LCDC bit 7 is clear");
         bus_read_check(x"FF41", x"84", "FAIL: STAT should report mode 0 and LY=LYC while LCDC bit 7 is clear");
         bus_write(x"FF40", x"80");
