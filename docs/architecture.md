@@ -17,6 +17,10 @@ initial shared M6 timer block:
 - `rtl/video/vga_color_bar.vhd`: simple color bar generator for M1 hardware testing.
 - `rtl/memory/framebuffer.vhd`: 160x144x2-bit dual-port framebuffer.
 - `rtl/memory/vram.vhd`: 8 KiB dual-port VRAM used by CPU writes and PPU reads.
+- `rtl/memory/cpu_video_smoke_rom.vhd`: standalone ROM image for the legacy
+  CPU-to-framebuffer smoke program.
+- `rtl/memory/cpu_ppu_background_demo_rom.vhd`: standalone ROM image for the
+  CPU-authored background integration program.
 - `rtl/video/vga_pixel_pipeline.vhd`: 3x upscaling and palette mapping.
 - `rtl/video/test_pattern_writer.vhd`: M2 framebuffer fill pattern.
 - `rtl/top/framebuffer_test_top.vhd`: M2 integration test top.
@@ -78,6 +82,12 @@ the current I/O stubs. The CPU bus now has a `mem_ready` handshake so RAM-backed
 regions can use registered reads without forcing large combinational register
 arrays onto the EP4CE6 fabric.
 
+The test-program boundary is now also explicit. `bus_controller` maps the ROM
+address range but no longer owns the embedded program contents. Small bring-up
+tops instantiate their own ROM module and feed the resulting byte into the bus.
+That keeps the bus contract closer to the future cartridge/ROM-loader path and
+lets future visual programs change without editing the memory-map block itself.
+
 WRAM and VRAM are inferred by Quartus as M9K-backed `altsyncram` blocks. HRAM
 remains small enough to keep as local logic in this slice, but the same
 ready-state path can be reused later if HRAM or other memory blocks need to move
@@ -93,11 +103,21 @@ this phase and begin the first real PPU slice.
 
 The first real PPU slice is now present. It is intentionally narrow:
 `ppu_background_renderer` reads unsigned tile data plus the background tile map,
-and the existing framebuffer/VGA path displays the result. The isolated demo top
-still exists, but the current system-level visual top now lets the CPU populate
-VRAM before the renderer starts. This is not yet the final scanline-accurate DMG
-PPU. It is the first verified interconnect where the CPU authors video memory
-and the PPU consumes it.
+applies `SCX`/`SCY` background offsets, advances through explicit visible
+scanline boundaries, and the existing framebuffer/VGA path displays the result.
+The isolated demo top still exists, but the current system-level visual top now
+lets the CPU populate VRAM and scroll registers before the renderer starts. This
+is not yet the final dot-accurate DMG PPU. It is the first verified interconnect
+where the CPU authors video memory, controls a visible PPU behavior, and the PPU
+has an observable line progression point. The bus now exposes a minimal `LY`
+readback from that line signal and a `STAT` value with writable interrupt-select
+bits, coincidence status, and a deterministic initial PPU mode field. The mode
+source is now owned by the renderer rather than inferred by the bus: Mode 2 is
+reported at visible-line start, Mode 3 while background pixels are produced,
+Mode 0 at visible-line end, and Mode 1 during the initial VBlank line range.
+That mode source now also drives the first interrupt-visible PPU behavior:
+VBlank entry requests IF bit 0, and enabled STAT conditions request IF bit 1 for
+Mode 0, Mode 1, Mode 2, and `LY=LYC`.
 
 That combined path has now been confirmed on the real OMDAZZ board. The observed
 image is the expected centered Game Boy area with a first tile row alternating
@@ -106,14 +126,12 @@ between white and checkerboard tiles, proving the complete live chain:
 
 The next architectural steps are:
 
-1. Replace the hardcoded integration ROM with a clearer ROM/test-program flow
-   while keeping the new CPU-authored VRAM path.
-2. Add the first LCD register inputs that materially affect background output,
-   starting with scroll and palette-facing behavior.
-3. Evolve the renderer from a one-shot framebuffer fill into a scanline-timed
-   background producer.
-4. Extend the bus toward OAM and the remaining PPU register decode before adding
-   sprites, window, STAT, and DMA.
+1. Refine the scheduler toward real dot counts without breaking the current
+   CPU-authored VRAM visual baseline.
+2. Add the remaining background-facing register behavior that matters before
+   sprites, especially palette-facing output.
+3. Extend the bus toward OAM and the remaining PPU register decode before adding
+   sprites, window, full STAT behavior, and DMA.
 
 The design should continue to keep module-level testbenches close to each RTL
 block and add integration testbenches only when a cross-module contract exists.

@@ -50,9 +50,13 @@ architecture rtl of ppu_background_demo_top is
 
     signal ppu_vram_addr  : unsigned(12 downto 0);
     signal ppu_vram_data  : std_logic_vector(7 downto 0);
+    signal ppu_scy        : std_logic_vector(7 downto 0);
+    signal ppu_scx        : std_logic_vector(7 downto 0);
     signal ppu_fb_we      : std_logic;
     signal ppu_fb_addr    : unsigned(14 downto 0);
     signal ppu_fb_data    : std_logic_vector(1 downto 0);
+    signal ppu_current_line : unsigned(7 downto 0);
+    signal ppu_mode       : std_logic_vector(1 downto 0);
     signal ppu_busy       : std_logic;
     signal ppu_done       : std_logic;
 
@@ -151,6 +155,7 @@ begin
             cpu_write            => loader_write,
             cpu_ready            => unused_cpu_ready,
             unsupported_opcode   => '0',
+            rom_data             => x"00",
             fb_clear_active      => '0',
             fb_clear_addr        => (others => '0'),
             fb_we                => open,
@@ -158,6 +163,10 @@ begin
             fb_data              => open,
             ppu_vram_addr        => ppu_vram_addr,
             ppu_vram_data        => ppu_vram_data,
+            ppu_scy              => ppu_scy,
+            ppu_scx              => ppu_scx,
+            ppu_current_line     => ppu_current_line,
+            ppu_mode             => ppu_mode,
             led_pattern          => unused_led_pattern,
             display_digits       => unused_digits,
             checker_failed       => unused_checker_fail,
@@ -176,11 +185,17 @@ begin
             clk       => clk_cpu,
             reset     => reset_cpu,
             start     => loader_done,
+            scroll_y  => ppu_scy,
+            scroll_x  => ppu_scx,
             vram_addr => ppu_vram_addr,
             vram_data => ppu_vram_data,
             fb_we     => ppu_fb_we,
             fb_addr   => ppu_fb_addr,
             fb_data   => ppu_fb_data,
+            current_line => ppu_current_line,
+            line_active  => open,
+            line_done    => open,
+            ppu_mode     => ppu_mode,
             busy      => ppu_busy,
             done      => ppu_done
         );

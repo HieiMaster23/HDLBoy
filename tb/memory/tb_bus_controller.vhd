@@ -27,6 +27,7 @@ architecture sim of tb_bus_controller is
     signal cpu_write            : std_logic := '0';
     signal cpu_ready            : std_logic;
     signal unsupported_opcode   : std_logic := '0';
+    signal rom_data             : std_logic_vector(7 downto 0);
     signal fb_clear_active      : std_logic := '0';
     signal fb_clear_addr        : unsigned(14 downto 0) := (others => '0');
     signal fb_we                : std_logic;
@@ -34,6 +35,10 @@ architecture sim of tb_bus_controller is
     signal fb_data              : std_logic_vector(1 downto 0);
     signal ppu_vram_addr        : unsigned(12 downto 0) := (others => '0');
     signal ppu_vram_data        : std_logic_vector(7 downto 0);
+    signal ppu_scy              : std_logic_vector(7 downto 0);
+    signal ppu_scx              : std_logic_vector(7 downto 0);
+    signal ppu_current_line     : unsigned(7 downto 0) := (others => '0');
+    signal ppu_mode             : std_logic_vector(1 downto 0) := "00";
     signal led_pattern          : std_logic_vector(3 downto 0);
     signal display_digits       : std_logic_vector(15 downto 0);
     signal checker_failed       : std_logic;
@@ -48,6 +53,12 @@ architecture sim of tb_bus_controller is
     signal sim_done             : boolean := false;
 
 begin
+
+    u_rom: entity work.cpu_video_smoke_rom
+        port map (
+            addr => cpu_addr,
+            data => rom_data
+        );
 
     p_clk: process
     begin
@@ -71,6 +82,7 @@ begin
             cpu_write            => cpu_write,
             cpu_ready            => cpu_ready,
             unsupported_opcode   => unsupported_opcode,
+            rom_data             => rom_data,
             fb_clear_active      => fb_clear_active,
             fb_clear_addr        => fb_clear_addr,
             fb_we                => fb_we,
@@ -78,6 +90,10 @@ begin
             fb_data              => fb_data,
             ppu_vram_addr        => ppu_vram_addr,
             ppu_vram_data        => ppu_vram_data,
+            ppu_scy              => ppu_scy,
+            ppu_scx              => ppu_scx,
+            ppu_current_line     => ppu_current_line,
+            ppu_mode             => ppu_mode,
             led_pattern          => led_pattern,
             display_digits       => display_digits,
             checker_failed       => checker_failed,
@@ -226,18 +242,106 @@ begin
         bus_read_check(x"FF40", x"80", "FAIL: LCDC stub should read back written data");
 
         bus_write(x"FF41", x"78");
-        bus_read_check(x"FF41", x"F8", "FAIL: STAT stub should preserve writable status interrupt bits");
+        bus_read_check(x"FF41", x"FC", "FAIL: STAT should preserve writable bits and report LY=LYC at reset");
 
         bus_write(x"FF42", x"22");
         bus_write(x"FF43", x"33");
         bus_read_check(x"FF42", x"22", "FAIL: SCY stub should read back written data");
         bus_read_check(x"FF43", x"33", "FAIL: SCX stub should read back written data");
-        bus_read_check(x"FF44", x"00", "FAIL: LY stub should remain zero until the PPU owns it");
+        assert ppu_scy = x"22" and ppu_scx = x"33"
+            report "FAIL: PPU scroll outputs should mirror SCY and SCX"
+            severity failure;
+        bus_read_check(x"FF44", x"00", "FAIL: LY should mirror PPU line zero at reset");
 
         bus_write(x"FF45", x"44");
         bus_write(x"FF46", x"55");
         bus_read_check(x"FF45", x"44", "FAIL: LYC stub should read back written data");
         bus_read_check(x"FF46", x"55", "FAIL: DMA stub should read back written data");
+
+        ppu_current_line <= to_unsigned(16#44#, 8);
+        ppu_mode <= "10";
+        wait for 1 ns;
+        bus_read_check(x"FF44", x"44", "FAIL: LY should mirror the current PPU scanline");
+        bus_read_check(x"FF41", x"FE", "FAIL: STAT should report mode 2 and LY=LYC during OAM phase");
+
+        ppu_mode <= "11";
+        wait for 1 ns;
+        bus_read_check(x"FF41", x"FF", "FAIL: STAT should report mode 3 and LY=LYC during transfer phase");
+
+        ppu_mode <= "01";
+        wait for 1 ns;
+        bus_read_check(x"FF41", x"FD", "FAIL: STAT should report mode 1 and LY=LYC during VBlank phase");
+
+        ppu_current_line <= to_unsigned(16#45#, 8);
+        ppu_mode <= "00";
+        wait for 1 ns;
+        bus_read_check(x"FF44", x"45", "FAIL: LY should update when the PPU scanline changes");
+        bus_read_check(x"FF41", x"F8", "FAIL: STAT should clear coincidence and report mode 0 when inactive");
+
+        bus_write(x"FF0F", x"00");
+        bus_read_check(x"FF0F", x"E0", "FAIL: IF should clear before PPU interrupt checks");
+        ppu_current_line <= to_unsigned(143, 8);
+        ppu_mode <= "00";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        ppu_current_line <= to_unsigned(144, 8);
+        ppu_mode <= "01";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        bus_read_check(x"FF0F", x"E1", "FAIL: VBlank entry should request IF bit 0");
+
+        interrupt_vector <= "000";
+        interrupt_ack <= '1';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        interrupt_ack <= '0';
+        bus_read_check(x"FF0F", x"E0", "FAIL: VBlank acknowledge should clear IF bit 0");
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        bus_read_check(x"FF0F", x"E0", "FAIL: VBlank request should be edge-based while condition stays active");
+
+        bus_write(x"FF41", x"08");
+        bus_write(x"FF0F", x"00");
+        ppu_current_line <= to_unsigned(32, 8);
+        ppu_mode <= "11";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        ppu_mode <= "00";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        bus_read_check(x"FF0F", x"E2", "FAIL: STAT Mode 0 interrupt should request IF bit 1");
+
+        bus_write(x"FF41", x"10");
+        bus_write(x"FF0F", x"00");
+        ppu_mode <= "00";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        ppu_mode <= "01";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        bus_read_check(x"FF0F", x"E2", "FAIL: STAT Mode 1 interrupt should request IF bit 1");
+
+        bus_write(x"FF41", x"20");
+        bus_write(x"FF0F", x"00");
+        ppu_mode <= "00";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        ppu_mode <= "10";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        bus_read_check(x"FF0F", x"E2", "FAIL: STAT Mode 2 interrupt should request IF bit 1");
+
+        bus_write(x"FF41", x"40");
+        bus_write(x"FF0F", x"00");
+        bus_write(x"FF45", x"21");
+        ppu_current_line <= to_unsigned(32, 8);
+        ppu_mode <= "11";
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        ppu_current_line <= to_unsigned(33, 8);
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        bus_read_check(x"FF0F", x"E2", "FAIL: STAT LYC interrupt should request IF bit 1");
 
         bus_read_check(x"FF47", x"FC", "FAIL: BGP reset stub should use the common DMG default");
         bus_write(x"FF47", x"E4");

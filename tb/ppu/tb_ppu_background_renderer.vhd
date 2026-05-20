@@ -1,6 +1,6 @@
 -- =============================================================================
 -- Module:      tb_ppu_background_renderer
--- Description: Self-checking testbench for static background tile rendering
+-- Description: Self-checking testbench for background tile rendering and scroll
 -- Author:      Rafael Siqueira de Oliveira
 -- Created:     2026-05-16
 -- Target:      Simulation only (ModelSim-Altera)
@@ -43,15 +43,26 @@ architecture sim of tb_ppu_background_renderer is
     signal sim_done   : boolean := false;
     signal reset      : std_logic := '1';
     signal start      : std_logic := '0';
+    signal scroll_y   : std_logic_vector(7 downto 0) := x"00";
+    signal scroll_x   : std_logic_vector(7 downto 0) := x"00";
     signal vram_addr  : unsigned(12 downto 0);
     signal vram_data  : std_logic_vector(7 downto 0);
     signal fb_we      : std_logic;
     signal fb_addr    : unsigned(14 downto 0);
     signal fb_data    : std_logic_vector(1 downto 0);
+    signal current_line : unsigned(7 downto 0);
+    signal line_active  : std_logic;
+    signal line_done    : std_logic;
+    signal ppu_mode     : std_logic_vector(1 downto 0);
     signal busy       : std_logic;
     signal done       : std_logic;
     signal vram_mem   : memory_t := init_vram;
     signal fb_mem     : framebuffer_t := (others => "00");
+    signal line_count : integer range 0 to 144 := 0;
+    signal seen_mode0 : std_logic := '0';
+    signal seen_mode1 : std_logic := '0';
+    signal seen_mode2 : std_logic := '0';
+    signal seen_mode3 : std_logic := '0';
 
 begin
 
@@ -71,11 +82,17 @@ begin
             clk       => clk,
             reset     => reset,
             start     => start,
+            scroll_y  => scroll_y,
+            scroll_x  => scroll_x,
             vram_addr => vram_addr,
             vram_data => vram_data,
             fb_we     => fb_we,
             fb_addr   => fb_addr,
             fb_data   => fb_data,
+            current_line => current_line,
+            line_active  => line_active,
+            line_done    => line_done,
+            ppu_mode     => ppu_mode,
             busy      => busy,
             done      => done
         );
@@ -90,11 +107,51 @@ begin
     p_fb: process(clk)
     begin
         if rising_edge(clk) then
-            if fb_we = '1' then
+            if reset = '1' then
+                fb_mem <= (others => "00");
+            elsif fb_we = '1' then
                 fb_mem(to_integer(fb_addr)) <= fb_data;
             end if;
         end if;
     end process p_fb;
+
+    p_line_count: process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                line_count <= 0;
+            elsif line_done = '1' then
+                if line_count < 144 then
+                    line_count <= line_count + 1;
+                end if;
+            end if;
+        end if;
+    end process p_line_count;
+
+    p_mode_monitor: process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                seen_mode0 <= '0';
+                seen_mode1 <= '0';
+                seen_mode2 <= '0';
+                seen_mode3 <= '0';
+            else
+                case ppu_mode is
+                    when "00" =>
+                        seen_mode0 <= '1';
+                    when "01" =>
+                        seen_mode1 <= '1';
+                    when "10" =>
+                        seen_mode2 <= '1';
+                    when "11" =>
+                        seen_mode3 <= '1';
+                    when others =>
+                        null;
+                end case;
+            end if;
+        end if;
+    end process p_mode_monitor;
 
     p_stimulus: process
     begin
@@ -110,6 +167,16 @@ begin
         wait until rising_edge(clk);
         wait for 1 ns;
 
+        assert line_count = 144
+            report "FAIL: renderer should complete exactly 144 scanlines"
+            severity failure;
+        assert current_line = to_unsigned(153, 8)
+            report "FAIL: renderer should finish on VBlank line 153"
+            severity failure;
+        assert seen_mode0 = '1' and seen_mode1 = '1' and
+               seen_mode2 = '1' and seen_mode3 = '1'
+            report "FAIL: renderer should expose modes 0, 1, 2, and 3"
+            severity failure;
         assert fb_mem(0) = "11"
             report "FAIL: first checkerboard pixel should be black"
             severity failure;
@@ -124,6 +191,60 @@ begin
             severity failure;
         assert fb_mem(23039) = "00"
             report "FAIL: pixels outside initialized tile map should use tile 0"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        scroll_x <= x"08";
+        scroll_y <= x"00";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait until done = '1';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+
+        assert line_count = 144
+            report "FAIL: SCX render should complete exactly 144 scanlines"
+            severity failure;
+        assert seen_mode0 = '1' and seen_mode1 = '1' and
+               seen_mode2 = '1' and seen_mode3 = '1'
+            report "FAIL: SCX render should expose modes 0, 1, 2, and 3"
+            severity failure;
+        assert fb_mem(0) = "00"
+            report "FAIL: SCX=8 should move the first visible pixel into tile-map column 1"
+            severity failure;
+        assert fb_mem(8) = "00"
+            report "FAIL: SCX=8 should move the first checkerboard tile out of the left edge"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        scroll_x <= x"00";
+        scroll_y <= x"01";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait until done = '1';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+
+        assert line_count = 144
+            report "FAIL: SCY render should complete exactly 144 scanlines"
+            severity failure;
+        assert seen_mode0 = '1' and seen_mode1 = '1' and
+               seen_mode2 = '1' and seen_mode3 = '1'
+            report "FAIL: SCY render should expose modes 0, 1, 2, and 3"
+            severity failure;
+        assert fb_mem(0) = "00"
+            report "FAIL: SCY=1 should move the first visible pixel to tile row 1"
+            severity failure;
+        assert fb_mem(1) = "11"
+            report "FAIL: SCY=1 should invert the first checkerboard row"
             severity failure;
 
         report "=== tb_ppu_background_renderer: ALL TESTS PASSED ===" severity note;

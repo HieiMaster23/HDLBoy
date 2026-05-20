@@ -57,6 +57,32 @@ The project has already completed the early foundation layers:
    - the CPU now writes deterministic tile data and tile-map contents into VRAM;
    - the PPU renders those CPU-authored contents through the VGA path;
    - the complete path has been visually confirmed on the real board.
+8. **Explicit visual test-program flow**
+   - the bus controller now consumes ROM bytes through a port instead of owning
+     embedded demo contents;
+   - dedicated ROM modules hold the smoke and CPU/PPU demo programs.
+9. **First LCD register behavior**
+   - `SCX` and `SCY` now reach the background renderer;
+   - the CPU-authored visual program writes scroll values before rendering.
+10. **Initial scanline-oriented PPU structure**
+    - the background renderer now has explicit visible-line boundaries;
+    - `current_line`, `line_active`, and `line_done` make the next LY/STAT
+      integration step observable.
+11. **Minimal LY/STAT register visibility**
+    - `LY` now reflects the PPU scanline signal through the bus;
+    - this first slice preserved writable bits, reported `LY=LYC`, and exposed
+      the temporary mode field that the next slice replaced.
+12. **Initial PPU mode scheduler**
+    - the renderer now emits an explicit `ppu_mode` value for `STAT`;
+    - the current line-level scheduler reports Mode 2, Mode 3, Mode 0, and
+      Mode 1/VBlank deterministically;
+    - this replaces the previous active-line placeholder without changing the
+      visual output.
+13. **Initial VBlank and STAT interrupts**
+    - VBlank entry now requests IF bit 0;
+    - enabled STAT Mode 0, Mode 1, Mode 2, and `LY=LYC` sources now request
+      IF bit 1;
+    - requests are edge-detected at the current line-level scheduler boundary.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -240,10 +266,12 @@ The next recommended sequence is:
    baseline;
 3. preserve the new CPU-authored VRAM visual top as the first combined-system
    baseline;
-4. replace the hardcoded integration ROM with a clearer test-program flow;
-5. add scroll-facing LCD register behavior and move from one-shot rendering
-   toward scanline-timed background generation;
-6. import broader timer coverage later if the local Blargg package proves too
+4. refine the line-level scheduler toward real dot counts while preserving the
+   current IF/STAT contract;
+5. add remaining background-facing register behavior as needed;
+6. introduce OAM and sprite-related timing only after the background path is
+   stable;
+7. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -256,6 +284,14 @@ The EP4CE6 is a tight target. The last CPU/timing checkpoint used:
 
 The first real VRAM slice already raised memory use to:
 
+- 177,152 / 276,480 block-memory bits;
+- 22 / 30 M9K blocks.
+
+The current CPU/PPU visual top with scroll, scanline structure, minimal
+`LY/STAT` visibility, the initial PPU mode scheduler, and initial VBlank/STAT
+interrupt requests uses:
+
+- 4,324 / 6,272 logic elements;
 - 177,152 / 276,480 block-memory bits;
 - 22 / 30 M9K blocks.
 

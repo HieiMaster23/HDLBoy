@@ -13,6 +13,11 @@
 -- 2026-05-14 - Added registered WRAM/HRAM reads and CPU ready signaling
 -- 2026-05-14 - Replaced timer stub with divider-edge DMG timer block
 -- 2026-05-16 - Reserved real VRAM at 0x8000..0x9FFF for the future PPU path
+-- 2026-05-17 - Moved test ROM contents behind an external ROM data port
+-- 2026-05-18 - Exposed SCY/SCX to the PPU path
+-- 2026-05-19 - Added minimal LY/STAT readback from PPU scanline state
+-- 2026-05-19 - Routed initial PPU mode scheduler into STAT
+-- 2026-05-20 - Added initial VBlank and STAT interrupt request generation
 -- =============================================================================
 
 library ieee;
@@ -20,9 +25,6 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity bus_controller is
-    generic (
-        G_USE_CPU_PPU_DEMO_ROM : boolean := false
-    );
     port (
         clk                 : in  std_logic;
         reset               : in  std_logic;
@@ -34,6 +36,7 @@ entity bus_controller is
         cpu_write           : in  std_logic;
         cpu_ready           : out std_logic;
         unsupported_opcode  : in  std_logic;
+        rom_data            : in  std_logic_vector(7 downto 0);
 
         fb_clear_active     : in  std_logic;
         fb_clear_addr       : in  unsigned(14 downto 0);
@@ -42,6 +45,10 @@ entity bus_controller is
         fb_data             : out std_logic_vector(1 downto 0);
         ppu_vram_addr       : in  unsigned(12 downto 0);
         ppu_vram_data       : out std_logic_vector(7 downto 0);
+        ppu_scy             : out std_logic_vector(7 downto 0);
+        ppu_scx             : out std_logic_vector(7 downto 0);
+        ppu_current_line    : in  unsigned(7 downto 0);
+        ppu_mode            : in  std_logic_vector(1 downto 0);
 
         led_pattern         : out std_logic_vector(3 downto 0);
         display_digits      : out std_logic_vector(15 downto 0);
@@ -95,73 +102,11 @@ architecture rtl of bus_controller is
     constant IE_ADDR            : std_logic_vector(15 downto 0) := x"FFFF";
     constant PASS_CODE          : std_logic_vector(7 downto 0)  := x"A5";
     constant EXPECTED_FB_WRITES : unsigned(7 downto 0) := to_unsigned(64, 8);
-    constant SMOKE_ROM_LAST_INDEX    : integer := 280;
-    constant PPU_DEMO_ROM_LAST_INDEX : integer := 82;
     constant WRAM_LAST_INDEX    : integer := 8191;
     constant HRAM_LAST_INDEX    : integer := 126;
 
-    type smoke_rom_t is array (0 to SMOKE_ROM_LAST_INDEX) of std_logic_vector(7 downto 0);
-    type ppu_demo_rom_t is array (0 to PPU_DEMO_ROM_LAST_INDEX) of std_logic_vector(7 downto 0);
     type wram_t is array (0 to WRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
     type hram_t is array (0 to HRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
-    constant SMOKE_ROM : smoke_rom_t := (
-        x"31", x"FE", x"FF", x"21", x"80", x"FF", x"3E", x"01",
-        x"77", x"3E", x"03", x"21", x"30", x"A3", x"77", x"21",
-        x"31", x"A3", x"77", x"21", x"D2", x"A3", x"77", x"21",
-        x"D3", x"A3", x"77", x"21", x"74", x"A4", x"77", x"21",
-        x"75", x"A4", x"77", x"21", x"16", x"A5", x"77", x"21",
-        x"17", x"A5", x"77", x"21", x"B8", x"A5", x"77", x"21",
-        x"B9", x"A5", x"77", x"21", x"5A", x"A6", x"77", x"21",
-        x"5B", x"A6", x"77", x"21", x"FC", x"A6", x"77", x"21",
-        x"FD", x"A6", x"77", x"21", x"9E", x"A7", x"77", x"21",
-        x"9F", x"A7", x"77", x"21", x"40", x"A8", x"77", x"21",
-        x"41", x"A8", x"77", x"21", x"E2", x"A8", x"77", x"21",
-        x"E3", x"A8", x"77", x"21", x"84", x"A9", x"77", x"21",
-        x"85", x"A9", x"77", x"21", x"26", x"AA", x"77", x"21",
-        x"27", x"AA", x"77", x"21", x"C8", x"AA", x"77", x"21",
-        x"C9", x"AA", x"77", x"21", x"6A", x"AB", x"77", x"21",
-        x"6B", x"AB", x"77", x"21", x"0C", x"AC", x"77", x"21",
-        x"0D", x"AC", x"77", x"21", x"AE", x"AC", x"77", x"21",
-        x"AF", x"AC", x"77", x"21", x"50", x"B7", x"77", x"21",
-        x"51", x"B7", x"77", x"21", x"52", x"B7", x"77", x"21",
-        x"53", x"B7", x"77", x"21", x"54", x"B7", x"77", x"21",
-        x"55", x"B7", x"77", x"21", x"56", x"B7", x"77", x"21",
-        x"57", x"B7", x"77", x"21", x"58", x"B7", x"77", x"21",
-        x"59", x"B7", x"77", x"21", x"5A", x"B7", x"77", x"21",
-        x"5B", x"B7", x"77", x"21", x"5C", x"B7", x"77", x"21",
-        x"5D", x"B7", x"77", x"21", x"5E", x"B7", x"77", x"21",
-        x"5F", x"B7", x"77", x"21", x"60", x"B7", x"77", x"21",
-        x"61", x"B7", x"77", x"21", x"62", x"B7", x"77", x"21",
-        x"63", x"B7", x"77", x"21", x"64", x"B7", x"77", x"21",
-        x"65", x"B7", x"77", x"21", x"66", x"B7", x"77", x"21",
-        x"67", x"B7", x"77", x"21", x"68", x"B7", x"77", x"21",
-        x"69", x"B7", x"77", x"21", x"6A", x"B7", x"77", x"21",
-        x"6B", x"B7", x"77", x"21", x"6C", x"B7", x"77", x"21",
-        x"6D", x"B7", x"77", x"21", x"6E", x"B7", x"77", x"21",
-        x"6F", x"B7", x"77", x"21", x"80", x"FF", x"3E", x"0D",
-        x"77", x"21", x"81", x"FF", x"3E", x"A5", x"77", x"18",
-        x"FE"
-    );
-
-    constant PPU_DEMO_ROM : ppu_demo_rom_t := (
-        -- Initialize SP and clear tile 0 at 0x8000..0x800F.
-        x"31", x"FE", x"FF", x"21", x"00", x"80", x"AF", x"06",
-        x"10", x"22", x"05", x"20", x"FC",
-        -- Write tile 1 checkerboard data at 0x8010..0x801F.
-        x"21", x"10", x"80", x"3E", x"AA", x"22", x"22", x"3E",
-        x"55", x"22", x"22", x"3E", x"AA", x"22", x"22", x"3E",
-        x"55", x"22", x"22", x"3E", x"AA", x"22", x"22", x"3E",
-        x"55", x"22", x"22", x"3E", x"AA", x"22", x"22", x"3E",
-        x"55", x"22", x"22",
-        -- Clear the complete 32x32 background map at 0x9800..0x9BFF.
-        x"21", x"00", x"98", x"AF", x"06", x"04", x"0E", x"00",
-        x"22", x"0D", x"20", x"FC", x"05", x"20", x"F7",
-        -- Write an alternating first tile row: tile 1, tile 0, repeated.
-        x"21", x"00", x"98", x"06", x"0A", x"3E", x"01", x"22",
-        x"AF", x"22", x"05", x"20", x"F8",
-        -- Signal completion through debug I/O at 0xFF80, then park forever.
-        x"21", x"80", x"FF", x"36", x"01", x"18", x"FE"
-    );
 
     signal io_led_reg        : std_logic_vector(7 downto 0);
     signal io_status_reg     : std_logic_vector(7 downto 0);
@@ -192,6 +137,10 @@ architecture rtl of bus_controller is
     signal wx_reg            : std_logic_vector(7 downto 0);
     signal if_reg            : std_logic_vector(7 downto 0);
     signal ie_reg            : std_logic_vector(7 downto 0);
+    signal vblank_irq_condition     : std_logic;
+    signal vblank_irq_condition_reg : std_logic;
+    signal stat_irq_condition       : std_logic;
+    signal stat_irq_condition_reg   : std_logic;
     signal wram              : wram_t;
     signal hram              : hram_t;
     signal led_pattern_reg   : std_logic_vector(3 downto 0);
@@ -211,27 +160,25 @@ architecture rtl of bus_controller is
     signal wram_q            : std_logic_vector(7 downto 0);
     signal hram_q            : std_logic_vector(7 downto 0);
 
-    function rom_byte(addr_in : std_logic_vector(15 downto 0)) return std_logic_vector is
-        variable addr_u : unsigned(15 downto 0);
-        variable data_v : std_logic_vector(7 downto 0);
+    function stat_read_value(
+        stat_writable_in : std_logic_vector(7 downto 0);
+        ly_in            : unsigned(7 downto 0);
+        lyc_in           : std_logic_vector(7 downto 0);
+        mode_in          : std_logic_vector(1 downto 0))
+        return std_logic_vector is
+        variable value_v : std_logic_vector(7 downto 0);
     begin
-        addr_u := unsigned(addr_in);
-        if G_USE_CPU_PPU_DEMO_ROM then
-            if addr_u <= to_unsigned(PPU_DEMO_ROM_LAST_INDEX, 16) then
-                data_v := PPU_DEMO_ROM(to_integer(addr_u));
-            else
-                data_v := x"00";
-            end if;
+        value_v := "1" & stat_writable_in(6 downto 3) & "000";
+        if ly_in = unsigned(lyc_in) then
+            value_v(2) := '1';
         else
-            if addr_u <= to_unsigned(SMOKE_ROM_LAST_INDEX, 16) then
-                data_v := SMOKE_ROM(to_integer(addr_u));
-            else
-                data_v := x"00";
-            end if;
+            value_v(2) := '0';
         end if;
 
-        return data_v;
-    end function rom_byte;
+        value_v(1 downto 0) := mode_in;
+
+        return value_v;
+    end function stat_read_value;
 
 begin
 
@@ -260,6 +207,13 @@ begin
     timer_write_tma <= '1' when cpu_write = '1' and cpu_addr = IO_TMA_ADDR else '0';
     timer_write_tac <= '1' when cpu_write = '1' and cpu_addr = IO_TAC_ADDR else '0';
     vram_cpu_we <= cpu_write and vram_selected;
+    vblank_irq_condition <= '1' when ppu_mode = "01" and
+                                      ppu_current_line = to_unsigned(144, 8) else '0';
+    stat_irq_condition <= '1' when
+        (stat_reg(6) = '1' and ppu_current_line = unsigned(lyc_reg)) or
+        (stat_reg(5) = '1' and ppu_mode = "10") or
+        (stat_reg(4) = '1' and ppu_mode = "01") or
+        (stat_reg(3) = '1' and ppu_mode = "00") else '0';
 
     u_timer: entity work.timer
         port map (
@@ -294,7 +248,8 @@ begin
                            lcdc_reg, stat_reg, scy_reg, scx_reg, lyc_reg,
                            dma_reg, bgp_reg, obp0_reg, obp1_reg, wy_reg,
                            wx_reg, if_reg, ie_reg, vram_selected, wram_selected,
-                           hram_selected, io_selected, vram_q, wram_q, hram_q)
+                           hram_selected, io_selected, vram_q, wram_q, hram_q,
+                           rom_data, ppu_current_line, ppu_mode)
     begin
         if cpu_read = '1' then
             case cpu_addr is
@@ -317,13 +272,14 @@ begin
                 when IO_LCDC_ADDR =>
                     cpu_data_in <= lcdc_reg;
                 when IO_STAT_ADDR =>
-                    cpu_data_in <= stat_reg;
+                    cpu_data_in <= stat_read_value(stat_reg, ppu_current_line,
+                                                   lyc_reg, ppu_mode);
                 when IO_SCY_ADDR =>
                     cpu_data_in <= scy_reg;
                 when IO_SCX_ADDR =>
                     cpu_data_in <= scx_reg;
                 when IO_LY_ADDR =>
-                    cpu_data_in <= x"00";
+                    cpu_data_in <= std_logic_vector(ppu_current_line);
                 when IO_LYC_ADDR =>
                     cpu_data_in <= lyc_reg;
                 when IO_DMA_ADDR =>
@@ -354,13 +310,13 @@ begin
                     elsif hram_selected = '1' then
                         cpu_data_in <= hram_q;
                     elsif unsigned(cpu_addr) <= x"7FFF" then
-                        cpu_data_in <= rom_byte(cpu_addr);
+                        cpu_data_in <= rom_data;
                     else
                         cpu_data_in <= x"FF";
                     end if;
             end case;
         else
-            cpu_data_in <= rom_byte(cpu_addr);
+            cpu_data_in <= rom_data;
         end if;
     end process p_memory_read;
 
@@ -388,6 +344,8 @@ begin
                 wx_reg <= (others => '0');
                 if_reg <= x"E0";
                 ie_reg <= (others => '0');
+                vblank_irq_condition_reg <= '0';
+                stat_irq_condition_reg <= '0';
                 sync_read_valid <= '0';
                 sync_read_addr <= (others => '0');
                 fb_write_count <= (others => '0');
@@ -396,9 +354,19 @@ begin
                 final_passed_reg <= '0';
             else
                 serial_debug_valid_reg <= '0';
+                vblank_irq_condition_reg <= vblank_irq_condition;
+                stat_irq_condition_reg <= stat_irq_condition;
 
                 if timer_interrupt_set = '1' then
                     if_reg(2) <= '1';
+                end if;
+
+                if vblank_irq_condition = '1' and vblank_irq_condition_reg = '0' then
+                    if_reg(0) <= '1';
+                end if;
+
+                if stat_irq_condition = '1' and stat_irq_condition_reg = '0' then
+                    if_reg(1) <= '1';
                 end if;
 
                 if interrupt_ack = '1' then
@@ -541,6 +509,8 @@ begin
     serial_debug_valid <= serial_debug_valid_reg;
     serial_debug_data <= serial_debug_data_reg;
     debug_fb_write_count <= std_logic_vector(fb_write_count);
+    ppu_scy <= scy_reg;
+    ppu_scx <= scx_reg;
 
     display_digits <= x"1234" when final_passed_reg = '1' and checker_failed_reg = '0' else
                       x"EEEE" when checker_failed_reg = '1' else

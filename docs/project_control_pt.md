@@ -64,6 +64,14 @@ O projeto já possui:
 - primeiro caminho integrado CPU -> VRAM -> PPU -> framebuffer implementado;
 - primeiro caminho integrado CPU -> VRAM -> PPU -> framebuffer -> VGA validado
   em hardware real com padrão de tiles visível no monitor;
+- fluxo de ROMs de teste visuais extraído do barramento para módulos ROM
+  dedicados;
+- `SCX` e `SCY` conectados ao renderer de background;
+- renderer de background reorganizado com progressão explícita por scanlines
+  visíveis;
+- `LY` e `STAT` mínimos conectados à progressão de scanline da PPU;
+- scheduler inicial de modos da PPU conectado ao campo de modo de `STAT`;
+- primeira geração de interrupções VBlank/STAT a partir do scheduler da PPU;
 - WRAM completa de 8 KiB com leitura registrada;
 - HRAM e stubs de I/O;
 - IE e IF básicos;
@@ -179,6 +187,24 @@ Sessão atual em andamento, ainda sem checkpoint:
   renderiza;
 - o mesmo top foi validado em hardware real: borda preta, área central clara e
   primeira faixa alternando tiles brancos e quadriculados.
+- `bus_controller.vhd` deixou de possuir o conteúdo dos programas de integração;
+  agora ele recebe `rom_data`, enquanto `cpu_video_smoke_rom.vhd` e
+  `cpu_ppu_background_demo_rom.vhd` guardam os programas específicos.
+- `cpu_ppu_background_demo_rom.vhd` agora escreve `SCY=1` e `SCX=8` antes de
+  liberar o renderer, tornando a imagem dependente de registradores LCD reais.
+- `ppu_background_renderer.vhd` agora possui estados explícitos de início e fim
+  de linha, expondo `current_line`, `line_active` e `line_done` para preparar
+  LY/STAT, VBlank e modos reais da PPU em etapas futuras.
+- `bus_controller.vhd` agora lê `LY` a partir de `current_line` e calcula um
+  `STAT` mínimo com bits graváveis, coincidência `LY=LYC` e modo provisório de
+  linha ativa.
+- `ppu_background_renderer.vhd` agora emite `ppu_mode` explicitamente, cobrindo
+  os modos 2, 3, 0 e 1 de forma determinística no nível de linha;
+- `bus_controller.vhd` deixou de inferir o modo de `STAT` por linha ativa e
+  passou a rotear o modo recebido da PPU.
+- `bus_controller.vhd` agora solicita IF bit 0 na entrada inicial de VBlank e
+  IF bit 1 nas condições STAT habilitadas: Mode 0, Mode 1, Mode 2 e
+  coincidência `LY=LYC`.
 
 Validação rápida executada nesta sessão:
 
@@ -216,6 +242,29 @@ Validação rápida executada nesta sessão:
 - `run_ppu_background_renderer.do` — Passed;
 - `run_ppu_background_demo_top.do` — Passed;
 - `run_cpu_ppu_background_demo_top.do` — Passed;
+- extração das ROMs de integração — validada mantendo `run_bus_controller.do`,
+  `run_cpu_video_smoke_top.do`, `run_ppu_background_demo_top.do` e
+  `run_cpu_ppu_background_demo_top.do` funcionais;
+- suporte inicial a `SCX`/`SCY` — validado por `run_ppu_background_renderer.do`,
+  `run_bus_controller.do`, `run_ppu_background_demo_top.do` e
+  `run_cpu_ppu_background_demo_top.do`;
+- reorganização inicial por scanlines — validada por
+  `run_ppu_background_renderer.do`, `run_bus_controller.do`,
+  `run_ppu_background_demo_top.do` e `run_cpu_ppu_background_demo_top.do`;
+- `LY/STAT` mínimo — validado por `run_bus_controller.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
+  `run_cpu_video_smoke_top.do`, `run_timer.do`, `run_cpu_timing_probe.do` e
+  `run_cpu_instr_timing.do`;
+- scheduler inicial de modos da PPU — validado por `run_ppu_background_renderer.do`,
+  `run_bus_controller.do`, `run_ppu_background_demo_top.do`,
+  `run_cpu_video_smoke_top.do`, `run_timer.do`,
+  `run_cpu_ppu_background_demo_top.do`, `run_cpu_timing_probe.do` e
+  `run_cpu_instr_timing.do`;
+- interrupções iniciais VBlank/STAT — validadas por `run_bus_controller.do`,
+  `run_ppu_background_renderer.do`, `run_ppu_background_demo_top.do`,
+  `run_cpu_ppu_background_demo_top.do`, `run_cpu_video_smoke_top.do`,
+  `run_timer.do`, `run_cpu_timing_probe.do`, `run_cpu_instr_timing.do`,
+  `run_cpu_interrupt_time.do` e `run_cpu_halt_bug.do`;
 - build Quartus completo em `2026-05-16` — Passed, com `4.283 / 6.272` LEs
   usados (`68%`) e temporização fechada após o checkpoint de timing Blargg.
 - build Quartus completo da primeira fatia de VRAM em `2026-05-16` — Passed,
@@ -231,6 +280,26 @@ Validação rápida executada nesta sessão:
   memória (`64%`) e `22 / 30` blocos M9K usados (`73%`).
 - validação em hardware real do `cpu_ppu_background_demo_top` em `2026-05-16`
   — Passed visualmente no monitor VGA-HDMI com o padrão esperado de tiles.
+- build Quartus completo após a extração das ROMs em `2026-05-17` — Passed,
+  preservando `4.235 / 6.272` LEs usados (`68%`), `177.152 / 276.480` bits de
+  memória (`64%`) e `22 / 30` blocos M9K usados (`73%`).
+- build Quartus completo após `SCX`/`SCY` em `2026-05-18` — Passed, com
+  `4.251 / 6.272` LEs usados (`68%`), `177.152 / 276.480` bits de memória
+  (`64%`) e `22 / 30` blocos M9K usados (`73%`).
+- build Quartus completo após a reorganização por scanlines em `2026-05-19` —
+  Passed, com `4.271 / 6.272` LEs usados (`68%`), `177.152 / 276.480` bits de
+  memória (`64%`) e `22 / 30` blocos M9K usados (`73%`).
+- build Quartus completo após `LY/STAT` mínimo em `2026-05-19` — Passed, com
+  `4.283 / 6.272` LEs usados (`68%`), `177.152 / 276.480` bits de memória
+  (`64%`) e `22 / 30` blocos M9K usados (`73%`).
+- build Quartus completo após o scheduler inicial de modos da PPU em
+  `2026-05-19` — Passed, com `4.300 / 6.272` LEs usados (`69%`),
+  `177.152 / 276.480` bits de memória (`64%`) e `22 / 30` blocos M9K usados
+  (`73%`).
+- build Quartus completo após as interrupções iniciais VBlank/STAT em
+  `2026-05-20` — Passed, com `4.324 / 6.272` LEs usados (`69%`),
+  `177.152 / 276.480` bits de memória (`64%`) e `22 / 30` blocos M9K usados
+  (`73%`).
 
 Checkpoint pronto para formalização:
 
@@ -380,17 +449,22 @@ Implementado:
   framebuffer -> VGA;
 - validação visual em hardware real do top integrado, confirmando que a imagem
   exibida já depende de conteúdo escrito pela CPU e lido pela PPU;
+- progressão explícita por 144 scanlines visíveis no renderer de background,
+  ainda sem temporização por dot;
+- `LY` e `STAT` mínimos visíveis pela CPU;
+- modos iniciais 2, 3, 0 e 1 visíveis em `STAT`;
+- IF bit 0 solicitado na entrada de VBlank inicial;
+- IF bit 1 solicitado por condições STAT habilitadas;
 - display de sete segmentos mostrando `1234` em caso de sucesso.
 
 Ainda pendente:
 
-- PPU scanline-accurate;
-- scroll;
+- PPU dot-accurate com modos reais;
+- scroll completo dentro do modelo temporal real da PPU;
 - sprites;
 - window;
-- modos da PPU;
-- VBlank;
-- STAT;
+- VBlank dot-accurate e alinhado ao LCD real;
+- STAT dot-accurate, com bloqueios e coincidência fiéis;
 - DMA OAM.
 
 ### Testes
@@ -456,26 +530,23 @@ O marco visual atual prova que os blocos já cooperam fisicamente no hardware:
 CPU -> barramento -> VRAM -> PPU -> framebuffer -> VGA
 ```
 
-Ele ainda não prova uma PPU fiel ao DMG-01. O renderer continua sendo estático e
-de execução única, sem scroll, modos, sprites ou temporização por scanline.
+Ele ainda não prova uma PPU fiel ao DMG-01. O renderer já possui scroll básico
+por `SCX`/`SCY`, progressão explícita por scanlines visíveis, um scheduler
+inicial de modos 2, 3, 0 e 1, e solicitações iniciais de VBlank/STAT. Ainda não
+possui temporização por dot, sprites, window, comportamento LCD completo ou DMA.
 
 ### Próxima Linha de Trabalho
 
 1. Preservar a suíte Blargg de CPU/timing como regressão obrigatória.
-2. Substituir a ROM de integração embutida por um fluxo de programa de teste mais
-   explícito.
-3. Introduzir os primeiros registradores LCD que alteram o background, começando
-   por `SCX` e `SCY`.
-4. Evoluir o produtor de background de preenchimento único para geração por
-   scanline.
-5. Atualizar documentação e recursos após cada corte verificável.
+2. Refinar o scheduler de modos em direção a contagens reais de dot.
+3. Atualizar documentação e recursos após cada corte verificável.
 
 Depois disso:
 
-1. adicionar scroll;
+1. refinar o timing dos modos da PPU;
 2. adicionar window;
 3. adicionar OAM/sprites;
-4. implementar modos da PPU, VBlank, STAT e DMA;
+4. implementar DMA;
 5. retomar joypad e fluxo de ROM para começar a aproximar o sistema de ROMs
    gráficas reais.
 
@@ -742,14 +813,14 @@ Resultado:
 - a síntese caiu de `4.511 / 6.272` para `4.268 / 6.272` LEs, recuperando 243
   LEs sem perder a cobertura temporal já conquistada.
 
-## 14. Próximo Alvo Oficial
+## 14. Alvo Oficial Recém-Concluído
 
-O próximo alvo oficial recomendado é:
+O alvo oficial recém-concluído foi:
 
 ```text
-Substituir a ROM de integração embutida por um fluxo de programa de teste mais
-explícito, mantendo o novo caminho CPU -> VRAM -> PPU -> framebuffer -> VGA e
-preservando toda a regressão já conquistada.
+Evoluir o renderer de background de preenchimento único para uma organização por
+scanlines, mantendo `SCX`/`SCY`, o fluxo explícito de ROM de teste e toda a
+regressão já conquistada.
 ```
 
 Critério de sucesso:
@@ -769,8 +840,150 @@ Critério de sucesso:
 - preservar `JR cc,e` em `2/3` ciclos para não tomado/tomado;
 - preservar a porta dual de VRAM já inferida;
 - manter o primeiro renderer restrito a background, sem sprites, window ou DMA;
+- preservar `SCX`/`SCY` já ativos no cálculo de background;
 - repetir a síntese e registrar o custo do top completo à medida que a PPU
   crescer.
+
+Resultado:
+
+- `ppu_background_renderer.vhd` agora possui estados explícitos de começo e fim
+  de scanline;
+- o renderer expõe `current_line`, `line_active` e `line_done`;
+- o testbench unitário confirma 144 scanlines completas por render;
+- os testes de pixel e scroll por `SCX`/`SCY` continuam passando;
+- `run_ppu_background_renderer.do`, `run_bus_controller.do`,
+  `run_ppu_background_demo_top.do` e `run_cpu_ppu_background_demo_top.do`
+  passaram;
+- `run_cpu_timing_probe.do`, `run_timer.do` e `run_cpu_instr_timing.do`
+  também passaram como regressão de segurança;
+- o build Quartus completo passou com `4.271 / 6.272` LEs, `177.152 / 276.480`
+  bits de memória e `22 / 30` M9Ks.
+
+Alvo seguinte concluído:
+
+```text
+Conectar a progressão por scanline a um modelo mínimo de registradores LY/STAT,
+sem ainda implementar sprites, window, DMA ou modos dot-accurate completos.
+```
+
+Resultado:
+
+- `LY` em `0xFF44` agora reflete `current_line` vindo da PPU;
+- `STAT` em `0xFF41` preserva os bits graváveis 6..3, calcula a coincidência
+  `LY=LYC` no bit 2 e expõe um modo provisório;
+- o modo provisório é `3` enquanto a linha de background está ativa e `0` fora
+  dela;
+- `tb_bus_controller` valida `LY`, coincidência `LY=LYC`, modo ativo e modo
+  inativo;
+- as regressões rápidas de PPU, CPU/PPU, smoke visual, timer e
+  `instr_timing.gb` passaram;
+- o build Quartus completo passou com `4.283 / 6.272` LEs, `177.152 / 276.480`
+  bits de memória e `22 / 30` M9Ks.
+
+Alvo seguinte concluído:
+
+```text
+Substituir o modo provisório de `STAT` por um scheduler inicial de linha da PPU,
+com fases visíveis, HBlank e VBlank mínimos, mantendo o caminho visual atual.
+```
+
+Critério de sucesso sugerido:
+
+- preservar `LY` e `LYC`;
+- reportar modos básicos 2, 3, 0 e 1 de forma determinística;
+- gerar uma base para VBlank futuro sem ainda exigir sprites ou DMA;
+- manter o padrão visual atual;
+- manter `run_bus_controller.do`, `run_ppu_background_renderer.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
+  `run_cpu_video_smoke_top.do` e `run_cpu_instr_timing.do` passando;
+- sintetizar e registrar custo antes de expandir para interrupções STAT reais.
+
+Resultado:
+
+- `ppu_background_renderer.vhd` agora emite `ppu_mode` como fonte explícita dos
+  bits de modo de `STAT`;
+- o renderer reporta Mode 2 no começo da linha visível, Mode 3 durante a
+  renderização do background, Mode 0 no fim da linha visível e Mode 1 durante a
+  faixa inicial de VBlank `144..153`;
+- `bus_controller.vhd` passou a rotear `ppu_mode` diretamente para `STAT`, sem
+  inferir o modo por `line_active`;
+- `tb_bus_controller` valida os modos 0, 1, 2 e 3 em `STAT`;
+- `tb_ppu_background_renderer` confirma que os quatro modos aparecem durante a
+  renderização completa;
+- as regressões rápidas de PPU, top integrado, smoke visual, timer e
+  `instr_timing.gb` passaram;
+- o build Quartus completo passou com `4.300 / 6.272` LEs, `177.152 / 276.480`
+  bits de memória e `22 / 30` M9Ks.
+
+Limitação importante:
+
+- este scheduler ainda é de nível de linha, não de nível de dot. Ele cria a
+  fonte correta para o barramento e para os próximos testes, mas ainda não
+  representa os 80 dots de Mode 2, a janela variável de Mode 3 nem o HBlank
+  restante com precisão de hardware real.
+
+Alvo seguinte concluído:
+
+```text
+Usar o scheduler inicial de modos da PPU para implementar a base de VBlank e
+STAT interrupt: IF bit 0 no início do VBlank, condições iniciais de STAT
+selecionadas pelos bits 6..3, e testes controlados sem alterar o visual atual.
+```
+
+Critério de sucesso sugerido:
+
+- levantar IF bit 0 quando `LY` entra em 144;
+- manter `LY`, `LYC` e o campo de modo de `STAT` funcionando;
+- implementar a primeira versão de solicitações STAT para Mode 0, Mode 1,
+  Mode 2 e coincidência `LY=LYC`;
+- manter o padrão visual atual;
+- preservar as regressões Blargg de CPU/timing como teste de segurança;
+- manter `run_bus_controller.do`, `run_ppu_background_renderer.do`,
+  `run_ppu_background_demo_top.do`, `run_cpu_ppu_background_demo_top.do`,
+  `run_cpu_video_smoke_top.do`, `run_timer.do` e `run_cpu_instr_timing.do`
+  passando;
+- sintetizar e registrar custo antes de avançar para timing por dot.
+
+Resultado:
+
+- `bus_controller.vhd` agora detecta a borda de entrada em VBlank inicial e
+  seta IF bit 0;
+- as condições STAT habilitadas por bits 6..3 agora setam IF bit 1 para
+  coincidência `LY=LYC`, Mode 2, Mode 1 e Mode 0;
+- a solicitação STAT é detectada por borda da condição combinada, evitando
+  rearme imediato quando a CPU reconhece a interrupção enquanto a condição
+  continua ativa;
+- `tb_bus_controller` valida VBlank, acknowledge sem rearme, Mode 0, Mode 1,
+  Mode 2 e coincidência `LY=LYC`;
+- as regressões rápidas de PPU, top integrado, smoke visual, timer,
+  `instr_timing.gb`, `interrupt_time.gb` e `halt_bug.gb` passaram;
+- o build Quartus completo passou com `4.324 / 6.272` LEs, `177.152 / 276.480`
+  bits de memória e `22 / 30` M9Ks.
+
+Limitação importante:
+
+- esta ainda é uma base de interrupções em nível de linha. A geração ocorre a
+  partir do scheduler atual da PPU, que ainda não modela duração real de Mode 2,
+  duração variável de Mode 3, HBlank restante por dot, LCD enable ou os detalhes
+  finos de bloqueio de STAT do hardware original.
+
+Próximo alvo oficial recomendado:
+
+```text
+Refinar a PPU de scheduler por linha para um scheduler por dots, mantendo o
+contrato atual de LY/STAT/IF e preservando o padrão visual CPU -> VRAM -> PPU.
+```
+
+Critério de sucesso sugerido:
+
+- introduzir contador de dots por scanline;
+- manter 456 dots por linha como base arquitetural;
+- preservar Mode 2, Mode 3, Mode 0 e Mode 1 no campo `STAT`;
+- manter VBlank em `LY=144..153`;
+- preservar IF bit 0 e IF bit 1 já implementados;
+- não adicionar sprites, window ou DMA nesta fatia;
+- manter as regressões visuais e Blargg de CPU/timing passando;
+- sintetizar e registrar custo antes de avançar para OAM/sprites.
 
 ## 15. Princípio de Engenharia do Projeto
 

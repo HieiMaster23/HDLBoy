@@ -9,6 +9,7 @@
 -- Revision History:
 -- 2026-05-12 - Initial CPU + framebuffer + VGA integration smoke test
 -- 2026-05-13 - Moved ROM, debug I/O, and framebuffer decode to bus_controller
+-- 2026-05-17 - Connected the extracted smoke-program ROM module
 -- =============================================================================
 
 library ieee;
@@ -59,6 +60,7 @@ architecture rtl of cpu_video_smoke_top is
     signal mem_read       : std_logic;
     signal mem_write      : std_logic;
     signal mem_ready      : std_logic;
+    signal rom_data       : std_logic_vector(7 downto 0);
 
     signal led_pattern    : std_logic_vector(3 downto 0);
     signal display_digits : std_logic_vector(15 downto 0);
@@ -188,6 +190,12 @@ begin
             debug_state        => open
         );
 
+    u_rom: entity work.cpu_video_smoke_rom
+        port map (
+            addr => mem_addr,
+            data => rom_data
+        );
+
     u_bus: entity work.bus_controller
         port map (
             clk                  => clk_cpu,
@@ -199,6 +207,7 @@ begin
             cpu_write            => mem_write,
             cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
+            rom_data             => rom_data,
             fb_clear_active      => clear_active,
             fb_clear_addr        => clear_addr,
             fb_we                => fb_we_a,
@@ -206,6 +215,10 @@ begin
             fb_data              => fb_data_a,
             ppu_vram_addr        => (others => '0'),
             ppu_vram_data        => ppu_vram_data,
+            ppu_scy              => open,
+            ppu_scx              => open,
+            ppu_current_line     => (others => '0'),
+            ppu_mode             => "00",
             led_pattern          => led_pattern,
             display_digits       => display_digits,
             checker_failed       => checker_failed,

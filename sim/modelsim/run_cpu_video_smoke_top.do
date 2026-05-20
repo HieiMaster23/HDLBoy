@@ -16,6 +16,7 @@ vcom -93 ../../rtl/io/seven_segment_mux.vhd
 vcom -93 ../../rtl/video/vga_controller.vhd
 vcom -93 ../../rtl/memory/framebuffer.vhd
 vcom -93 ../../rtl/memory/vram.vhd
+vcom -93 ../../rtl/memory/cpu_video_smoke_rom.vhd
 vcom -93 ../../rtl/memory/bus_controller.vhd
 vcom -93 ../../rtl/video/vga_pixel_pipeline.vhd
 vcom -93 ../../rtl/top/cpu_video_smoke_top.vhd

@@ -8,6 +8,7 @@
 -- =============================================================================
 -- Revision History:
 -- 2026-05-16 - Initial CPU -> VRAM -> PPU -> framebuffer integration demo
+-- 2026-05-17 - Connected the extracted CPU/PPU demo ROM module
 -- =============================================================================
 
 library ieee;
@@ -48,6 +49,7 @@ architecture rtl of cpu_ppu_background_demo_top is
     signal mem_read       : std_logic;
     signal mem_write      : std_logic;
     signal mem_ready      : std_logic;
+    signal rom_data       : std_logic_vector(7 downto 0);
 
     signal interrupt_ack      : std_logic;
     signal interrupt_vector   : std_logic_vector(2 downto 0);
@@ -57,9 +59,13 @@ architecture rtl of cpu_ppu_background_demo_top is
 
     signal ppu_vram_addr  : unsigned(12 downto 0);
     signal ppu_vram_data  : std_logic_vector(7 downto 0);
+    signal ppu_scy        : std_logic_vector(7 downto 0);
+    signal ppu_scx        : std_logic_vector(7 downto 0);
     signal ppu_fb_we      : std_logic;
     signal ppu_fb_addr    : unsigned(14 downto 0);
     signal ppu_fb_data    : std_logic_vector(1 downto 0);
+    signal ppu_current_line : unsigned(7 downto 0);
+    signal ppu_mode       : std_logic_vector(1 downto 0);
     signal ppu_busy       : std_logic;
     signal ppu_done       : std_logic;
 
@@ -165,10 +171,13 @@ begin
             debug_state        => open
         );
 
+    u_rom: entity work.cpu_ppu_background_demo_rom
+        port map (
+            addr => mem_addr,
+            data => rom_data
+        );
+
     u_bus: entity work.bus_controller
-        generic map (
-            G_USE_CPU_PPU_DEMO_ROM => true
-        )
         port map (
             clk                  => clk_cpu,
             reset                => reset_cpu,
@@ -179,6 +188,7 @@ begin
             cpu_write            => mem_write,
             cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
+            rom_data             => rom_data,
             fb_clear_active      => '0',
             fb_clear_addr        => (others => '0'),
             fb_we                => open,
@@ -186,6 +196,10 @@ begin
             fb_data              => open,
             ppu_vram_addr        => ppu_vram_addr,
             ppu_vram_data        => ppu_vram_data,
+            ppu_scy              => ppu_scy,
+            ppu_scx              => ppu_scx,
+            ppu_current_line     => ppu_current_line,
+            ppu_mode             => ppu_mode,
             led_pattern          => led_pattern,
             display_digits       => unused_display_digits,
             checker_failed       => unused_checker_failed,
@@ -204,11 +218,17 @@ begin
             clk       => clk_cpu,
             reset     => reset_cpu,
             start     => cpu_vram_ready,
+            scroll_y  => ppu_scy,
+            scroll_x  => ppu_scx,
             vram_addr => ppu_vram_addr,
             vram_data => ppu_vram_data,
             fb_we     => ppu_fb_we,
             fb_addr   => ppu_fb_addr,
             fb_data   => ppu_fb_data,
+            current_line => ppu_current_line,
+            line_active  => open,
+            line_done    => open,
+            ppu_mode     => ppu_mode,
             busy      => ppu_busy,
             done      => ppu_done
         );

@@ -222,6 +222,19 @@ juntar CPU, barramento, WRAM, VRAM, PPU mínima, framebuffer e VGA:
 Esse é o número mais importante da etapa atual, porque mede o custo da primeira
 imagem realmente produzida por uma cadeia CPU -> VRAM -> PPU.
 
+Depois da adição de `SCX`/`SCY`, da organização por scanlines, do `LY/STAT`
+mínimo, do scheduler inicial de modos da PPU e das interrupções iniciais
+VBlank/STAT, o mesmo top passou a usar:
+
+- `4.324 / 6.272` logic elements, ou `69%`;
+- `177.152 / 276.480` bits de memória;
+- `22 / 30` blocos M9K.
+
+O aumento desde a primeira integração visual continua pequeno em lógica, mas o
+uso de memória já está em `73%` dos M9Ks. Isso confirma que a fase de PPU deve
+ser conduzida com muita disciplina: cada nova RAM, FIFO ou buffer precisa ter
+justificativa clara.
+
 ## 6. Por Que a CPU Veio Antes da PPU Real
 
 À primeira vista, pode parecer natural começar logo a PPU, porque ela é a parte
@@ -359,6 +372,37 @@ e o primeiro top em que a CPU escreve o que a PPU depois desenha já existem.
 Esse top também já foi validado em hardware real, o que transforma a etapa atual
 de uma hipótese arquitetural em um marco físico do projeto.
 
+Depois da confirmação visual, a PPU recebeu mais um degrau estrutural: o campo
+de modo de `STAT` deixou de ser um valor provisório inferido pelo barramento e
+passou a vir de um scheduler inicial dentro do renderer. Esse scheduler ainda é
+simples, mas já separa os estados principais que a CPU espera enxergar:
+
+- Mode 2 no começo de uma linha visível;
+- Mode 3 enquanto a linha de background está sendo renderizada;
+- Mode 0 no fim da linha visível;
+- Mode 1 durante a faixa inicial de VBlank, de `LY=144` até `LY=153`.
+
+Isso não significa que a PPU já está fiel ao Game Boy em nível de dot. No
+hardware real, cada modo tem duração específica em dots, e o Mode 3 pode variar
+conforme sprites, scroll e window. O que foi feito agora é um passo de
+organização: existe uma fonte única para o modo da PPU, e essa fonte já chega ao
+registrador `STAT`. Com isso, o próximo crescimento natural era gerar VBlank e
+interrupções STAT a partir desse mesmo scheduler.
+
+Esse crescimento já foi iniciado. O barramento agora solicita IF bit 0 quando a
+PPU entra na faixa inicial de VBlank e solicita IF bit 1 quando uma condição
+STAT habilitada aparece. As fontes STAT iniciais são:
+
+- Mode 0;
+- Mode 1;
+- Mode 2;
+- coincidência `LY=LYC`.
+
+Essas solicitações são detectadas por borda. Isso evita que a interrupção seja
+rearmada imediatamente quando a CPU reconhece IF enquanto a condição ainda está
+ativa. Ainda assim, essa etapa continua sendo uma fundação: o timing fino por
+dot e os detalhes completos de bloqueio de STAT ficam para a próxima fase.
+
 ### 9.1 O Que o Novo Marco Visual Prova
 
 O padrão de tiles confirmado no monitor não prova ainda que a PPU esteja fiel ao
@@ -489,6 +533,12 @@ Enquanto esses três níveis estiverem claros, o projeto continua sob controle.
 - VRAM real;
 - primeiro renderer de background por tiles;
 - primeiro top integrado CPU -> VRAM -> PPU -> framebuffer -> VGA;
+- ROMs de teste visuais extraídas do barramento para módulos próprios;
+- `SCX` e `SCY` já influenciando o background renderizado;
+- primeira organização do renderer por scanlines visíveis;
+- scheduler inicial de modos da PPU com Mode 2, Mode 3, Mode 0 e Mode 1
+  conectados a `STAT`;
+- interrupções iniciais VBlank/STAT conectadas a IF;
 - medição contínua de recursos.
 
 ### Ainda É Provisório ou Incompleto
@@ -497,8 +547,9 @@ Enquanto esses três níveis estiverem claros, o projeto continua sob controle.
 - ROM interna temporária;
 - parte dos registradores de I/O;
 - joypad;
-- PPU scanline-accurate;
-- scroll, window, sprites, modos e DMA da PPU;
+- PPU dot-accurate com durações reais de modo;
+- scroll completo dentro do modelo temporal real, window, sprites, modos e DMA
+  da PPU;
 - timing exato da CPU;
 - comportamento completo de `HALT` e `STOP`;
 - carregamento final de ROMs;
@@ -546,13 +597,22 @@ Hoje, o projeto já possui:
 - primeira imagem de PPU alimentada por dados escritos pela CPU;
 - primeira validação visual em hardware real da cadeia
   `CPU -> VRAM -> PPU -> framebuffer -> VGA`;
+- fluxo de programas visuais mais explícito, com ROMs de teste separadas do
+  `bus_controller`;
+- primeiros registradores LCD reais afetando a imagem, com `SCX` e `SCY`
+  deslocando o background;
+- renderer de background reorganizado com começo e fim de scanline observáveis,
+  ainda sem temporização por dot;
+- registradores `LY` e `STAT` mínimos já visíveis para a CPU pelo barramento;
+- campo de modo de `STAT` agora alimentado por um scheduler inicial da PPU;
+- IF bit 0 e IF bit 1 já solicitados pela primeira base de VBlank/STAT;
 - recursos medidos e ainda dentro do limite da placa.
 
 O próximo passo correto é:
 
 ```text
-substituir a ROM de integração embutida por um fluxo de programa de teste mais
-explícito, mantendo o caminho CPU -> VRAM -> PPU -> framebuffer -> VGA
+refinar o scheduler da PPU para contagem por dots, mantendo o contrato atual
+de LY/STAT/IF e o caminho CPU -> VRAM -> PPU já validado
 ```
 
 Agora começamos a sair do território dos testes de subsistema e a entrar no

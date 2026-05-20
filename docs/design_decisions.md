@@ -67,6 +67,104 @@ white/checkerboard first row. Its value is architectural rather than cosmetic:
 it proves that the CPU can author VRAM, the PPU can consume it, and the existing
 framebuffer/VGA path still behaves correctly after the subsystems are joined.
 
+## Explicit Test Program Boundary
+
+The first visual integrations started with ROM contents embedded inside
+`bus_controller` because that kept early bring-up small. Once CPU-authored VRAM
+became a real system checkpoint, that shortcut stopped being a good boundary:
+changing a test scene should not require editing the memory-map owner.
+
+The bus now receives ROM data through a port, while dedicated ROM modules hold
+the smoke and CPU/PPU demonstration programs. This adds no measurable fitter
+cost in the current top, but it improves the long-term structure in two ways:
+
+1. the bus is closer to its eventual role with cartridge or loader-backed ROM;
+2. future visual test programs can evolve independently from address decoding.
+
+## SCX/SCY Before Scanline Structure
+
+The first PPU-visible LCD behavior is background scrolling. The current renderer
+adds the 8-bit `SCX` and `SCY` values to the visible pixel coordinates before
+selecting tile-map entries, tile rows, and pixel bits. Because the arithmetic is
+kept at 8 bits, wraparound naturally follows the 256x256 background plane.
+
+This was intentionally implemented before the scanline scheduler. It proved the
+register path and tile-addressing math with a tiny resource cost, allowing the
+next timing refactor to focus on when pixels are produced rather than on whether
+the correct background coordinate is selected.
+
+## Scanline Boundary Before Dot-Accurate PPU Modes
+
+The background renderer now advances through explicit scanline boundaries and
+exposes `current_line`, `line_active`, and `line_done`. This is deliberately not
+a complete DMG PPU mode implementation yet: it does not model Mode 2, Mode 3,
+Mode 0, VBlank, STAT interrupts, window, sprites, or OAM timing.
+
+The decision is to split the PPU timing problem into smaller hardware-safe
+steps:
+
+1. preserve the already validated CPU-to-VRAM-to-PPU visual path;
+2. make visible line progression observable and testable;
+3. connect that line progression to LY/STAT in a later slice;
+4. only then refine the renderer toward dot-level PPU modes.
+
+This keeps the implementation compatible with the tight EP4CE6 resource budget:
+the scanline step added only a small FSM cost and no additional memory blocks.
+
+## Minimal LY/STAT Before Full PPU Modes
+
+After the renderer exposed visible scanlines, the bus began reporting `LY` from
+the PPU line signal and computing a minimal `STAT` read value. The writable
+interrupt-select bits are preserved, the coincidence bit is derived from
+`LY=LYC`, and the mode field is provisional: Mode 3 while the background line is
+active, Mode 0 otherwise.
+
+This is not intended to pass PPU timing tests yet. Its purpose is to establish
+the CPU-visible register contract before introducing a more expensive dot-level
+scheduler. Keeping the first `STAT` implementation simple gives the next slice a
+clear target: replace the provisional mode source with real Mode 2, Mode 3,
+Mode 0, and Mode 1 timing while preserving the same bus-facing register shape.
+
+## Initial PPU Mode Scheduler Before Interrupts
+
+The provisional `STAT` mode source has now been replaced by an explicit mode
+output from the background renderer. The bus no longer guesses the mode from a
+generic line-active signal; it routes the renderer's `ppu_mode` field directly
+into `STAT`.
+
+This scheduler is intentionally line-level, not dot-accurate. It reports:
+
+- Mode 2 at visible-line start;
+- Mode 3 while the background renderer produces the line;
+- Mode 0 at visible-line end;
+- Mode 1 while the renderer advances through VBlank lines `144..153`.
+
+The design choice is to make the CPU-visible PPU phase observable before adding
+interrupt side effects. The next slice can now use one clear source of truth for
+VBlank and STAT interrupt requests, while later work can refine the duration of
+each mode toward real DMG dot timing.
+
+## Line-Level PPU Interrupts Before Dot Timing
+
+The first PPU interrupt slice is implemented in the bus controller because that
+block already owns the CPU-visible `IF`, `IE`, `STAT`, `LY`, and `LYC`
+registers. The PPU provides the current line and mode; the bus turns those into
+interrupt request flags.
+
+The current behavior is deliberately edge-detected:
+
+- VBlank requests IF bit 0 when the line-level scheduler enters Mode 1 at
+  `LY=144`;
+- enabled STAT sources request IF bit 1 when the combined STAT condition rises;
+- acknowledging an interrupt while the same condition remains active does not
+  immediately set the same IF bit again.
+
+This is the right level for the current renderer because the scheduler itself is
+still line-level. The next accuracy step should refine when modes begin and end,
+not duplicate interrupt logic in several places. Once the PPU moves toward
+dot-level timing, the same bus-facing IF/STAT contract can stay in place while
+the source timing becomes more faithful.
+
 ## Serial-First CPU Validation
 
 CPU validation uses Blargg-style serial output before relying on the future PPU.

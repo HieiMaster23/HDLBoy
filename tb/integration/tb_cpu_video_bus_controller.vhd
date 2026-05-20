@@ -29,6 +29,7 @@ architecture sim of tb_cpu_video_bus_controller is
     signal mem_write          : std_logic;
     signal mem_ready          : std_logic;
     signal unsupported_opcode : std_logic;
+    signal rom_data           : std_logic_vector(7 downto 0);
     signal interrupt_ack      : std_logic;
     signal interrupt_vector   : std_logic_vector(2 downto 0);
 
@@ -69,6 +70,12 @@ architecture sim of tb_cpu_video_bus_controller is
     end function expected_fb_addr;
 
 begin
+
+    u_rom: entity work.cpu_video_smoke_rom
+        port map (
+            addr => mem_addr,
+            data => rom_data
+        );
 
     p_clk: process
     begin
@@ -123,6 +130,7 @@ begin
             cpu_write            => mem_write,
             cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
+            rom_data             => rom_data,
             fb_clear_active      => '0',
             fb_clear_addr        => (others => '0'),
             fb_we                => fb_we,
@@ -130,6 +138,10 @@ begin
             fb_data              => fb_data,
             ppu_vram_addr        => (others => '0'),
             ppu_vram_data        => ppu_vram_data,
+            ppu_scy              => open,
+            ppu_scx              => open,
+            ppu_current_line     => (others => '0'),
+            ppu_mode             => "00",
             led_pattern          => led_pattern,
             display_digits       => display_digits,
             checker_failed       => checker_failed,

@@ -828,3 +828,182 @@ Notes:
 - Quartus reports 22 M9Ks in use: 8 for VRAM, 8 for WRAM, and 6 for the
   framebuffer. Memory, not logic, is already the tighter medium-term resource
   for the visual path on EP4CE6.
+- Rebuilding the same top on 2026-05-17 after extracting the smoke and
+  CPU/PPU demo programs into standalone ROM modules kept utilization unchanged:
+  `4,235` logic elements, `177,152` block-memory bits, and `22` M9Ks.
+- Rebuilding the same top on 2026-05-18 after adding `SCX`/`SCY` background
+  offsets used `4,251` logic elements, `1,519` registers, `177,152`
+  block-memory bits, and `22` M9Ks. The first visible LCD-register behavior
+  therefore costs only 16 additional logic elements in the current design.
+
+## Initial Scanline-Oriented Background Renderer
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-19
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,271 | 6,272 | 68% |
+| Registers | 1,522 | 6,272 | 23% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 177,152 | 276,480 | 64% |
+| M9Ks | 22 | 30 | 73% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.517 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 176.006 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.501 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.445 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- The background renderer now has explicit scanline states and exposes
+  `current_line`, `line_active`, and `line_done` signals. This is still not a
+  full DMG PPU timing engine, but it creates a clean boundary for future LY,
+  STAT, mode, and VBlank work.
+- `tb_ppu_background_renderer` now checks that each render completes exactly
+  144 visible scanlines while preserving the existing tile and `SCX`/`SCY`
+  pixel checks.
+- Compared with the prior `SCX`/`SCY` build, this costs 20 logic elements and 3
+  registers. Memory usage, M9K usage, multiplier usage, and PLL usage remain
+  unchanged, which is acceptable for this structural PPU step on EP4CE6.
+
+## Minimal LY/STAT PPU Register Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-19
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,283 | 6,272 | 68% |
+| Registers | 1,522 | 6,272 | 23% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 177,152 | 276,480 | 64% |
+| M9Ks | 22 | 30 | 73% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 23.633 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 176.247 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.501 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.426 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- The bus now reads `LY` from the PPU scanline signal and computes minimal
+  `STAT` readback from writable bits 6..3, the `LY=LYC` coincidence bit, and a
+  provisional mode field.
+- The provisional mode field reports Mode 3 while the current background line is
+  active and Mode 0 otherwise. This is only a bring-up model; it is not yet the
+  final dot-accurate DMG PPU mode scheduler.
+- Compared with the scanline-structure build, this costs 12 logic elements and
+  no additional registers or memory blocks.
+
+## Initial PPU Mode Scheduler Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-19
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,300 | 6,272 | 69% |
+| Registers | 1,523 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 177,152 | 276,480 | 64% |
+| M9Ks | 22 | 30 | 73% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 24.858 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 173.602 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.499 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.348 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- The background renderer now exposes an explicit 2-bit PPU mode output.
+  The bus controller routes this directly into the `STAT` mode field.
+- The current scheduler reports deterministic line-level modes: Mode 2 at
+  visible-line start, Mode 3 while the current background line is rendered,
+  Mode 0 at visible-line end, and Mode 1 across the initial VBlank lines
+  `144..153`.
+- This is still not dot-accurate DMG PPU timing. It is a controlled structural
+  step that replaces the previous active-line placeholder and prepares the
+  design for VBlank and STAT interrupt generation.
+- Compared with the minimal LY/STAT slice, this costs 17 logic elements and
+  1 register, with no additional block-memory or M9K usage.
+
+## Initial VBlank and STAT Interrupt Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,324 | 6,272 | 69% |
+| Registers | 1,525 | 6,272 | 24% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 177,152 | 276,480 | 64% |
+| M9Ks | 22 | 30 | 73% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 24.874 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 176.049 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.502 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.438 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- The bus controller now raises IF bit 0 on the initial VBlank entry condition
+  and IF bit 1 on enabled STAT conditions.
+- STAT interrupt sources currently include Mode 0, Mode 1, Mode 2, and
+  `LY=LYC` coincidence through writable STAT bits 3, 4, 5, and 6.
+- Requests are edge-detected at the combined condition level so acknowledging an
+  interrupt while the condition remains high does not immediately reassert the
+  same IF bit.
+- This remains a line-level PPU interrupt foundation. Dot-accurate STAT timing,
+  LCD enable behavior, OAM, sprites, and DMA are still future work.
+- Compared with the initial mode scheduler slice, this costs 24 logic elements
+  and 2 registers, with no additional block-memory or M9K usage.
