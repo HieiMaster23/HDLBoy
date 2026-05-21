@@ -1493,3 +1493,53 @@ Notes:
 - At 84% logic utilization, this checkpoint is above the project's 80% resource
   caution threshold. Before adding Window or a more faithful FIFO, the next PPU
   step should look for a lower-cost sprite composition structure.
+
+## Serialized 10-Candidate Sprite Composition Optimization
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 5,013 | 6,272 | 80% |
+| Registers | 1,945 | 6,272 | 31% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 25.084 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 178.146 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.518 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- Sprite composition now evaluates one stored candidate per internal composition
+  cycle instead of building a 10-way combinational selector in the framebuffer
+  write path.
+- The background color id and final framebuffer shade are registered before the
+  sprite walk, so OBP0/OBP1 palette selection and BG/OBJ priority behavior are
+  preserved.
+- Compared with the direct full 10-candidate composition slice, this saves 273
+  logic elements while adding 10 registers and no memory blocks.
+- The `ppu_background_renderer` hierarchy dropped from 1,004 to 740 logic cells,
+  a local reduction of 264 logic cells.
+- The trade-off is internal latency: a pixel with enabled sprites may spend up
+  to 10 additional composition cycles before the framebuffer write. The current
+  scheduler is still an abstract renderer, not a dot-accurate FIFO pipeline.
+- At exactly 80% logic utilization, the design is back at the resource caution
+  threshold but not comfortably below it. The next optimization target should be
+  the VGA pixel pipeline multipliers and then bus/debug logic that is not needed
+  in the final playable top.

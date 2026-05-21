@@ -135,6 +135,14 @@ The project has already completed the early foundation layers:
     - it fetches that sprite's OAM metadata and tile row;
     - nonzero OBJ pixels are overlaid on the background through `OBP0`;
     - `LCDC(1)` preserves the background-only path when sprites are disabled.
+23. **Serialized 10-candidate sprite composition**
+    - the renderer now fetches and stores all 10 per-line OAM scan candidates;
+    - `OBP0`/`OBP1` selection and BG/OBJ priority are preserved across the full
+      candidate set;
+    - the visible OBJ pixel selection was moved from a 10-way combinational path
+      into a one-candidate-per-cycle composition step;
+    - the top returned from 5,286 logic elements (84%) to 5,013 logic elements
+      (80%), saving 273 logic elements while preserving the current tests.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -286,7 +294,8 @@ Main outputs:
 - optional input and usability refinements.
 
 The APU matters for completeness, but it is not the primary blocker for the
-first playable Game Boy target.
+first playable Game Boy target. It is explicitly deferred until the CPU, bus,
+PPU, input, ROM loading, and first playable integration are functional.
 
 ## Dependency View
 
@@ -325,9 +334,12 @@ The next recommended sequence is:
    the initial multi-OBJ baseline;
 7. preserve the full 10-candidate sprite composition slice as the first complete
    per-line OBJ candidate baseline;
-8. reduce sprite composition cost before adding Window or a more faithful FIFO;
-9. refine DMG ordering details and then add Window interaction;
-10. import broader timer coverage later if the local Blargg package proves too
+8. preserve the serialized sprite composition optimization as the current
+   resource baseline;
+9. reduce the VGA pixel pipeline multiplier/address cost, then prune bus/debug
+   logic that is not needed in the final playable top;
+10. refine DMG ordering details and then add Window interaction;
+11. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -349,20 +361,25 @@ PPU scheduler, initial LCDC enable handling, and initial VRAM Mode 3 access
 blocking plus initial OAM storage, continuous frame looping, BGP palette lookup,
 initial LCDC background controls, the first PPU OAM scan, the first sprite
 pixel fetch/composition slice, and the OBP1/BG-priority/two-candidate sprite
-composition slice, expanded to all 10 per-line OBJ candidates, uses:
+composition slice, expanded to all 10 per-line OBJ candidates and then
+serialized to reduce the sprite selection path, uses:
 
-- 5,286 / 6,272 logic elements;
+- 5,013 / 6,272 logic elements;
 - 179,200 / 276,480 block-memory bits;
 - 23 / 30 M9K blocks.
 
-The PPU phase is now both memory-sensitive and logic-sensitive. The 10-candidate
-sprite slice is above the 80% logic caution threshold, so new work should
-prefer:
+The PPU phase is now both memory-sensitive and logic-sensitive. The serialized
+sprite composition step brought the design back to exactly the 80% logic caution
+threshold, but this is still not comfortable margin for Window, DMA, ROM loading,
+joypad, and final integration. New work should prefer:
 
 - shared CPU states instead of duplicated datapaths;
 - inferred RAMs instead of large register arrays;
 - small, testable peripheral slices;
 - incremental Quartus checkpoints after meaningful RTL growth.
+
+The APU is intentionally outside the near-term resource budget. It should be
+reconsidered only after the non-audio first playable system is working.
 
 ## What Success Looks Like
 

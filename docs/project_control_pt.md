@@ -1743,3 +1743,75 @@ Proximo passo recomendado:
 2. estudar uma estrutura sequencial/compacta para escolha do sprite visivel;
 3. depois refinar ordenacao DMG e interacao com Window;
 4. manter esta versao como baseline funcional de 10 candidatos.
+
+## 21. Otimizacao Sequencial de Sprite Composition
+
+Nesta etapa atacamos o problema de recursos aberto pela composicao completa de
+10 candidatos. A decisao foi preservar a funcionalidade ja conquistada, mas
+trocar a selecao combinacional de 10 sprites por uma caminhada sequencial de um
+candidato por ciclo interno.
+
+Alteracoes feitas:
+
+- `ppu_background_renderer.vhd` ganhou os estados `S_COMPOSE_INIT` e
+  `S_COMPOSE_CHECK`;
+- o color id de background e o shade final inicial sao registrados antes da
+  verificacao de sprites;
+- cada candidato armazenado e avaliado em um ciclo interno de composicao;
+- o primeiro pixel OBJ nao transparente que passa pela regra de prioridade
+  atualiza o shade do framebuffer e encerra a caminhada;
+- `OBP0`, `OBP1`, transparencia de color id `00` e prioridade BG/OBJ foram
+  preservados;
+- o caminho combinacional grande que avaliava todos os 10 candidatos no output
+  do framebuffer foi removido.
+
+Regressoes executadas:
+
+- `run_ppu_background_renderer.do` passou;
+- `run_bus_controller.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou.
+
+Resultado de sintese:
+
+- 5,013 / 6,272 LEs, 80%;
+- 1,945 registradores;
+- 179,200 / 276,480 bits de memoria, 65%;
+- 23 / 30 M9Ks, 77%;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 25.084 ns no clock VGA e 178.146 ns no clock CPU;
+- pior hold slack: 0.452 ns no clock CPU e 0.518 ns no clock VGA.
+
+Comparacao com o checkpoint anterior:
+
+- top completo: 5,286 LEs para 5,013 LEs, economia de 273 LEs;
+- `ppu_background_renderer`: 1,004 logic cells para 740 logic cells, economia
+  local de 264 logic cells;
+- custo: +10 registradores e maior latencia interna por pixel quando sprites
+  estao habilitados.
+
+Conclusao tecnica:
+
+A otimizacao foi boa e necessaria: voltamos de 84% para 80% de LEs, sem perder a
+fatia funcional de 10 candidatos. Mas 80% ainda e limite apertado, nao margem
+confortavel. Antes de adicionar Window, DMA ou uma FIFO mais fiel, devemos buscar
+mais economia estrutural.
+
+Decisao de escopo:
+
+- APU nao e prioridade neste projeto agora;
+- audio so deve ser retomado depois que CPU, barramento, PPU, input, ROM loading
+  e primeira integracao jogavel estiverem funcionais;
+- a prioridade de otimizacao deve ficar no caminho grafico, barramento e logica
+  de debug temporaria.
+
+Proximo passo recomendado:
+
+1. otimizar o `vga_pixel_pipeline`, especialmente os multiplicadores inferidos
+   para o endereco do framebuffer;
+2. depois revisar custo de `bus_controller` e remover ou condicionar debug que
+   nao precisa existir no top final jogavel;
+3. somente entao voltar para refinamento de ordering de sprites, Window e DMA.

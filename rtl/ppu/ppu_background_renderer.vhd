@@ -19,6 +19,7 @@
 -- 2026-05-20 - Added first sprite fetch/composition slice for one candidate
 -- 2026-05-20 - Added OBP1, BG/OBJ priority, and two-candidate composition
 -- 2026-05-20 - Expanded sprite composition storage to the 10 per-line candidates
+-- 2026-05-20 - Serialized sprite pixel composition to reduce logic use
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It renders the background tile map selected by LCDC bit 3 and the
@@ -112,6 +113,8 @@ architecture rtl of ppu_background_renderer is
         S_TILE_LOW_CAPTURE,
         S_TILE_HIGH_REQ,
         S_TILE_HIGH_CAPTURE,
+        S_COMPOSE_INIT,
+        S_COMPOSE_CHECK,
         S_WRITE_PIXEL,
         S_MODE3_TAIL,
         S_HBLANK,
@@ -136,6 +139,9 @@ architecture rtl of ppu_background_renderer is
     signal sprite_attr_reg  : sprite_byte_array_t;
     signal sprite_low_reg   : sprite_byte_array_t;
     signal sprite_high_reg  : sprite_byte_array_t;
+    signal compose_slot_reg : integer range 0 to MAX_COMPOSE_SPRITES - 1;
+    signal bg_color_id_reg  : std_logic_vector(1 downto 0);
+    signal fb_data_reg      : std_logic_vector(1 downto 0);
 
     function tile_map_addr(
         x_in       : unsigned(7 downto 0);
@@ -362,6 +368,9 @@ architecture rtl of ppu_background_renderer is
 begin
 
     p_renderer: process(clk)
+        variable bg_x_v : unsigned(7 downto 0);
+        variable color_id_v : std_logic_vector(1 downto 0);
+        variable sprite_color_id_v : std_logic_vector(1 downto 0);
     begin
         if rising_edge(clk) then
             if reset = '1' or lcd_enable = '0' then
@@ -384,6 +393,9 @@ begin
                 sprite_slot_reg <= 0;
                 sprite_y_reg <= (others => '0');
                 sprite_tile_reg <= (others => '0');
+                compose_slot_reg <= 0;
+                bg_color_id_reg <= (others => '0');
+                fb_data_reg <= (others => '0');
             else
                 case state_reg is
                     when S_IDLE =>
@@ -484,7 +496,54 @@ begin
 
                     when S_TILE_HIGH_CAPTURE =>
                         tile_high_reg <= vram_data;
-                        state_reg <= S_WRITE_PIXEL;
+                        state_reg <= S_COMPOSE_INIT;
+
+                    when S_COMPOSE_INIT =>
+                        bg_x_v := pixel_x_reg + unsigned(scroll_x);
+                        color_id_v := pixel_from_tile(tile_low_reg,
+                                                      tile_high_reg,
+                                                      bg_x_v);
+                        if lcdc(0) = '0' then
+                            color_id_v := "00";
+                        end if;
+                        bg_color_id_reg <= color_id_v;
+                        fb_data_reg <= apply_bgp_palette(color_id_v, bgp);
+                        compose_slot_reg <= 0;
+                        if lcdc(1) = '1' and sprite_candidate_count /= to_unsigned(0, 4) then
+                            state_reg <= S_COMPOSE_CHECK;
+                        else
+                            state_reg <= S_WRITE_PIXEL;
+                        end if;
+
+                    when S_COMPOSE_CHECK =>
+                        sprite_color_id_v := "00";
+                        if sprite_covers_pixel(sprite_valid_reg(compose_slot_reg),
+                                               sprite_x_reg(compose_slot_reg),
+                                               pixel_x_reg) = '1' then
+                            sprite_color_id_v := sprite_pixel_from_tile(
+                                sprite_low_reg(compose_slot_reg),
+                                sprite_high_reg(compose_slot_reg),
+                                sprite_x_reg(compose_slot_reg),
+                                sprite_attr_reg(compose_slot_reg),
+                                pixel_x_reg);
+                        end if;
+
+                        if sprite_color_id_v /= "00" and
+                           (sprite_attr_reg(compose_slot_reg)(7) = '0' or
+                            bg_color_id_reg = "00") then
+                            if sprite_attr_reg(compose_slot_reg)(4) = '1' then
+                                fb_data_reg <= apply_obj_palette(sprite_color_id_v,
+                                                                 obp1);
+                            else
+                                fb_data_reg <= apply_obj_palette(sprite_color_id_v,
+                                                                 obp0);
+                            end if;
+                            state_reg <= S_WRITE_PIXEL;
+                        elsif compose_slot_reg = MAX_COMPOSE_SPRITES - 1 then
+                            state_reg <= S_WRITE_PIXEL;
+                        else
+                            compose_slot_reg <= compose_slot_reg + 1;
+                        end if;
 
                     when S_WRITE_PIXEL =>
                         if pixel_x_reg = to_unsigned(SCREEN_WIDTH - 1, 8) then
@@ -549,51 +608,20 @@ begin
                        tile_index_reg, tile_low_reg, tile_high_reg,
                        sprite_index_reg, sprite_slot_reg, sprite_valid_reg, sprite_x_reg, sprite_y_reg,
                        sprite_tile_reg, sprite_attr_reg, sprite_low_reg, sprite_high_reg,
+                       compose_slot_reg, bg_color_id_reg, fb_data_reg,
                        scroll_x, scroll_y, bgp, obp0, obp1, lcdc)
         variable bg_x_v : unsigned(7 downto 0);
         variable bg_y_v : unsigned(7 downto 0);
-        variable color_id_v : std_logic_vector(1 downto 0);
-        variable sprite_color_id_v : std_logic_vector(1 downto 0);
-        variable shade_v : std_logic_vector(1 downto 0);
-        variable sprite_selected_v : std_logic;
     begin
         bg_x_v := pixel_x_reg + unsigned(scroll_x);
         bg_y_v := pixel_y_reg + unsigned(scroll_y);
-        color_id_v := pixel_from_tile(tile_low_reg, tile_high_reg, bg_x_v);
-        if lcdc(0) = '0' then
-            color_id_v := "00";
-        end if;
-        sprite_color_id_v := "00";
-        shade_v := apply_bgp_palette(color_id_v, bgp);
-        sprite_selected_v := '0';
-
-        for i in 0 to MAX_COMPOSE_SPRITES - 1 loop
-            if sprite_selected_v = '0' and
-               sprite_covers_pixel(sprite_valid_reg(i), sprite_x_reg(i), pixel_x_reg) = '1' then
-                sprite_color_id_v := sprite_pixel_from_tile(sprite_low_reg(i),
-                                                            sprite_high_reg(i),
-                                                            sprite_x_reg(i),
-                                                            sprite_attr_reg(i),
-                                                            pixel_x_reg);
-                if sprite_color_id_v /= "00" then
-                    if sprite_attr_reg(i)(7) = '0' or color_id_v = "00" then
-                        if sprite_attr_reg(i)(4) = '1' then
-                            shade_v := apply_obj_palette(sprite_color_id_v, obp1);
-                        else
-                            shade_v := apply_obj_palette(sprite_color_id_v, obp0);
-                        end if;
-                        sprite_selected_v := '1';
-                    end if;
-                end if;
-            end if;
-        end loop;
 
         vram_addr <= tile_map_addr(bg_x_v, bg_y_v, lcdc(3));
         oam_addr <= (others => '0');
         oam_read <= '0';
         fb_we <= '0';
         fb_addr <= fb_addr_reg;
-        fb_data <= shade_v;
+        fb_data <= fb_data_reg;
         current_line <= pixel_y_reg;
         current_dot <= dot_count_reg;
         line_active <= '0';
@@ -663,6 +691,10 @@ begin
             when S_TILE_HIGH_REQ | S_TILE_HIGH_CAPTURE =>
                 vram_addr <= tile_data_addr(tile_index_reg, bg_y_v, '1',
                                             lcdc(4));
+                line_active <= '1';
+                ppu_mode <= "11";
+                busy <= '1';
+            when S_COMPOSE_INIT | S_COMPOSE_CHECK =>
                 line_active <= '1';
                 ppu_mode <= "11";
                 busy <= '1';
