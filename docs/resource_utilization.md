@@ -1645,3 +1645,53 @@ Notes:
   already-pruned open-output debug paths. HRAM remains a likely candidate, but
   it needs a read-path restructuring; a simple RAM style attribute was already
   shown not to infer an M9K on this design.
+
+## HRAM M9K Inference Optimization
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-21
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 3,674 | 6,272 | 59% |
+| Registers | 941 | 6,272 | 15% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 180,224 | 276,480 | 65% |
+| M9Ks | 24 | 30 | 80% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 29.546 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 177.118 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.439 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.452 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- HRAM was moved out of the bus controller into `rtl/memory/hram.vhd`, a small
+  synchronous single-port RAM with an explicit M9K RAM style attribute.
+- Quartus now infers `hram:u_hram` as an `altsyncram` using one M9K block,
+  128 words x 8 bits, instead of retaining HRAM as distributed registers and
+  logic in the bus controller.
+- The previous uninferred-RAM warning for HRAM is gone.
+- Compared with the configurable bus/debug checkpoint, the full top dropped
+  from 4,995 to 3,674 logic elements, saving 1,321 logic elements.
+- Register use dropped from 1,965 to 941 registers, saving 1,024 registers.
+- The cost is one additional M9K and 1,024 additional block-memory bits:
+  179,200 bits / 23 M9Ks became 180,224 bits / 24 M9Ks.
+- The bus controller hierarchy dropped from 1,870 logic cells and 1,210
+  registers to 543 logic cells and 186 registers. The new `hram` hierarchy
+  contributes 1,024 memory bits and zero logic cells.
+- This optimization moves the design below the requested 4,600-LE target with
+  meaningful margin. The project is still M9K-sensitive at 24 / 30 blocks, but
+  logic is no longer the immediate blocker for the next first-playable slices.

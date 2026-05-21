@@ -27,6 +27,7 @@
 -- 2026-05-20 - Exposed OBP0 to the first sprite composition path
 -- 2026-05-20 - Exposed OBP1 to the sprite composition path
 -- 2026-05-20 - Added generics for demo-only framebuffer and debug features
+-- 2026-05-21 - Moved HRAM into a dedicated inferable memory block
 -- =============================================================================
 
 library ieee;
@@ -128,11 +129,9 @@ architecture rtl of bus_controller is
     constant EXPECTED_FB_WRITES : unsigned(7 downto 0) := to_unsigned(64, 8);
     constant WRAM_LAST_INDEX    : integer := 8191;
     constant OAM_LAST_INDEX     : integer := 255;
-    constant HRAM_LAST_INDEX    : integer := 126;
 
     type wram_t is array (0 to WRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
     type oam_t is array (0 to OAM_LAST_INDEX) of std_logic_vector(7 downto 0);
-    type hram_t is array (0 to HRAM_LAST_INDEX) of std_logic_vector(7 downto 0);
 
     attribute ramstyle : string;
 
@@ -173,7 +172,6 @@ architecture rtl of bus_controller is
     signal ppu_effective_mode       : std_logic_vector(1 downto 0);
     signal wram              : wram_t;
     signal oam               : oam_t;
-    signal hram              : hram_t;
     signal led_pattern_reg   : std_logic_vector(3 downto 0);
     signal fb_write_count    : unsigned(7 downto 0);
     signal checker_failed_reg: std_logic;
@@ -189,6 +187,7 @@ architecture rtl of bus_controller is
     signal oam_read_addr     : unsigned(7 downto 0);
     signal io_selected       : std_logic;
     signal hram_selected     : std_logic;
+    signal hram_cpu_we       : std_logic;
     signal sync_read_selected: std_logic;
     signal sync_read_valid   : std_logic;
     signal sync_read_addr    : std_logic_vector(15 downto 0);
@@ -263,6 +262,7 @@ begin
     oam_cpu_we <= cpu_write and oam_selected and not oam_cpu_blocked;
     oam_read_addr <= ppu_oam_addr when ppu_oam_read = '1' else
                      unsigned(cpu_addr(7 downto 0));
+    hram_cpu_we <= cpu_write and hram_selected;
     vblank_irq_condition <= '1' when lcdc_reg(7) = '1' and
                                       ppu_effective_mode = "01" and
                                       ppu_effective_line = to_unsigned(144, 8) else '0';
@@ -298,6 +298,15 @@ begin
             cpu_data_out => vram_q,
             ppu_addr     => ppu_vram_addr,
             ppu_data_out => ppu_vram_data
+        );
+
+    u_hram: entity work.hram
+        port map (
+            clk      => clk,
+            we       => hram_cpu_we,
+            addr     => unsigned(cpu_addr(6 downto 0)),
+            data_in  => cpu_data_out,
+            data_out => hram_q
         );
 
     p_memory_read: process(cpu_addr, cpu_read, io_led_reg, io_status_reg,
@@ -565,20 +574,6 @@ begin
             oam_q <= oam(to_integer(oam_read_addr));
         end if;
     end process p_oam;
-
-    p_hram: process(clk)
-    begin
-        if rising_edge(clk) then
-            if cpu_write = '1' and hram_selected = '1' then
-                hram(to_integer(unsigned(cpu_addr(6 downto 0)))) <= cpu_data_out;
-            end if;
-            if hram_selected = '1' then
-                hram_q <= hram(to_integer(unsigned(cpu_addr(6 downto 0))));
-            else
-                hram_q <= x"FF";
-            end if;
-        end if;
-    end process p_hram;
 
     fb_we   <= '1' when fb_clear_active = '1' else cpu_write and fb_selected;
     fb_addr <= fb_clear_addr when fb_clear_active = '1' else unsigned(cpu_addr(14 downto 0));

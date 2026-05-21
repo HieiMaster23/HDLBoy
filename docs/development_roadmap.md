@@ -151,6 +151,15 @@ The project has already completed the early foundation layers:
     - the VGA pipeline hierarchy dropped from 141 to 117 logic cells;
     - the top dropped from 5,013 to 4,995 logic elements, though Quartus still
       rounds utilization to 80%.
+25. **HRAM M9K inference optimization**
+    - HRAM has been moved into a dedicated synchronous single-port memory
+      module;
+    - Quartus now infers it as one M9K block instead of retaining it as
+      distributed registers inside the bus controller;
+    - the bus controller hierarchy dropped from 1,870 logic cells / 1,210
+      registers to 543 logic cells / 186 registers;
+    - the full top dropped from 4,995 to 3,674 logic elements, restoring
+      substantial logic margin for the first-playable feature path.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -348,9 +357,12 @@ The next recommended sequence is:
    resource baseline;
 10. preserve configurable bus/debug feature gates so smoke-only logic is
     explicit and opt-in for future tops;
-11. optimize retained bus logic next, especially HRAM/read-path structure;
-12. refine DMG ordering details and then add Window interaction;
-13. import broader timer coverage later if the local Blargg package proves too
+11. preserve the HRAM M9K inference optimization as the current bus-resource
+    baseline;
+12. implement first-playable support features next: OAM DMA, joypad input, then
+    Window interaction;
+13. refine DMG sprite ordering details as needed for the simple-game target;
+14. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -374,19 +386,20 @@ initial LCDC background controls, the first PPU OAM scan, the first sprite
 pixel fetch/composition slice, and the OBP1/BG-priority/two-candidate sprite
 composition slice, expanded to all 10 per-line OBJ candidates and then
 serialized to reduce the sprite selection path, plus the VGA raster scaler
-optimization and configurable bus/debug feature gates, uses:
+optimization, configurable bus/debug feature gates, and HRAM M9K inference,
+uses:
 
-- 4,995 / 6,272 logic elements;
-- 179,200 / 276,480 block-memory bits;
-- 23 / 30 M9K blocks.
+- 3,674 / 6,272 logic elements;
+- 180,224 / 276,480 block-memory bits;
+- 24 / 30 M9K blocks.
 
-The PPU phase is now both memory-sensitive and logic-sensitive. The serialized
-sprite composition step and VGA scaler optimization brought the design back to
-just below 5,000 logic elements, but Quartus still reports 80% utilization. This
-is not comfortable margin for Window, DMA, ROM loading, joypad, and final
-integration. The bus/debug split did not reduce the current fitted top because
-Quartus already pruned the unused open-output smoke path, but it makes those
-temporary features explicit for future integration tops. New work should prefer:
+The PPU phase is still memory-sensitive, but logic margin is now much healthier.
+The serialized sprite composition step and VGA scaler optimization brought the
+design below 5,000 logic elements, and the HRAM M9K inference step then removed
+1,321 retained logic elements by replacing a register-heavy HRAM implementation
+with one inferred M9K block. The project now has enough logic room to continue
+the first-playable path, while still preserving strict discipline because only
+six M9K blocks remain free. New work should prefer:
 
 - shared CPU states instead of duplicated datapaths;
 - inferred RAMs instead of large register arrays;

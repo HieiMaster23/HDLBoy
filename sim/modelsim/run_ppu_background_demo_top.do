@@ -12,6 +12,7 @@ vcom -93 ../../rtl/video/vga_controller.vhd
 vcom -93 ../../rtl/video/vga_pixel_pipeline.vhd
 vcom -93 ../../rtl/memory/framebuffer.vhd
 vcom -93 ../../rtl/memory/vram.vhd
+vcom -93 ../../rtl/memory/hram.vhd
 vcom -93 ../../rtl/memory/bus_controller.vhd
 vcom -93 ../../rtl/ppu/ppu_demo_loader.vhd
 vcom -93 ../../rtl/ppu/ppu_background_renderer.vhd

@@ -1942,3 +1942,69 @@ Proximo passo recomendado:
 3. se mexermos em HRAM, reestruturar o read path em vez de apenas tentar
    atributo `ramstyle`, pois essa tentativa ja falhou em inferir M9K;
 4. manter APU fora do escopo ate o sistema nao-audio estar funcional.
+
+## 24. Otimizacao da HRAM em M9K
+
+Nesta etapa atacamos a maior logica retida que ainda parecia artificial: a HRAM
+implementada dentro do `bus_controller`. O objetivo era tentar empurrar o
+projeto para a faixa de 4,600 LEs, preservando o escopo enxuto para jogos
+simples.
+
+Alteracoes feitas:
+
+- foi criado `rtl/memory/hram.vhd`, uma RAM sincrona single-port de 128 x 8
+  bits;
+- a HRAM saiu do array interno do `bus_controller` e passou a ser uma entidade
+  dedicada;
+- o caminho de escrita usa `hram_cpu_we <= cpu_write and hram_selected`;
+- a leitura continua integrada ao contrato existente de CPU/barramento;
+- os scripts ModelSim e o projeto Quartus passaram a compilar `hram.vhd` antes
+  do `bus_controller`.
+
+Regressoes executadas:
+
+- `run_bus_controller.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou com 0 erros e 34 warnings.
+
+Resultado de sintese:
+
+- 3,674 / 6,272 LEs, 59%;
+- 941 registradores, 15%;
+- 180,224 / 276,480 bits de memoria, 65%;
+- 24 / 30 M9Ks, 80%;
+- 0 multiplicadores;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 29.546 ns no clock VGA e 177.118 ns no clock CPU;
+- pior hold slack: 0.439 ns no clock CPU e 0.452 ns no clock VGA.
+
+Comparacao com o checkpoint anterior:
+
+- top completo: 4,995 LEs para 3,674 LEs, economia de 1,321 LEs;
+- registradores: 1,965 para 941, economia de 1,024 registradores;
+- memoria: 179,200 bits para 180,224 bits, custo de +1,024 bits;
+- M9Ks: 23 para 24, custo de +1 bloco;
+- `bus_controller`: 1,870 logic cells / 1,210 registradores para 543 logic
+  cells / 186 registradores;
+- `hram:u_hram`: 1,024 bits em 1 M9K, sem LEs relevantes.
+
+Conclusao tecnica:
+
+A otimizacao superou a meta. Queriamos tentar chegar perto de 4,600 LEs e o
+design caiu para 3,674 LEs, deixando uma margem aproximada de 2,598 LEs antes
+do limite fisico do EP4CE6. Isso muda o risco imediato: logica voltou a ter
+folga razoavel, enquanto block RAM agora precisa continuar sendo acompanhada
+com cuidado porque ja estamos em 24 / 30 M9Ks.
+
+Proximo passo recomendado:
+
+1. seguir para recursos de jogabilidade, nao para micro-otimizacoes agora;
+2. implementar OAM DMA, pois muitos jogos dependem de copia rapida para sprites;
+3. implementar joypad real no barramento;
+4. adicionar Window depois que DMA/input estiverem estabilizados;
+5. retomar fluxo de ROM/SDRAM quando a base CPU/PPU/input estiver pronta para
+   rodar programas maiores;
+6. manter APU fora ate o sistema nao-audio estar jogavel.

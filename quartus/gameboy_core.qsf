@@ -48,6 +48,7 @@ set_global_assignment -name VHDL_FILE ../rtl/video/vga_pixel_pipeline.vhd
 set_global_assignment -name VHDL_FILE ../rtl/video/test_pattern_writer.vhd
 set_global_assignment -name VHDL_FILE ../rtl/memory/framebuffer.vhd
 set_global_assignment -name VHDL_FILE ../rtl/memory/vram.vhd
+set_global_assignment -name VHDL_FILE ../rtl/memory/hram.vhd
 set_global_assignment -name VHDL_FILE ../rtl/memory/cpu_video_smoke_rom.vhd
 set_global_assignment -name VHDL_FILE ../rtl/memory/cpu_ppu_background_demo_rom.vhd
 set_global_assignment -name VHDL_FILE ../rtl/memory/bus_controller.vhd
