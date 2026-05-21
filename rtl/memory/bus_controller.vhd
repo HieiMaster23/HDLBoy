@@ -26,6 +26,7 @@
 -- 2026-05-20 - Added PPU OAM read port for scanline candidate detection
 -- 2026-05-20 - Exposed OBP0 to the first sprite composition path
 -- 2026-05-20 - Exposed OBP1 to the sprite composition path
+-- 2026-05-20 - Added generics for demo-only framebuffer and debug features
 -- =============================================================================
 
 library ieee;
@@ -33,6 +34,11 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity bus_controller is
+    generic (
+        G_ENABLE_FB_WINDOW     : boolean := true;
+        G_ENABLE_SMOKE_CHECKER : boolean := true;
+        G_ENABLE_SERIAL_DEBUG  : boolean := true
+    );
     port (
         clk                 : in  std_logic;
         reset               : in  std_logic;
@@ -217,7 +223,8 @@ begin
 
     vram_selected <= '1' when unsigned(cpu_addr) >= unsigned(VRAM_BASE_ADDR) and
                               unsigned(cpu_addr) <= unsigned(VRAM_LAST_ADDR) else '0';
-    fb_selected <= '1' when unsigned(cpu_addr) >= unsigned(FB_BASE_ADDR) and
+    fb_selected <= '1' when G_ENABLE_FB_WINDOW and
+                            unsigned(cpu_addr) >= unsigned(FB_BASE_ADDR) and
                             unsigned(cpu_addr) <= unsigned(FB_LAST_ADDR) else '0';
     wram_selected <= '1' when (unsigned(cpu_addr) >= unsigned(WRAM_BASE_ADDR) and
                                unsigned(cpu_addr) <= unsigned(WRAM_LAST_ADDR)) or
@@ -456,12 +463,12 @@ begin
                     sync_read_valid <= '0';
                 end if;
 
-                if unsupported_opcode = '1' then
+                if G_ENABLE_SMOKE_CHECKER and unsupported_opcode = '1' then
                     checker_failed_reg <= '1';
                 end if;
 
                 if cpu_write = '1' then
-                    if fb_selected = '1' then
+                    if G_ENABLE_SMOKE_CHECKER and fb_selected = '1' then
                         if fb_write_count < EXPECTED_FB_WRITES then
                             fb_write_count <= fb_write_count + 1;
                         else
@@ -476,7 +483,7 @@ begin
                             serial_sb_reg <= cpu_data_out;
                         when IO_SC_ADDR =>
                             serial_sc_reg <= cpu_data_out;
-                            if cpu_data_out(7) = '1' then
+                            if G_ENABLE_SERIAL_DEBUG and cpu_data_out(7) = '1' then
                                 serial_debug_valid_reg <= '1';
                                 serial_debug_data_reg <= serial_sb_reg;
                             end if;
@@ -519,12 +526,14 @@ begin
                             led_pattern_reg <= cpu_data_out(3 downto 0);
                         when IO_STATUS_ADDR =>
                             io_status_reg <= cpu_data_out;
-                            if cpu_data_out = PASS_CODE and checker_failed_reg = '0' and
-                               led_pattern_reg = x"D" and
-                               fb_write_count = EXPECTED_FB_WRITES then
-                                final_passed_reg <= '1';
-                            else
-                                checker_failed_reg <= '1';
+                            if G_ENABLE_SMOKE_CHECKER then
+                                if cpu_data_out = PASS_CODE and checker_failed_reg = '0' and
+                                   led_pattern_reg = x"D" and
+                                   fb_write_count = EXPECTED_FB_WRITES then
+                                    final_passed_reg <= '1';
+                                else
+                                    checker_failed_reg <= '1';
+                                end if;
                             end if;
                         when IE_ADDR =>
                             ie_reg <= cpu_data_out;
@@ -576,13 +585,13 @@ begin
     fb_data <= "00" when fb_clear_active = '1' else cpu_data_out(1 downto 0);
 
     led_pattern <= led_pattern_reg;
-    checker_failed <= checker_failed_reg;
-    final_passed <= final_passed_reg;
+    checker_failed <= checker_failed_reg when G_ENABLE_SMOKE_CHECKER else '0';
+    final_passed <= final_passed_reg when G_ENABLE_SMOKE_CHECKER else '0';
     interrupt_enable <= ie_reg(4 downto 0);
     interrupt_flags <= if_reg(4 downto 0);
-    serial_debug_valid <= serial_debug_valid_reg;
-    serial_debug_data <= serial_debug_data_reg;
-    debug_fb_write_count <= std_logic_vector(fb_write_count);
+    serial_debug_valid <= serial_debug_valid_reg when G_ENABLE_SERIAL_DEBUG else '0';
+    serial_debug_data <= serial_debug_data_reg when G_ENABLE_SERIAL_DEBUG else x"00";
+    debug_fb_write_count <= std_logic_vector(fb_write_count) when G_ENABLE_SMOKE_CHECKER else x"00";
     ppu_scy <= scy_reg;
     ppu_scx <= scx_reg;
     ppu_lcdc <= lcdc_reg;
@@ -592,8 +601,11 @@ begin
     ppu_lcd_enable <= lcdc_reg(7);
     ppu_oam_data <= oam_q;
 
-    display_digits <= x"1234" when final_passed_reg = '1' and checker_failed_reg = '0' else
-                      x"EEEE" when checker_failed_reg = '1' else
+    display_digits <= x"1234" when G_ENABLE_SMOKE_CHECKER and
+                                    final_passed_reg = '1' and
+                                    checker_failed_reg = '0' else
+                      x"EEEE" when G_ENABLE_SMOKE_CHECKER and
+                                    checker_failed_reg = '1' else
                       x"0000";
 
 end architecture rtl;

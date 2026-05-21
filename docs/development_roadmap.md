@@ -346,9 +346,11 @@ The next recommended sequence is:
    resource baseline;
 9. preserve the VGA raster scaler optimization as the current video-output
    resource baseline;
-10. prune bus/debug logic that is not needed in the final playable top;
-11. refine DMG ordering details and then add Window interaction;
-12. import broader timer coverage later if the local Blargg package proves too
+10. preserve configurable bus/debug feature gates so smoke-only logic is
+    explicit and opt-in for future tops;
+11. optimize retained bus logic next, especially HRAM/read-path structure;
+12. refine DMG ordering details and then add Window interaction;
+13. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -372,7 +374,7 @@ initial LCDC background controls, the first PPU OAM scan, the first sprite
 pixel fetch/composition slice, and the OBP1/BG-priority/two-candidate sprite
 composition slice, expanded to all 10 per-line OBJ candidates and then
 serialized to reduce the sprite selection path, plus the VGA raster scaler
-optimization, uses:
+optimization and configurable bus/debug feature gates, uses:
 
 - 4,995 / 6,272 logic elements;
 - 179,200 / 276,480 block-memory bits;
@@ -382,7 +384,9 @@ The PPU phase is now both memory-sensitive and logic-sensitive. The serialized
 sprite composition step and VGA scaler optimization brought the design back to
 just below 5,000 logic elements, but Quartus still reports 80% utilization. This
 is not comfortable margin for Window, DMA, ROM loading, joypad, and final
-integration. New work should prefer:
+integration. The bus/debug split did not reduce the current fitted top because
+Quartus already pruned the unused open-output smoke path, but it makes those
+temporary features explicit for future integration tops. New work should prefer:
 
 - shared CPU states instead of duplicated datapaths;
 - inferred RAMs instead of large register arrays;

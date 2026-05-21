@@ -1881,3 +1881,64 @@ Proximo passo recomendado:
 3. buscar economia sem quebrar os contratos de WRAM, HRAM, VRAM, OAM, timer,
    IF/IE e LCD registers;
 4. manter APU fora do escopo ate o sistema nao-audio estar funcional.
+
+## 23. Separacao Configuravel de Debug/Smoke no Barramento
+
+Nesta etapa revisamos o `bus_controller` para separar logica temporaria de
+smoke/debug da logica que o top CPU/PPU visual realmente precisa.
+
+Alteracoes feitas:
+
+- `bus_controller.vhd` recebeu os genericos:
+  - `G_ENABLE_FB_WINDOW`;
+  - `G_ENABLE_SMOKE_CHECKER`;
+  - `G_ENABLE_SERIAL_DEBUG`;
+- os valores padrao continuam `true`, preservando os testes de barramento e o
+  `cpu_video_smoke_top`;
+- `ppu_background_demo_top` e `cpu_ppu_background_demo_top` agora desabilitam
+  explicitamente esses recursos temporarios;
+- o marcador de conclusao em `0xFF80` permanece ativo, pois ele ainda e usado
+  para iniciar a PPU no demo CPU -> VRAM -> PPU.
+
+Regressoes executadas:
+
+- `run_bus_controller.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou.
+
+Resultado de sintese:
+
+- 4,995 / 6,272 LEs, 80%;
+- 1,965 registradores;
+- 179,200 / 276,480 bits de memoria, 65%;
+- 23 / 30 M9Ks, 77%;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 29.175 ns no clock VGA e 175.177 ns no clock CPU;
+- pior hold slack: 0.377 ns no clock CPU e 0.454 ns no clock VGA.
+
+Conclusao tecnica:
+
+A separacao melhorou a arquitetura, mas nao reduziu o numero final de LEs no top
+atual. Isso indica que o Quartus ja eliminava boa parte da logica de debug sem
+fanout no `cpu_ppu_background_demo_top`. Ainda assim, a mudanca vale porque
+deixa explicito quais recursos sao temporarios e evita que futuros tops carreguem
+logica de smoke por acidente.
+
+Tentativa descartada:
+
+- trocamos experimentalmente comparadores largos de faixa de endereco por
+  decodes diretos de bits;
+- a simulacao passou, mas o fit final piorou para 5,025 LEs;
+- a tentativa foi revertida e nao deve ser considerada uma otimizacao valida.
+
+Proximo passo recomendado:
+
+1. nao insistir em debug sem fanout, pois o Quartus ja esta podando isso;
+2. atacar logica realmente retida, especialmente HRAM e caminhos de leitura do
+   barramento;
+3. se mexermos em HRAM, reestruturar o read path em vez de apenas tentar
+   atributo `ramstyle`, pois essa tentativa ja falhou em inferir M9K;
+4. manter APU fora do escopo ate o sistema nao-audio estar funcional.

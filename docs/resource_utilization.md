@@ -1591,3 +1591,57 @@ Notes:
 - The next optimization target should be non-final debug/bus logic rather than
   the APU. Audio remains deferred until the first non-audio playable system is
   functional.
+
+## Configurable Bus Debug Feature Split
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,995 | 6,272 | 80% |
+| Registers | 1,965 | 6,272 | 31% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 29.175 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 175.177 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.377 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.454 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `bus_controller` now has generics for demo-only features:
+  `G_ENABLE_FB_WINDOW`, `G_ENABLE_SMOKE_CHECKER`, and
+  `G_ENABLE_SERIAL_DEBUG`.
+- The standalone bus and CPU-to-framebuffer smoke tests keep the default
+  generic values enabled, preserving the existing smoke contracts.
+- `ppu_background_demo_top` and `cpu_ppu_background_demo_top` explicitly
+  disable these demo-only features because they only need the debug completion
+  marker at `0xFF80`, not the experimental CPU-to-framebuffer window or
+  pass-code checker.
+- Quartus had already removed the unused open-output debug path from the
+  current CPU/PPU top, so this split did not reduce the final fitted top below
+  the previous 4,995 logic element checkpoint. The value is still useful because
+  the hardware boundary is now explicit and future tops can opt into or out of
+  smoke-only logic intentionally.
+- A separate experiment replaced wide memory-map range compares with bit-level
+  address decodes. It passed simulation, but the fitted result worsened to
+  5,025 logic elements, so that experiment was rejected and not kept.
+- The next meaningful optimization should target actual retained logic, not
+  already-pruned open-output debug paths. HRAM remains a likely candidate, but
+  it needs a read-path restructuring; a simple RAM style attribute was already
+  shown not to infer an M9K on this design.

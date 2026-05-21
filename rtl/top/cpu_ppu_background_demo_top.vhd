@@ -209,6 +209,11 @@ begin
         );
 
     u_bus: entity work.bus_controller
+        generic map (
+            G_ENABLE_FB_WINDOW     => false,
+            G_ENABLE_SMOKE_CHECKER => false,
+            G_ENABLE_SERIAL_DEBUG  => false
+        )
         port map (
             clk                  => clk_cpu,
             reset                => reset_cpu,
