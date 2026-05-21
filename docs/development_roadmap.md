@@ -143,6 +143,14 @@ The project has already completed the early foundation layers:
       into a one-candidate-per-cycle composition step;
     - the top returned from 5,286 logic elements (84%) to 5,013 logic elements
       (80%), saving 273 logic elements while preserving the current tests.
+24. **VGA raster scaler optimization**
+    - `vga_pixel_pipeline` no longer infers reciprocal-multiply logic for
+      divide-by-3 scaling;
+    - fixed 3x scaling is tracked with small raster phases and a registered line
+      base;
+    - the VGA pipeline hierarchy dropped from 141 to 117 logic cells;
+    - the top dropped from 5,013 to 4,995 logic elements, though Quartus still
+      rounds utilization to 80%.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -336,10 +344,11 @@ The next recommended sequence is:
    per-line OBJ candidate baseline;
 8. preserve the serialized sprite composition optimization as the current
    resource baseline;
-9. reduce the VGA pixel pipeline multiplier/address cost, then prune bus/debug
-   logic that is not needed in the final playable top;
-10. refine DMG ordering details and then add Window interaction;
-11. import broader timer coverage later if the local Blargg package proves too
+9. preserve the VGA raster scaler optimization as the current video-output
+   resource baseline;
+10. prune bus/debug logic that is not needed in the final playable top;
+11. refine DMG ordering details and then add Window interaction;
+12. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -362,16 +371,18 @@ blocking plus initial OAM storage, continuous frame looping, BGP palette lookup,
 initial LCDC background controls, the first PPU OAM scan, the first sprite
 pixel fetch/composition slice, and the OBP1/BG-priority/two-candidate sprite
 composition slice, expanded to all 10 per-line OBJ candidates and then
-serialized to reduce the sprite selection path, uses:
+serialized to reduce the sprite selection path, plus the VGA raster scaler
+optimization, uses:
 
-- 5,013 / 6,272 logic elements;
+- 4,995 / 6,272 logic elements;
 - 179,200 / 276,480 block-memory bits;
 - 23 / 30 M9K blocks.
 
 The PPU phase is now both memory-sensitive and logic-sensitive. The serialized
-sprite composition step brought the design back to exactly the 80% logic caution
-threshold, but this is still not comfortable margin for Window, DMA, ROM loading,
-joypad, and final integration. New work should prefer:
+sprite composition step and VGA scaler optimization brought the design back to
+just below 5,000 logic elements, but Quartus still reports 80% utilization. This
+is not comfortable margin for Window, DMA, ROM loading, joypad, and final
+integration. New work should prefer:
 
 - shared CPU states instead of duplicated datapaths;
 - inferred RAMs instead of large register arrays;

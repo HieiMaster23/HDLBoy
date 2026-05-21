@@ -1543,3 +1543,51 @@ Notes:
   threshold but not comfortably below it. The next optimization target should be
   the VGA pixel pipeline multipliers and then bus/debug logic that is not needed
   in the final playable top.
+
+## VGA Pixel Pipeline Raster Scaler Optimization
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-20
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,995 | 6,272 | 80% |
+| Registers | 1,965 | 6,272 | 31% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 179,200 | 276,480 | 65% |
+| M9Ks | 23 | 30 | 77% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 29.175 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 175.177 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.377 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.454 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `vga_pixel_pipeline` no longer computes `(pixel - offset) / 3` with
+  reciprocal multiplication.
+- The scaler now assumes raster-ordered coordinates from `vga_controller` and
+  tracks the fixed 3x scale with modulo-3 horizontal/vertical phases.
+- The framebuffer address is generated from a registered line base plus the
+  current Game Boy X coordinate, avoiding the two inferred `lpm_mult` structures
+  previously visible in the hierarchy report.
+- The `vga_pixel_pipeline` hierarchy dropped from 141 to 117 logic cells while
+  adding 20 registers for the scale counters and line base.
+- Compared with the serialized sprite composition checkpoint, the full top
+  drops from 5,013 to 4,995 logic elements. Quartus still rounds this to 80%,
+  so the project remains resource-sensitive.
+- The next optimization target should be non-final debug/bus logic rather than
+  the APU. Audio remains deferred until the first non-audio playable system is
+  functional.

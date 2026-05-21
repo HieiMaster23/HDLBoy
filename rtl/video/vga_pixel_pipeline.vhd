@@ -7,6 +7,7 @@
 -- Tool:        Quartus II 13.0 SP1
 -- =============================================================================
 -- Reads 2-bit pixel data from the framebuffer and outputs RGB for VGA.
+-- The address scaler assumes raster-ordered coordinates from `vga_controller`.
 --
 -- Upscaling: 160x144 -> 480x432 (3x integer scale), centered in 640x480
 --   Horizontal: pixels 80..559 map to GB x 0..159  (gb_x = (pixel_x - 80) / 3)
@@ -26,6 +27,7 @@
 -- =============================================================================
 -- Revision History:
 -- 2026-03-25 - Initial creation for M2 milestone
+-- 2026-05-20 - Replaced divide-by-3 multipliers with sequential scale counters
 -- =============================================================================
 
 library ieee;
@@ -62,107 +64,106 @@ architecture rtl of vga_pixel_pipeline is
     constant V_END      : integer := 456;  -- V_OFFSET + 144*3
     constant GB_WIDTH   : integer := 160;
 
-    -- Pipeline stage 1 signals
-    signal in_game_area_s1 : std_logic;
-    signal visible_s1      : std_logic;
+    constant LINE_STRIDE : unsigned(14 downto 0) := to_unsigned(GB_WIDTH, 15);
+
+    -- Sequential scaler state. The VGA controller supplies pixels in raster
+    -- order, so fixed 3x scaling can be tracked with modulo-3 phases instead
+    -- of recomputing divisions for every pixel.
+    signal gb_x_reg        : unsigned(7 downto 0);
+    signal x_phase_reg     : integer range 0 to 2;
+    signal y_base_reg      : unsigned(14 downto 0);
+    signal y_phase_reg     : integer range 0 to 2;
 
     -- Pipeline stage 2 signals
     signal in_game_area_s2 : std_logic;
     signal visible_s2      : std_logic;
-
-    -- Division by 3 helper signals (exposed for debug/waveform viewing)
-    signal gb_x : unsigned(7 downto 0);  -- 0..159
-    signal gb_y : unsigned(7 downto 0);  -- 0..143
 
 begin
 
     -- =========================================================================
     -- Stage 0: Address calculation (combinational -> registered in framebuffer)
     -- =========================================================================
-    -- Divide by 3 using subtraction: (pixel - offset) / 3
-    -- For synthesis efficiency, pixel_x and pixel_y arrive registered from
-    -- vga_controller, so we have one full clock cycle for this computation.
+    -- The address is tracked incrementally from raster-ordered VGA coordinates.
+    -- This avoids per-pixel division by 3 and removes the inferred multiplier
+    -- blocks Quartus created for the previous reciprocal-multiply approach.
     p_addr_calc: process(clk_vga)
-        variable vx : unsigned(9 downto 0);
-        variable vy : unsigned(9 downto 0);
-        variable gx : unsigned(9 downto 0);
-        variable gy : unsigned(9 downto 0);
-        variable in_area : std_logic;
-        -- Use variables so fb_addr can read the freshly computed values
-        -- within the same clock cycle (signals would be delayed by 1 cycle)
-        variable gx_div3 : unsigned(7 downto 0);
-        variable gy_div3 : unsigned(7 downto 0);
+        variable in_area_v : std_logic;
+        variable gb_x_v    : unsigned(7 downto 0);
+        variable x_phase_v : integer range 0 to 2;
+        variable y_base_v  : unsigned(14 downto 0);
+        variable y_phase_v : integer range 0 to 2;
     begin
         if rising_edge(clk_vga) then
             if reset = '1' then
-                fb_addr          <= (others => '0');
-                in_game_area_s1  <= '0';
-                visible_s1       <= '0';
-            else
-                vx := pixel_x;
-                vy := pixel_y;
-
-                -- Check if current pixel is within the game display area
-                if vx >= H_OFFSET and vx < H_END and
-                   vy >= V_OFFSET and vy < V_END then
-                    in_area := '1';
-                else
-                    in_area := '0';
-                end if;
-
-                in_game_area_s1 <= in_area;
-                visible_s1      <= visible;
-
-                if in_area = '1' then
-                    -- Divide by 3: (pixel - offset) / 3
-                    -- Using a lookup-free approach: multiply by 21845 and
-                    -- shift right by 16 approximates /3, but for 10-bit values
-                    -- a simpler approach works: (n * 171) >> 9 for n < 512
-                    -- Since max value is 479 (< 512) this is exact enough.
-                    gx := vx - H_OFFSET;
-                    gy := vy - V_OFFSET;
-
-                    gx_div3 := resize(
-                        shift_right(gx * to_unsigned(171, 9), 9),
-                        8);
-                    gy_div3 := resize(
-                        shift_right(gy * to_unsigned(171, 9), 9),
-                        8);
-
-                    -- Update signals for debug visibility
-                    gb_x <= gx_div3;
-                    gb_y <= gy_div3;
-
-                    -- Address = gy_div3 * 160 + gx_div3
-                    -- 160 = 128 + 32, so y*160 = y*128 + y*32 = (y<<7) + (y<<5)
-                    fb_addr <= resize(
-                        shift_left(resize(gy_div3, 15), 7) +
-                        shift_left(resize(gy_div3, 15), 5) +
-                        resize(gx_div3, 15),
-                        15);
-                else
-                    fb_addr <= (others => '0');
-                end if;
-            end if;
-        end if;
-    end process p_addr_calc;
-
-    -- =========================================================================
-    -- Stage 1: Framebuffer read occurs externally (1 cycle latency)
-    -- Pipeline the control signals to match
-    -- =========================================================================
-    p_pipeline_s2: process(clk_vga)
-    begin
-        if rising_edge(clk_vga) then
-            if reset = '1' then
+                fb_addr      <= (others => '0');
+                gb_x_reg     <= (others => '0');
+                x_phase_reg  <= 0;
+                y_base_reg   <= (others => '0');
+                y_phase_reg  <= 0;
                 in_game_area_s2 <= '0';
                 visible_s2      <= '0';
             else
-                in_game_area_s2 <= in_game_area_s1;
-                visible_s2      <= visible_s1;
+                gb_x_v := gb_x_reg;
+                x_phase_v := x_phase_reg;
+                y_base_v := y_base_reg;
+                y_phase_v := y_phase_reg;
+
+                if pixel_x = to_unsigned(0, pixel_x'length) then
+                    gb_x_v := (others => '0');
+                    x_phase_v := 0;
+
+                    if pixel_y = to_unsigned(V_OFFSET, pixel_y'length) then
+                        y_base_v := (others => '0');
+                        y_phase_v := 0;
+                    elsif pixel_y > to_unsigned(V_OFFSET, pixel_y'length) and
+                          pixel_y < to_unsigned(V_END, pixel_y'length) then
+                        if y_phase_reg = 2 then
+                            y_base_v := y_base_reg + LINE_STRIDE;
+                            y_phase_v := 0;
+                        else
+                            y_phase_v := y_phase_reg + 1;
+                        end if;
+                    end if;
+                end if;
+
+                if pixel_x >= to_unsigned(H_OFFSET, pixel_x'length) and
+                   pixel_x < to_unsigned(H_END, pixel_x'length) and
+                   pixel_y >= to_unsigned(V_OFFSET, pixel_y'length) and
+                   pixel_y < to_unsigned(V_END, pixel_y'length) then
+                    in_area_v := '1';
+                else
+                    in_area_v := '0';
+                end if;
+
+                if in_area_v = '1' then
+                    if pixel_x = to_unsigned(H_OFFSET, pixel_x'length) then
+                        gb_x_v := (others => '0');
+                        x_phase_v := 0;
+                    end if;
+
+                    fb_addr <= y_base_v + resize(gb_x_v, 15);
+
+                    if x_phase_v = 2 then
+                        x_phase_v := 0;
+                        if gb_x_v < to_unsigned(GB_WIDTH - 1, gb_x_v'length) then
+                            gb_x_v := gb_x_v + 1;
+                        end if;
+                    else
+                        x_phase_v := x_phase_v + 1;
+                    end if;
+                else
+                    fb_addr <= (others => '0');
+                end if;
+
+                gb_x_reg <= gb_x_v;
+                x_phase_reg <= x_phase_v;
+                y_base_reg <= y_base_v;
+                y_phase_reg <= y_phase_v;
+                in_game_area_s2 <= in_area_v;
+                visible_s2 <= visible;
             end if;
         end if;
-    end process p_pipeline_s2;
+    end process p_addr_calc;
 
     -- =========================================================================
     -- Stage 2: Palette lookup (fb_data is valid after RAM read latency)

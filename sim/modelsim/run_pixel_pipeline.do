@@ -33,10 +33,12 @@ add wave -radix binary sim:/tb_vga_pixel_pipeline/vga_g
 add wave -radix binary sim:/tb_vga_pixel_pipeline/vga_b
 
 add wave -divider "Pipeline Internals"
-add wave sim:/tb_vga_pixel_pipeline/u_dut/in_game_area_s1
 add wave sim:/tb_vga_pixel_pipeline/u_dut/in_game_area_s2
-add wave sim:/tb_vga_pixel_pipeline/u_dut/visible_s1
 add wave sim:/tb_vga_pixel_pipeline/u_dut/visible_s2
+add wave -radix unsigned sim:/tb_vga_pixel_pipeline/u_dut/gb_x_reg
+add wave sim:/tb_vga_pixel_pipeline/u_dut/x_phase_reg
+add wave -radix unsigned sim:/tb_vga_pixel_pipeline/u_dut/y_base_reg
+add wave sim:/tb_vga_pixel_pipeline/u_dut/y_phase_reg
 
 # Run simulation
 run -all

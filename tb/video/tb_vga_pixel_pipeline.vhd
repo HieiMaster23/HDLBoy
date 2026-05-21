@@ -9,7 +9,7 @@
 -- Verifies:
 --   1. Black output during blanking (visible = '0')
 --   2. Black border outside the 480x432 game area
---   3. Correct framebuffer address generation (3x downscale)
+--   3. Correct framebuffer address generation from raster-ordered VGA input
 --   4. Palette mapping for all 4 shades
 --   5. Full scanline address sweep across game area
 -- =============================================================================
@@ -167,12 +167,23 @@ begin
         -- Pixel (83, 24) -> gb(1,0) -> addr 1  (3 VGA pixels per GB pixel)
         -- Pixel (80, 27) -> gb(0,1) -> addr 160
         -- =====================================================================
-        -- Check addr for pixel (83, 24) -> should be 1
-        pixel_x <= to_unsigned(83, 10);
+        -- The optimized pipeline tracks the VGA raster stream instead of
+        -- recomputing division by 3 for arbitrary coordinate jumps.
+        reset <= '1';
+        wait until rising_edge(clk_vga);
+        wait until rising_edge(clk_vga);
+        reset <= '0';
+
+        -- Check addr for pixel (83, 24) -> should be 1.
+        -- Drive the start of the first game line and then the first scaled
+        -- pixels so the internal 3x phase counter is aligned.
         pixel_y <= to_unsigned(24, 10);
         visible <= '1';
-        wait until rising_edge(clk_vga);  -- addr calc stage
-        wait until rising_edge(clk_vga);  -- addr registered
+        for x in 0 to 83 loop
+            pixel_x <= to_unsigned(x, 10);
+            wait until rising_edge(clk_vga);
+        end loop;
+        wait for 1 ns;
 
         assert fb_addr = to_unsigned(1, 15)
             report "FAIL: Pixel (83,24) should map to fb_addr 1, got " &
@@ -180,12 +191,20 @@ begin
             severity failure;
         report "PASS: Address mapping (83,24) -> fb_addr 1" severity note;
 
-        -- Check addr for pixel (80, 27) -> gb(0,1) -> addr 160
-        pixel_x <= to_unsigned(80, 10);
+        -- Check addr for pixel (80, 27) -> gb(0,1) -> addr 160.
+        -- Advance the line-start samples that update the vertical 3x phase.
+        pixel_x <= to_unsigned(0, 10);
+        pixel_y <= to_unsigned(25, 10);
+        wait until rising_edge(clk_vga);
+        pixel_y <= to_unsigned(26, 10);
+        wait until rising_edge(clk_vga);
         pixel_y <= to_unsigned(27, 10);
+        wait until rising_edge(clk_vga);
+
+        pixel_x <= to_unsigned(80, 10);
         visible <= '1';
         wait until rising_edge(clk_vga);
-        wait until rising_edge(clk_vga);
+        wait for 1 ns;
 
         assert fb_addr = to_unsigned(160, 15)
             report "FAIL: Pixel (80,27) should map to fb_addr 160, got " &

@@ -1815,3 +1815,69 @@ Proximo passo recomendado:
 2. depois revisar custo de `bus_controller` e remover ou condicionar debug que
    nao precisa existir no top final jogavel;
 3. somente entao voltar para refinamento de ordering de sprites, Window e DMA.
+
+## 22. Otimizacao do VGA Pixel Pipeline
+
+Nesta etapa otimizamos o caminho de saida de video que ainda inferia logica de
+multiplicacao para calcular a escala fixa 3x.
+
+Alteracoes feitas:
+
+- `vga_pixel_pipeline.vhd` deixou de calcular `(pixel - offset) / 3` por
+  multiplicacao reciproca;
+- o pipeline agora assume coordenadas em ordem raster vindas de
+  `vga_controller`;
+- a escala horizontal e vertical 3x passou a ser acompanhada por fases
+  modulo-3 pequenas;
+- o endereco do framebuffer passou a usar uma base de linha registrada mais a
+  coordenada X atual;
+- os sinais internos antigos `gb_x` e `gb_y`, que geravam avisos por nao serem
+  lidos, foram removidos;
+- `run_pixel_pipeline.do` foi atualizado para observar os novos registradores
+  internos de fase/base;
+- `tb_vga_pixel_pipeline` agora testa o contrato correto: entrada rasterizada,
+  nao saltos arbitrarios de coordenada.
+
+Regressoes executadas:
+
+- `run_pixel_pipeline.do` passou;
+- `run_framebuffer_top.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou com timeout ampliado;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou.
+
+Resultado de sintese:
+
+- 4,995 / 6,272 LEs, 80%;
+- 1,965 registradores;
+- 179,200 / 276,480 bits de memoria, 65%;
+- 23 / 30 M9Ks, 77%;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 29.175 ns no clock VGA e 175.177 ns no clock CPU;
+- pior hold slack: 0.377 ns no clock CPU e 0.454 ns no clock VGA.
+
+Comparacao com o checkpoint anterior:
+
+- top completo: 5,013 LEs para 4,995 LEs, economia de 18 LEs;
+- `vga_pixel_pipeline`: 141 logic cells para 117 logic cells, economia local de
+  24 logic cells;
+- custo: +20 registradores para fases/base de linha;
+- warnings totais do build cairam de 36 para 34.
+
+Conclusao tecnica:
+
+A economia e menor que a obtida na composicao de sprites, mas e uma otimizacao
+correta: removemos logica de multiplicacao de um caminho de pixel fixo e
+substituimos por estado sequencial barato. O projeto agora esta abaixo de 5,000
+LEs, embora o Quartus ainda arredonde a utilizacao para 80%.
+
+Proximo passo recomendado:
+
+1. revisar o `bus_controller`, que ainda e o maior bloco depois da CPU;
+2. separar claramente logica necessaria para o top jogavel de logica de debug,
+   smoke e conveniencia de simulacao;
+3. buscar economia sem quebrar os contratos de WRAM, HRAM, VRAM, OAM, timer,
+   IF/IE e LCD registers;
+4. manter APU fora do escopo ate o sistema nao-audio estar funcional.
