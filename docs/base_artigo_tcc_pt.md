@@ -199,7 +199,9 @@ Alguns pontos do projeto já têm valor claro para o futuro artigo:
 - a extração do timer compartilhado e o custo real medido em síntese;
 - o processo de otimizacao que reduziu o top de 4.995 para 3.674 LEs ao mover
   a HRAM para um bloco M9K inferido, registrado em
-  `optimization_process_pt.md`.
+  `optimization_process_pt.md`;
+- a versao desse caso em linguagem profissional/corporativa para LinkedIn,
+  registrada em `linkedin_hram_optimization_post_pt.md`.
 
 Esses casos são bons porque mostram engenharia de verdade: havia um problema,
 uma decisão, uma verificação e uma consequência mensurável.
