@@ -348,9 +348,19 @@ begin
         bus_read_check(x"FF44", x"00", "FAIL: LY should mirror PPU line zero at reset");
 
         bus_write(x"FF45", x"44");
-        bus_write(x"FF46", x"55");
         bus_read_check(x"FF45", x"44", "FAIL: LYC stub should read back written data");
-        bus_read_check(x"FF46", x"55", "FAIL: DMA stub should read back written data");
+
+        for i in 0 to 159 loop
+            bus_write(
+                std_logic_vector(to_unsigned(16#C000# + i, 16)),
+                std_logic_vector(to_unsigned((i * 3 + 1) mod 256, 8))
+            );
+        end loop;
+        bus_write(x"FF46", x"C0");
+        bus_read_check(x"FF46", x"C0", "FAIL: DMA register should read back the source high byte after transfer");
+        bus_read_check(x"FE00", x"01", "FAIL: OAM DMA should copy WRAM source byte 0 to OAM byte 0");
+        bus_read_check(x"FE01", x"04", "FAIL: OAM DMA should copy WRAM source byte 1 to OAM byte 1");
+        bus_read_check(x"FE9F", x"DE", "FAIL: OAM DMA should copy WRAM source byte 159 to OAM byte 159");
 
         ppu_current_line <= to_unsigned(16#44#, 8);
         ppu_mode <= "10";

@@ -160,6 +160,12 @@ The project has already completed the early foundation layers:
       registers to 543 logic cells / 186 registers;
     - the full top dropped from 4,995 to 3,674 logic elements, restoring
       substantial logic margin for the first-playable feature path.
+26. **Initial OAM DMA**
+    - writes to `0xFF46` now start a 160-byte OAM DMA transfer;
+    - this first slice supports WRAM/Echo source pages, covering the
+      shadow-OAM-to-OAM path needed by simple games;
+    - `cpu_ready` is held low while the transfer is active;
+    - no new M9K blocks were added, and the top now uses 3,741 logic elements.
 
 The project has completed the local CPU/timing ladder available in the current
 Blargg package and has entered the first **real PPU** implementation phase.
@@ -359,10 +365,12 @@ The next recommended sequence is:
     explicit and opt-in for future tops;
 11. preserve the HRAM M9K inference optimization as the current bus-resource
     baseline;
-12. implement first-playable support features next: OAM DMA, joypad input, then
-    Window interaction;
-13. refine DMG sprite ordering details as needed for the simple-game target;
-14. import broader timer coverage later if the local Blargg package proves too
+12. preserve the first WRAM/Echo-backed OAM DMA slice as the initial sprite-data
+    transfer baseline;
+13. implement first-playable support features next: joypad input, then Window
+    interaction;
+14. refine DMG sprite ordering details as needed for the simple-game target;
+15. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -386,10 +394,10 @@ initial LCDC background controls, the first PPU OAM scan, the first sprite
 pixel fetch/composition slice, and the OBP1/BG-priority/two-candidate sprite
 composition slice, expanded to all 10 per-line OBJ candidates and then
 serialized to reduce the sprite selection path, plus the VGA raster scaler
-optimization, configurable bus/debug feature gates, and HRAM M9K inference,
-uses:
+optimization, configurable bus/debug feature gates, HRAM M9K inference, and the
+first WRAM/Echo-backed OAM DMA slice, uses:
 
-- 3,674 / 6,272 logic elements;
+- 3,741 / 6,272 logic elements;
 - 180,224 / 276,480 block-memory bits;
 - 24 / 30 M9K blocks.
 
@@ -398,8 +406,10 @@ The serialized sprite composition step and VGA scaler optimization brought the
 design below 5,000 logic elements, and the HRAM M9K inference step then removed
 1,321 retained logic elements by replacing a register-heavy HRAM implementation
 with one inferred M9K block. The project now has enough logic room to continue
-the first-playable path, while still preserving strict discipline because only
-six M9K blocks remain free. New work should prefer:
+the first-playable path. The first OAM DMA slice then added a gameplay-relevant
+transfer path for 67 logic elements and no new M9K blocks. The design still
+needs strict discipline because only six M9K blocks remain free. New work should
+prefer:
 
 - shared CPU states instead of duplicated datapaths;
 - inferred RAMs instead of large register arrays;

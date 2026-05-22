@@ -28,6 +28,7 @@
 -- 2026-05-20 - Exposed OBP1 to the sprite composition path
 -- 2026-05-20 - Added generics for demo-only framebuffer and debug features
 -- 2026-05-21 - Moved HRAM into a dedicated inferable memory block
+-- 2026-05-22 - Added first WRAM/Echo-backed OAM DMA transfer path
 -- =============================================================================
 
 library ieee;
@@ -181,9 +182,13 @@ architecture rtl of bus_controller is
     signal vram_cpu_blocked  : std_logic;
     signal fb_selected       : std_logic;
     signal wram_selected     : std_logic;
+    signal wram_read_addr    : unsigned(12 downto 0);
     signal oam_selected      : std_logic;
     signal oam_cpu_blocked   : std_logic;
     signal oam_cpu_we        : std_logic;
+    signal oam_write_we      : std_logic;
+    signal oam_write_addr    : unsigned(7 downto 0);
+    signal oam_write_data    : std_logic_vector(7 downto 0);
     signal oam_read_addr     : unsigned(7 downto 0);
     signal io_selected       : std_logic;
     signal hram_selected     : std_logic;
@@ -195,6 +200,12 @@ architecture rtl of bus_controller is
     signal wram_q            : std_logic_vector(7 downto 0);
     signal oam_q             : std_logic_vector(7 downto 0);
     signal hram_q            : std_logic_vector(7 downto 0);
+    signal dma_active        : std_logic;
+    signal dma_phase         : std_logic;
+    signal dma_index         : unsigned(7 downto 0);
+    signal dma_wram_addr     : unsigned(12 downto 0);
+    signal dma_source_wram   : std_logic;
+    signal dma_oam_we        : std_logic;
 
     attribute ramstyle of oam : signal is "M9K";
 
@@ -241,7 +252,8 @@ begin
                                    (hram_selected = '1' and
                                     cpu_addr /= IO_LED_ADDR and
                                     cpu_addr /= IO_STATUS_ADDR) else '0';
-    cpu_ready <= '0' when cpu_read = '1' and sync_read_selected = '1' and
+    cpu_ready <= '0' when dma_active = '1' else
+                 '0' when cpu_read = '1' and sync_read_selected = '1' and
                           (sync_read_valid = '0' or sync_read_addr /= cpu_addr) else '1';
 
     timer_write_div <= '1' when cpu_write = '1' and cpu_addr = IO_DIV_ADDR else '0';
@@ -262,6 +274,19 @@ begin
     oam_cpu_we <= cpu_write and oam_selected and not oam_cpu_blocked;
     oam_read_addr <= ppu_oam_addr when ppu_oam_read = '1' else
                      unsigned(cpu_addr(7 downto 0));
+    dma_wram_addr <= unsigned(dma_reg(4 downto 0)) & dma_index;
+    dma_source_wram <= '1' when (unsigned(dma_reg) >= x"C0" and
+                                 unsigned(dma_reg) <= x"DF") or
+                                (unsigned(dma_reg) >= x"E0" and
+                                 unsigned(dma_reg) <= x"FD") else '0';
+    dma_oam_we <= '1' when dma_active = '1' and dma_phase = '1' and
+                           dma_source_wram = '1' else '0';
+    wram_read_addr <= dma_wram_addr when dma_active = '1' and
+                                      dma_source_wram = '1' else
+                      unsigned(cpu_addr(12 downto 0));
+    oam_write_we <= dma_oam_we or oam_cpu_we;
+    oam_write_addr <= dma_index when dma_oam_we = '1' else unsigned(cpu_addr(7 downto 0));
+    oam_write_data <= wram_q when dma_oam_we = '1' else cpu_data_out;
     hram_cpu_we <= cpu_write and hram_selected;
     vblank_irq_condition <= '1' when lcdc_reg(7) = '1' and
                                       ppu_effective_mode = "01" and
@@ -427,6 +452,9 @@ begin
                 stat_irq_condition_reg <= '0';
                 sync_read_valid <= '0';
                 sync_read_addr <= (others => '0');
+                dma_active <= '0';
+                dma_phase <= '0';
+                dma_index <= (others => '0');
                 fb_write_count <= (others => '0');
                 led_pattern_reg <= x"0";
                 checker_failed_reg <= '0';
@@ -435,6 +463,20 @@ begin
                 serial_debug_valid_reg <= '0';
                 vblank_irq_condition_reg <= vblank_irq_condition;
                 stat_irq_condition_reg <= stat_irq_condition;
+
+                if dma_active = '1' then
+                    if dma_phase = '0' then
+                        dma_phase <= '1';
+                    else
+                        dma_phase <= '0';
+                        if dma_index = to_unsigned(159, 8) then
+                            dma_active <= '0';
+                            dma_index <= (others => '0');
+                        else
+                            dma_index <= dma_index + 1;
+                        end if;
+                    end if;
+                end if;
 
                 if timer_interrupt_set = '1' then
                     if_reg(2) <= '1';
@@ -520,6 +562,9 @@ begin
                             lyc_reg <= cpu_data_out;
                         when IO_DMA_ADDR =>
                             dma_reg <= cpu_data_out;
+                            dma_active <= '1';
+                            dma_phase <= '0';
+                            dma_index <= (others => '0');
                         when IO_BGP_ADDR =>
                             bgp_reg <= cpu_data_out;
                         when IO_OBP0_ADDR =>
@@ -560,15 +605,15 @@ begin
             if cpu_write = '1' and wram_selected = '1' then
                 wram(to_integer(unsigned(cpu_addr(12 downto 0)))) <= cpu_data_out;
             end if;
-            wram_q <= wram(to_integer(unsigned(cpu_addr(12 downto 0))));
+            wram_q <= wram(to_integer(wram_read_addr));
         end if;
     end process p_wram;
 
     p_oam: process(clk)
     begin
         if rising_edge(clk) then
-            if oam_cpu_we = '1' then
-                oam(to_integer(unsigned(cpu_addr(7 downto 0)))) <= cpu_data_out;
+            if oam_write_we = '1' then
+                oam(to_integer(oam_write_addr)) <= oam_write_data;
             end if;
 
             oam_q <= oam(to_integer(oam_read_addr));

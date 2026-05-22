@@ -120,19 +120,21 @@ That mode source now also drives the first interrupt-visible PPU behavior:
 VBlank entry requests IF bit 0, and enabled STAT conditions request IF bit 1 for
 Mode 0, Mode 1, Mode 2, and `LY=LYC`.
 
-That combined path has now been confirmed on the real OMDAZZ board. The observed
-image is the expected centered Game Boy area with a first tile row alternating
+That combined path has been confirmed on the real OMDAZZ board. The observed
+image was the expected centered Game Boy area with a first tile row alternating
 between white and checkerboard tiles, proving the complete live chain:
-`CPU -> bus_controller -> VRAM -> PPU -> framebuffer -> VGA`.
+`CPU -> bus_controller -> VRAM -> PPU -> framebuffer -> VGA`. Since that
+hardware checkpoint, the PPU path has also gained continuous frame looping,
+initial LCDC/BGP/OBP handling, OAM storage, OAM scan, first 10-candidate sprite
+composition, and an initial WRAM/Echo-backed OAM DMA path triggered by writes to
+`0xFF46`.
 
 The next architectural steps are:
 
-1. Refine the scheduler toward real dot counts without breaking the current
-   CPU-authored VRAM visual baseline.
-2. Add the remaining background-facing register behavior that matters before
-   sprites, especially palette-facing output.
-3. Extend the bus toward OAM and the remaining PPU register decode before adding
-   sprites, window, full STAT behavior, and DMA.
+1. Add real joypad input through the existing `0xFF00` register path.
+2. Add Window rendering on top of the current background/sprite renderer.
+3. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
+   defined.
 
 The design should continue to keep module-level testbenches close to each RTL
 block and add integration testbenches only when a cross-module contract exists.

@@ -1695,3 +1695,55 @@ Notes:
 - This optimization moves the design below the requested 4,600-LE target with
   meaningful margin. The project is still M9K-sensitive at 24 / 30 blocks, but
   logic is no longer the immediate blocker for the next first-playable slices.
+
+## Initial WRAM/Echo-Backed OAM DMA Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-22
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 3,741 | 6,272 | 60% |
+| Registers | 951 | 6,272 | 15% |
+| Pins | 11 | 92 | 12% |
+| Memory bits | 180,224 | 276,480 | 65% |
+| M9Ks | 24 | 30 | 80% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 28.883 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 179.754 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.436 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.453 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `bus_controller` now treats writes to `0xFF46` as the start of an initial
+  OAM DMA transfer.
+- This first slice supports WRAM and Echo RAM source pages
+  `0xC000..0xDF9F` and `0xE000..0xFD9F`, which covers the important
+  shadow-OAM-to-OAM path needed by simple games.
+- The DMA engine copies 160 bytes into `0xFE00..0xFE9F` and holds
+  `cpu_ready` low while the transfer is active.
+- The implementation uses the existing WRAM and OAM M9K-backed memories. No new
+  memory bits or M9K blocks were added.
+- The current implementation is intentionally not a complete DMG OAM DMA model:
+  ROM, cartridge RAM, VRAM, and HRAM source pages are not yet copied by this
+  first slice, and the transfer is serialized through the existing registered
+  WRAM read path rather than being exact 160-M-cycle behavior.
+- `tb_bus_controller` now fills 160 bytes of WRAM, writes `0xC0` to `0xFF46`,
+  waits through the `cpu_ready` stall, and verifies the copied OAM bytes.
+- Compared with the HRAM M9K checkpoint, this costs 67 logic elements and 10
+  registers, with unchanged block-memory and M9K usage. The bus controller
+  hierarchy rises from 543 logic cells / 186 registers to 600 logic cells /
+  196 registers.

@@ -2008,3 +2008,85 @@ Proximo passo recomendado:
 5. retomar fluxo de ROM/SDRAM quando a base CPU/PPU/input estiver pronta para
    rodar programas maiores;
 6. manter APU fora ate o sistema nao-audio estar jogavel.
+
+## 25. Primeira Fatia de OAM DMA
+
+Nesta etapa implementamos a primeira versao funcional de DMA para OAM,
+priorizando o caminho necessario para jogos simples: copia de shadow OAM em
+WRAM/Echo para `0xFE00..0xFE9F`.
+
+Escopo escolhido:
+
+- escrita em `0xFF46` inicia DMA;
+- o byte escrito e mantido em `dma_reg`;
+- fontes suportadas nesta fatia:
+  - `0xC000..0xDF9F`;
+  - `0xE000..0xFD9F`;
+- a transferencia copia 160 bytes para OAM;
+- `cpu_ready` fica em `0` enquanto o DMA esta ativo, travando a CPU ate o fim
+  da copia;
+- a implementacao usa a WRAM e a OAM ja inferidas em M9K, sem criar nova RAM.
+
+Limitacao assumida:
+
+Esta ainda nao e uma DMA OAM completa do DMG. Nesta fatia, ROM/cartucho,
+VRAM, HRAM e fontes externas ainda nao sao copiadas. Tambem mantivemos a copia
+serializada pelo caminho de leitura registrada da WRAM, em vez de tentar
+modelar imediatamente a duracao exata de 160 M-cycles. A escolha foi
+intencional: entregar o caminho mais importante para jogos basicos com baixo
+custo de area.
+
+Alteracoes feitas:
+
+- `bus_controller.vhd` ganhou sinais `dma_active`, `dma_phase`, `dma_index`,
+  `dma_wram_addr`, `dma_source_wram` e `dma_oam_we`;
+- o endereco de leitura da WRAM agora e multiplexado entre CPU e DMA;
+- o caminho de escrita da OAM agora multiplexa escrita normal da CPU e escrita
+  vinda do DMA;
+- `cpu_ready` passa a ficar baixo durante DMA ativo;
+- `tb_bus_controller` agora preenche 160 bytes de WRAM, escreve `0xC0` em
+  `0xFF46` e valida bytes copiados em `0xFE00`, `0xFE01` e `0xFE9F`.
+
+Regressoes executadas:
+
+- `run_bus_controller.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou com 0 erros e 34 warnings.
+
+Resultado de sintese:
+
+- 3,741 / 6,272 LEs, 60%;
+- 951 registradores, 15%;
+- 180,224 / 276,480 bits de memoria, 65%;
+- 24 / 30 M9Ks, 80%;
+- 0 multiplicadores;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 28.883 ns no clock VGA e 179.754 ns no clock CPU;
+- pior hold slack: 0.436 ns no clock CPU e 0.453 ns no clock VGA.
+
+Comparacao com o checkpoint anterior:
+
+- top completo: 3,674 LEs para 3,741 LEs, custo de +67 LEs;
+- registradores: 941 para 951, custo de +10 registradores;
+- memoria e M9K permaneceram iguais;
+- `bus_controller`: 543 logic cells / 186 registradores para 600 logic cells /
+  196 registradores.
+
+Conclusao tecnica:
+
+A fatia ficou dentro da estrategia do core enxuto. Ela adiciona um recurso
+relevante para o caminho jogavel com custo pequeno e sem consumir mais M9Ks. O
+projeto permanece com folga logica razoavel apos a otimizacao da HRAM, mas o
+limite de block RAM continua sendo acompanhado porque ja estamos em 24 / 30
+M9Ks.
+
+Proximo passo recomendado:
+
+1. implementar joypad real no barramento;
+2. depois adicionar Window;
+3. manter o refinamento de DMA para outras fontes como tarefa futura, quando
+   ROM/cartucho/SDRAM estiverem mais definidos;
+4. manter APU fora do escopo ate o sistema nao-audio estar jogavel.
