@@ -1795,3 +1795,50 @@ Notes:
   changes the fitted result by -2 logic elements and +4 registers. The small
   logic decrease is a fitter optimization artifact after exposing the physical
   key pins; the meaningful cost is the four retained JOYP edge/state registers.
+
+## Initial Window Rendering Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-22
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 3,809 | 6,272 | 61% |
+| Registers | 955 | 6,272 | 15% |
+| Pins | 15 | 92 | 16% |
+| Memory bits | 180,224 | 276,480 | 65% |
+| M9Ks | 24 | 30 | 80% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 28.253 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 176.395 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.445 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.452 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `ppu_background_renderer` now supports the initial DMG Window path.
+- Window is enabled by `LCDC(5)`, uses the tile map selected by `LCDC(6)`, and
+  uses the DMG horizontal comparison `screen_x + 7 >= WX`.
+- The Window fetch coordinates are derived from `screen_x + 7 - WX` and
+  `screen_y - WY`; outside that region, the existing scroll-based background
+  fetch path is preserved.
+- `bus_controller` now exposes `WY` and `WX` to the PPU path, while preserving
+  CPU read/write behavior at `0xFF4A` and `0xFF4B`.
+- The implementation reuses the existing tile-map/tile-data fetch states and
+  adds no RAM, FIFO, or M9K usage.
+- Compared with the JOYP checkpoint, this costs 70 logic elements, 0
+  registers, and no additional memory bits. This is acceptable for the
+  first-playable target and keeps the design well below the 4,600-LE working
+  target.

@@ -132,13 +132,19 @@ CPU-written select bits choose the action and direction groups, reads return
 active-low button state, and selected press edges request IF bit 4. The current
 hardware top maps the four verified `key_n` pins to A, B, Select, and Start;
 direction input remains inactive until the final physical input path is defined.
+The PPU path now also has initial Window rendering: `WY/WX` are exposed by the
+bus, `LCDC(5)` enables Window pixels, `LCDC(6)` selects the Window tile map, and
+the renderer switches from scroll-based background coordinates to
+`screen_x + 7 - WX` / `screen_y - WY` Window coordinates when the pixel is
+inside the Window region.
 
 The next architectural steps are:
 
-1. Add Window rendering on top of the current background/sprite renderer.
-2. Define the final direction-input path through confirmed DIP pins or PS/2.
-3. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
+1. Define the final direction-input path through confirmed DIP pins or PS/2.
+2. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
+3. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
+   compatibility issue.
 
 The design should continue to keep module-level testbenches close to each RTL
 block and add integration testbenches only when a cross-module contract exists.

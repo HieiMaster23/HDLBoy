@@ -20,6 +20,7 @@
 -- 2026-05-20 - Added OBP1, BG/OBJ priority, and two-candidate composition
 -- 2026-05-20 - Expanded sprite composition storage to the 10 per-line candidates
 -- 2026-05-20 - Serialized sprite pixel composition to reduce logic use
+-- 2026-05-22 - Added initial LCDC Window rendering support
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It renders the background tile map selected by LCDC bit 3 and the
@@ -43,6 +44,8 @@ entity ppu_background_renderer is
         lcdc          : in  std_logic_vector(7 downto 0);
         scroll_y      : in  std_logic_vector(7 downto 0);
         scroll_x      : in  std_logic_vector(7 downto 0);
+        window_y      : in  std_logic_vector(7 downto 0);
+        window_x      : in  std_logic_vector(7 downto 0);
         bgp           : in  std_logic_vector(7 downto 0);
         obp0          : in  std_logic_vector(7 downto 0);
         obp1          : in  std_logic_vector(7 downto 0);
@@ -365,10 +368,33 @@ architecture rtl of ppu_background_renderer is
         return pixel_v;
     end function sprite_pixel_from_tile;
 
+    function window_active_for_pixel(
+        pixel_x_in : unsigned(7 downto 0);
+        pixel_y_in : unsigned(7 downto 0);
+        wx_in      : std_logic_vector(7 downto 0);
+        wy_in      : std_logic_vector(7 downto 0);
+        lcdc_in    : std_logic_vector(7 downto 0))
+        return std_logic is
+        variable screen_x_plus_7_v : unsigned(8 downto 0);
+    begin
+        screen_x_plus_7_v := resize(pixel_x_in, 9) + to_unsigned(7, 9);
+
+        if lcdc_in(5) = '1' and
+           pixel_y_in >= unsigned(wy_in) and
+           screen_x_plus_7_v >= resize(unsigned(wx_in), 9) then
+            return '1';
+        end if;
+
+        return '0';
+    end function window_active_for_pixel;
+
 begin
 
     p_renderer: process(clk)
         variable bg_x_v : unsigned(7 downto 0);
+        variable window_x_v : unsigned(7 downto 0);
+        variable window_x_9_v : unsigned(8 downto 0);
+        variable use_window_v : std_logic;
         variable color_id_v : std_logic_vector(1 downto 0);
         variable sprite_color_id_v : std_logic_vector(1 downto 0);
     begin
@@ -500,9 +526,23 @@ begin
 
                     when S_COMPOSE_INIT =>
                         bg_x_v := pixel_x_reg + unsigned(scroll_x);
+                        window_x_9_v := resize(pixel_x_reg, 9) +
+                                        to_unsigned(7, 9) -
+                                        resize(unsigned(window_x), 9);
+                        window_x_v := window_x_9_v(7 downto 0);
+                        use_window_v := window_active_for_pixel(pixel_x_reg,
+                                                                pixel_y_reg,
+                                                                window_x,
+                                                                window_y,
+                                                                lcdc);
                         color_id_v := pixel_from_tile(tile_low_reg,
                                                       tile_high_reg,
                                                       bg_x_v);
+                        if use_window_v = '1' then
+                            color_id_v := pixel_from_tile(tile_low_reg,
+                                                          tile_high_reg,
+                                                          window_x_v);
+                        end if;
                         if lcdc(0) = '0' then
                             color_id_v := "00";
                         end if;
@@ -609,14 +649,32 @@ begin
                        sprite_index_reg, sprite_slot_reg, sprite_valid_reg, sprite_x_reg, sprite_y_reg,
                        sprite_tile_reg, sprite_attr_reg, sprite_low_reg, sprite_high_reg,
                        compose_slot_reg, bg_color_id_reg, fb_data_reg,
-                       scroll_x, scroll_y, bgp, obp0, obp1, lcdc)
+                       scroll_x, scroll_y, window_x, window_y, bgp, obp0, obp1, lcdc)
         variable bg_x_v : unsigned(7 downto 0);
         variable bg_y_v : unsigned(7 downto 0);
+        variable fetch_x_v : unsigned(7 downto 0);
+        variable fetch_y_v : unsigned(7 downto 0);
+        variable fetch_x_9_v : unsigned(8 downto 0);
+        variable use_window_v : std_logic;
     begin
         bg_x_v := pixel_x_reg + unsigned(scroll_x);
         bg_y_v := pixel_y_reg + unsigned(scroll_y);
+        fetch_x_v := bg_x_v;
+        fetch_y_v := bg_y_v;
+        use_window_v := window_active_for_pixel(pixel_x_reg, pixel_y_reg,
+                                                window_x, window_y, lcdc);
+        if use_window_v = '1' then
+            fetch_x_9_v := resize(pixel_x_reg, 9) + to_unsigned(7, 9) -
+                           resize(unsigned(window_x), 9);
+            fetch_x_v := fetch_x_9_v(7 downto 0);
+            fetch_y_v := pixel_y_reg - unsigned(window_y);
+        end if;
 
-        vram_addr <= tile_map_addr(bg_x_v, bg_y_v, lcdc(3));
+        if use_window_v = '1' then
+            vram_addr <= tile_map_addr(fetch_x_v, fetch_y_v, lcdc(6));
+        else
+            vram_addr <= tile_map_addr(fetch_x_v, fetch_y_v, lcdc(3));
+        end if;
         oam_addr <= (others => '0');
         oam_read <= '0';
         fb_we <= '0';
@@ -678,18 +736,22 @@ begin
                 ppu_mode <= "11";
                 busy <= '1';
             when S_MAP_REQ | S_MAP_CAPTURE =>
-                vram_addr <= tile_map_addr(bg_x_v, bg_y_v, lcdc(3));
+                if use_window_v = '1' then
+                    vram_addr <= tile_map_addr(fetch_x_v, fetch_y_v, lcdc(6));
+                else
+                    vram_addr <= tile_map_addr(fetch_x_v, fetch_y_v, lcdc(3));
+                end if;
                 line_active <= '1';
                 ppu_mode <= "11";
                 busy <= '1';
             when S_TILE_LOW_REQ | S_TILE_LOW_CAPTURE =>
-                vram_addr <= tile_data_addr(tile_index_reg, bg_y_v, '0',
+                vram_addr <= tile_data_addr(tile_index_reg, fetch_y_v, '0',
                                             lcdc(4));
                 line_active <= '1';
                 ppu_mode <= "11";
                 busy <= '1';
             when S_TILE_HIGH_REQ | S_TILE_HIGH_CAPTURE =>
-                vram_addr <= tile_data_addr(tile_index_reg, bg_y_v, '1',
+                vram_addr <= tile_data_addr(tile_index_reg, fetch_y_v, '1',
                                             lcdc(4));
                 line_active <= '1';
                 ppu_mode <= "11";

@@ -49,6 +49,8 @@ architecture sim of tb_bus_controller is
     signal ppu_bgp              : std_logic_vector(7 downto 0);
     signal ppu_obp0             : std_logic_vector(7 downto 0);
     signal ppu_obp1             : std_logic_vector(7 downto 0);
+    signal ppu_wy               : std_logic_vector(7 downto 0);
+    signal ppu_wx               : std_logic_vector(7 downto 0);
     signal ppu_lcd_enable       : std_logic;
     signal ppu_oam_addr         : unsigned(7 downto 0) := (others => '0');
     signal ppu_oam_read         : std_logic := '0';
@@ -120,6 +122,8 @@ begin
             ppu_bgp              => ppu_bgp,
             ppu_obp0             => ppu_obp0,
             ppu_obp1             => ppu_obp1,
+            ppu_wy               => ppu_wy,
+            ppu_wx               => ppu_wx,
             ppu_lcd_enable       => ppu_lcd_enable,
             ppu_oam_addr         => ppu_oam_addr,
             ppu_oam_read         => ppu_oam_read,
@@ -520,6 +524,9 @@ begin
         bus_write(x"FF4B", x"77");
         bus_read_check(x"FF4A", x"66", "FAIL: WY stub should read back written data");
         bus_read_check(x"FF4B", x"77", "FAIL: WX stub should read back written data");
+        assert ppu_wy = x"66" and ppu_wx = x"77"
+            report "FAIL: PPU Window position outputs should mirror WY/WX"
+            severity failure;
 
         bus_read_check(x"FF30", x"FF", "FAIL: unmapped I/O stubs should read as open bus high");
 

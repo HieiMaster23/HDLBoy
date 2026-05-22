@@ -229,6 +229,8 @@ begin
             ppu_bgp              => open,
             ppu_obp0             => open,
             ppu_obp1             => open,
+            ppu_wy               => open,
+            ppu_wx               => open,
             ppu_lcd_enable       => open,
             ppu_oam_addr         => (others => '0'),
             ppu_oam_read         => '0',

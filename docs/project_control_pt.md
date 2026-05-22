@@ -2158,3 +2158,70 @@ Proximo passo recomendado:
    confirmado ou PS/2;
 3. manter refinamentos de DMA e fluxo ROM/SDRAM para depois da base visual/input
    estar estabilizada.
+
+## 27. Primeira Fatia de Window Rendering
+
+Nesta etapa adicionamos a primeira implementacao funcional da Window do DMG ao
+renderer atual, sem criar FIFO nova e sem consumir memoria de bloco adicional.
+
+Escopo implementado:
+
+- `ppu_background_renderer.vhd` recebeu `window_y` e `window_x`;
+- Window e habilitada por `LCDC(5)`;
+- a tile map da Window e escolhida por `LCDC(6)`;
+- a entrada horizontal segue a regra do DMG: `screen_x + 7 >= WX`;
+- as coordenadas de fetch da Window usam:
+  - `window_x_internal = screen_x + 7 - WX`;
+  - `window_y_internal = screen_y - WY`;
+- fora da regiao ativa da Window, o renderer preserva o caminho de background
+  com `SCX/SCY`;
+- `bus_controller.vhd` agora expoe `ppu_wy` e `ppu_wx`, espelhando `WY/WX`;
+- os tops PPU conectam `WY/WX` ao renderer;
+- `tb_ppu_background_renderer` valida Window ativa, `WX - 7`, tile map 1 e
+  desabilitacao por `LCDC(5)`;
+- `tb_bus_controller` valida que `ppu_wy/ppu_wx` espelham escritas em
+  `0xFF4A/0xFF4B`.
+
+Regressoes executadas:
+
+- `run_ppu_background_renderer.do` passou;
+- `run_bus_controller.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou com 0 erros e 29 warnings.
+
+Resultado de sintese:
+
+- 3,809 / 6,272 LEs, 61%;
+- 955 registradores, 15%;
+- 180,224 / 276,480 bits de memoria, 65%;
+- 24 / 30 M9Ks, 80%;
+- 0 multiplicadores;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 28.253 ns no clock VGA e 176.395 ns no clock CPU;
+- pior hold slack: 0.445 ns no clock CPU e 0.452 ns no clock VGA.
+
+Comparacao com o checkpoint anterior:
+
+- top completo: 3,739 LEs para 3,809 LEs, custo de +70 LEs;
+- registradores permaneceram em 955;
+- memoria e M9K permaneceram iguais;
+- pinos permaneceram em 15.
+
+Conclusao tecnica:
+
+A Window entrou com custo controlado e sem pressionar o limite mais critico do
+projeto, que hoje e M9K. Como o renderer ainda e simplificado e nao FIFO
+pixel-perfect, esta fatia deve ser tratada como compatibilidade funcional
+inicial: suficiente para avancar rumo a jogos simples, mas ainda sujeita a
+refinamentos de timing/fetch quando o core se aproximar dos testes visuais mais
+exigentes.
+
+Proximo passo recomendado:
+
+1. revisar o caminho de boot/ROM para permitir programas maiores de teste;
+2. definir o input direcional final, por DIP confirmado ou PS/2;
+3. refinar detalhes de sprites/Window apenas se um ROM alvo demonstrar falha
+   visual concreta.

@@ -48,6 +48,8 @@ architecture sim of tb_ppu_background_renderer is
     signal lcdc       : std_logic_vector(7 downto 0) := x"91";
     signal scroll_y   : std_logic_vector(7 downto 0) := x"00";
     signal scroll_x   : std_logic_vector(7 downto 0) := x"00";
+    signal window_y   : std_logic_vector(7 downto 0) := x"00";
+    signal window_x   : std_logic_vector(7 downto 0) := x"00";
     signal bgp        : std_logic_vector(7 downto 0) := x"FC";
     signal obp0       : std_logic_vector(7 downto 0) := x"E4";
     signal obp1       : std_logic_vector(7 downto 0) := x"E4";
@@ -103,6 +105,8 @@ begin
             lcdc      => lcdc,
             scroll_y  => scroll_y,
             scroll_x  => scroll_x,
+            window_y  => window_y,
+            window_x  => window_x,
             bgp       => bgp,
             obp0      => obp0,
             obp1      => obp1,
@@ -443,6 +447,59 @@ begin
             severity failure;
         assert fb_mem(1) = "00"
             report "FAIL: signed tile data mode should render the selected tile row"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"F1";
+        scroll_x <= x"00";
+        scroll_y <= x"00";
+        window_y <= x"01";
+        window_x <= x"08";
+        bgp <= x"E4";
+        sprite_candidate_count <= (others => '0');
+        sprite_candidate_indices <= (others => '0');
+        vram_mem(0) <= x"00";
+        vram_mem(1) <= x"00";
+        vram_mem(16) <= x"AA";
+        vram_mem(17) <= x"AA";
+        vram_mem(32) <= x"FF";
+        vram_mem(33) <= x"00";
+        vram_mem(16#1800#) <= x"01";
+        vram_mem(16#1C00#) <= x"02";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "11"
+            report "FAIL: Window should not affect pixels before WY"
+            severity failure;
+        assert fb_mem(160) = "00"
+            report "FAIL: Window should not affect pixels before WX"
+            severity failure;
+        assert fb_mem(161) = "01"
+            report "FAIL: Window should render tile-map 1 at WX-7"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"91";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(161) = "11"
+            report "FAIL: LCDC bit 5 clear should disable Window rendering"
             severity failure;
 
         reset <= '1';

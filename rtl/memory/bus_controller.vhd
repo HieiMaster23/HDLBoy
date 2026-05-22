@@ -30,6 +30,7 @@
 -- 2026-05-21 - Moved HRAM into a dedicated inferable memory block
 -- 2026-05-22 - Added first WRAM/Echo-backed OAM DMA transfer path
 -- 2026-05-22 - Added real JOYP register input decode and interrupt request
+-- 2026-05-22 - Exposed WY/WX registers to the PPU renderer path
 -- =============================================================================
 
 library ieee;
@@ -76,6 +77,8 @@ entity bus_controller is
         ppu_bgp             : out std_logic_vector(7 downto 0);
         ppu_obp0            : out std_logic_vector(7 downto 0);
         ppu_obp1            : out std_logic_vector(7 downto 0);
+        ppu_wy              : out std_logic_vector(7 downto 0);
+        ppu_wx              : out std_logic_vector(7 downto 0);
         ppu_lcd_enable      : out std_logic;
         ppu_oam_addr        : in  unsigned(7 downto 0);
         ppu_oam_read        : in  std_logic;
@@ -682,6 +685,8 @@ begin
     ppu_bgp <= bgp_reg;
     ppu_obp0 <= obp0_reg;
     ppu_obp1 <= obp1_reg;
+    ppu_wy <= wy_reg;
+    ppu_wx <= wx_reg;
     ppu_lcd_enable <= lcdc_reg(7);
     ppu_oam_data <= oam_q;
 

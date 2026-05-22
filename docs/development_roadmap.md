@@ -368,7 +368,8 @@ The next recommended sequence is:
 12. preserve the first WRAM/Echo-backed OAM DMA slice as the initial sprite-data
     transfer baseline;
 13. preserve the initial real JOYP register slice as the current input baseline;
-14. implement Window rendering next;
+14. preserve the initial Window rendering slice as the current BG/Window visual
+    baseline;
 15. refine DMG sprite ordering details as needed for the simple-game target;
 16. define the final physical direction-input path through confirmed DIP pins or
     PS/2 keyboard input;
@@ -398,9 +399,9 @@ composition slice, expanded to all 10 per-line OBJ candidates and then
 serialized to reduce the sprite selection path, plus the VGA raster scaler
 optimization, configurable bus/debug feature gates, HRAM M9K inference, and the
 first WRAM/Echo-backed OAM DMA slice, plus the initial real JOYP register slice,
-uses:
+and initial Window rendering, uses:
 
-- 3,739 / 6,272 logic elements;
+- 3,809 / 6,272 logic elements;
 - 180,224 / 276,480 block-memory bits;
 - 24 / 30 M9K blocks.
 
@@ -413,8 +414,10 @@ the first-playable path. The first OAM DMA slice then added a gameplay-relevant
 transfer path for 67 logic elements and no new M9K blocks. The initial JOYP
 slice then added the CPU-visible `0xFF00` input path and Joypad interrupt
 request with unchanged memory usage and only four additional registers in the
-fitted top. The design still needs strict discipline because only six M9K blocks
-remain free. New work should
+fitted top. The initial Window slice added the `WY/WX` path and LCDC-controlled
+Window tile-map selection for 70 additional logic elements and no extra memory.
+The design still needs strict discipline because only six M9K blocks remain
+free. New work should
 prefer:
 
 - shared CPU states instead of duplicated datapaths;
