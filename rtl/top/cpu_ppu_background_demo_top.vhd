@@ -9,6 +9,7 @@
 -- Revision History:
 -- 2026-05-16 - Initial CPU -> VRAM -> PPU -> framebuffer integration demo
 -- 2026-05-17 - Connected the extracted CPU/PPU demo ROM module
+-- 2026-05-22 - Mapped physical keys to the initial JOYP action inputs
 -- =============================================================================
 
 library ieee;
@@ -19,6 +20,7 @@ entity cpu_ppu_background_demo_top is
     port (
         clk_50mhz : in  std_logic;
         reset_n   : in  std_logic;
+        key_n     : in  std_logic_vector(3 downto 0);
 
         vga_r     : out std_logic;
         vga_g     : out std_logic;
@@ -91,6 +93,10 @@ architecture rtl of cpu_ppu_background_demo_top is
 
     signal led_pattern    : std_logic_vector(3 downto 0);
     signal cpu_vram_ready : std_logic;
+    signal btn_a_pressed      : std_logic;
+    signal btn_b_pressed      : std_logic;
+    signal btn_select_pressed : std_logic;
+    signal btn_start_pressed  : std_logic;
 
     signal fb_addr_b      : unsigned(14 downto 0);
     signal fb_data_b      : std_logic_vector(1 downto 0);
@@ -130,6 +136,10 @@ begin
 
     pll_areset <= not reset_n;
     cpu_vram_ready <= led_pattern(0);
+    btn_a_pressed <= not key_n(0);
+    btn_b_pressed <= not key_n(1);
+    btn_select_pressed <= not key_n(2);
+    btn_start_pressed <= not key_n(3);
 
     u_pll: entity work.pll_core
         port map (
@@ -225,6 +235,14 @@ begin
             cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
             rom_data             => rom_data,
+            btn_right            => '0',
+            btn_left             => '0',
+            btn_up               => '0',
+            btn_down             => '0',
+            btn_a                => btn_a_pressed,
+            btn_b                => btn_b_pressed,
+            btn_select           => btn_select_pressed,
+            btn_start            => btn_start_pressed,
             fb_clear_active      => '0',
             fb_clear_addr        => (others => '0'),
             fb_we                => open,

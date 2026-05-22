@@ -1747,3 +1747,51 @@ Notes:
   registers, with unchanged block-memory and M9K usage. The bus controller
   hierarchy rises from 543 logic cells / 186 registers to 600 logic cells /
   196 registers.
+
+## Initial Real JOYP Register Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-22
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 3,739 | 6,272 | 60% |
+| Registers | 955 | 6,272 | 15% |
+| Pins | 15 | 92 | 16% |
+| Memory bits | 180,224 | 276,480 | 65% |
+| M9Ks | 24 | 30 | 80% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 26.459 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 175.981 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.373 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.452 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `bus_controller` now implements the real `0xFF00` JOYP register semantics:
+  CPU-writable select bits 5 and 4, active-low button reads in bits 3..0, and
+  bits 7..6 reading as one.
+- Logical button inputs are active-high at the bus boundary. The bus maps the
+  action group as A, B, Select, Start and the direction group as Right, Left,
+  Up, Down.
+- A selected button transition from released to pressed sets IF bit 4, giving
+  the CPU an initial Joypad interrupt request path.
+- `cpu_ppu_background_demo_top` maps the four verified physical `key_n` pins to
+  A, B, Select, and Start. Direction inputs remain tied inactive in this top
+  until the DIP/PS2 input path is assigned and debounced.
+- Compared with the OAM DMA checkpoint, this keeps memory usage unchanged and
+  changes the fitted result by -2 logic elements and +4 registers. The small
+  logic decrease is a fitter optimization artifact after exposing the physical
+  key pins; the meaningful cost is the four retained JOYP edge/state registers.

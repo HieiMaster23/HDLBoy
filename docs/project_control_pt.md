@@ -2090,3 +2090,71 @@ Proximo passo recomendado:
 3. manter o refinamento de DMA para outras fontes como tarefa futura, quando
    ROM/cartucho/SDRAM estiverem mais definidos;
 4. manter APU fora do escopo ate o sistema nao-audio estar jogavel.
+
+## 26. Joypad Real em `0xFF00`
+
+Nesta etapa substituimos o stub de JOYP por uma primeira implementacao real no
+barramento Game Boy, mantendo a logica pequena e adequada para o EP4CE6.
+
+Escopo implementado:
+
+- `bus_controller.vhd` recebeu entradas logicas `btn_right`, `btn_left`,
+  `btn_up`, `btn_down`, `btn_a`, `btn_b`, `btn_select` e `btn_start`;
+- as entradas sao active-high internamente, mas o registrador `0xFF00` retorna
+  bits 3..0 em active-low, como no DMG;
+- bits 5 e 4 continuam escritos pela CPU e selecionam os grupos:
+  - bit 5 = `0`: A, B, Select, Start;
+  - bit 4 = `0`: Right, Left, Up, Down;
+- bits 7..6 leem como `1`;
+- quando ambos os grupos estao selecionados, o resultado e combinado em
+  active-low;
+- uma transicao selecionada de solto para pressionado solicita Joypad interrupt
+  em IF bit 4;
+- `cpu_ppu_background_demo_top` agora expoe `key_n[3..0]` e mapeia as quatro
+  teclas fisicas verificadas para A, B, Select e Start;
+- direcional permanece inativo no top atual ate definirmos a entrada fisica
+  final, provavelmente DIP confirmado por esquema ou PS/2.
+
+Regressoes executadas:
+
+- `run_bus_controller.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou com 0 erros e 29 warnings.
+
+Resultado de sintese:
+
+- 3,739 / 6,272 LEs, 60%;
+- 955 registradores, 15%;
+- 180,224 / 276,480 bits de memoria, 65%;
+- 24 / 30 M9Ks, 80%;
+- 0 multiplicadores;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 26.459 ns no clock VGA e 175.981 ns no clock CPU;
+- pior hold slack: 0.373 ns no clock CPU e 0.452 ns no clock VGA.
+
+Comparacao com o checkpoint anterior:
+
+- top completo: 3,741 LEs para 3,739 LEs;
+- registradores: 951 para 955, custo de +4 registradores;
+- memoria e M9K permaneceram iguais;
+- pinos passaram de 11 para 15 porque as quatro teclas fisicas entraram no top
+  sintetizado.
+
+Conclusao tecnica:
+
+A fatia fechou o caminho minimo de input para jogos simples sem pressionar
+memoria de bloco e praticamente sem custo logico. O sistema ainda precisa de
+debounce/sincronizacao fisica mais cuidadosa antes de um teste longo em
+hardware, mas o contrato do barramento `0xFF00` e a solicitacao de interrupcao
+de Joypad ja estao validados em simulacao.
+
+Proximo passo recomendado:
+
+1. implementar Window no renderer/PPU;
+2. depois definir o mapeamento fisico completo de direcional, por DIP
+   confirmado ou PS/2;
+3. manter refinamentos de DMA e fluxo ROM/SDRAM para depois da base visual/input
+   estar estabilizada.

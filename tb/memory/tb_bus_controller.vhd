@@ -28,6 +28,14 @@ architecture sim of tb_bus_controller is
     signal cpu_ready            : std_logic;
     signal unsupported_opcode   : std_logic := '0';
     signal rom_data             : std_logic_vector(7 downto 0);
+    signal btn_right            : std_logic := '0';
+    signal btn_left             : std_logic := '0';
+    signal btn_up               : std_logic := '0';
+    signal btn_down             : std_logic := '0';
+    signal btn_a                : std_logic := '0';
+    signal btn_b                : std_logic := '0';
+    signal btn_select           : std_logic := '0';
+    signal btn_start            : std_logic := '0';
     signal fb_clear_active      : std_logic := '0';
     signal fb_clear_addr        : unsigned(14 downto 0) := (others => '0');
     signal fb_we                : std_logic;
@@ -91,6 +99,14 @@ begin
             cpu_ready            => cpu_ready,
             unsupported_opcode   => unsupported_opcode,
             rom_data             => rom_data,
+            btn_right            => btn_right,
+            btn_left             => btn_left,
+            btn_up               => btn_up,
+            btn_down             => btn_down,
+            btn_a                => btn_a,
+            btn_b                => btn_b,
+            btn_select           => btn_select,
+            btn_start            => btn_start,
             fb_clear_active      => fb_clear_active,
             fb_clear_addr        => fb_clear_addr,
             fb_we                => fb_we,
@@ -223,9 +239,42 @@ begin
             report "FAIL: debug LED pattern should update from 0xFF80"
             severity failure;
 
-        bus_read_check(x"FF00", x"FF", "FAIL: JOYP reset stub should report no buttons selected or pressed");
+        bus_read_check(x"FF00", x"FF", "FAIL: JOYP reset should report no buttons selected or pressed");
         bus_write(x"FF00", x"20");
-        bus_read_check(x"FF00", x"EF", "FAIL: JOYP stub should preserve select bits and report no pressed buttons");
+        bus_read_check(x"FF00", x"EF", "FAIL: JOYP should preserve direction select bits and report no pressed buttons");
+        btn_right <= '1';
+        btn_up <= '1';
+        wait for 1 ns;
+        bus_read_check(x"FF00", x"EA", "FAIL: JOYP direction group should report Right and Up pressed active-low");
+
+        bus_write(x"FF00", x"10");
+        btn_a <= '1';
+        btn_start <= '1';
+        wait for 1 ns;
+        bus_read_check(x"FF00", x"D6", "FAIL: JOYP action group should report A and Start pressed active-low");
+
+        bus_write(x"FF00", x"00");
+        wait for 1 ns;
+        bus_read_check(x"FF00", x"C2", "FAIL: JOYP should combine both selected groups with active-low semantics");
+
+        btn_right <= '0';
+        btn_up <= '0';
+        btn_a <= '0';
+        btn_start <= '0';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        bus_write(x"FF0F", x"00");
+        bus_write(x"FF00", x"10");
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        btn_a <= '1';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        bus_read_check(x"FF0F", x"F0", "FAIL: JOYP selected press edge should request IF bit 4");
+        btn_a <= '0';
+        wait until rising_edge(clk);
+        wait for 1 ns;
+        bus_write(x"FF0F", x"00");
 
         bus_write(x"FF01", x"12");
         bus_read_check(x"FF01", x"12", "FAIL: Serial SB stub should read back written data");

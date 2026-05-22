@@ -367,10 +367,12 @@ The next recommended sequence is:
     baseline;
 12. preserve the first WRAM/Echo-backed OAM DMA slice as the initial sprite-data
     transfer baseline;
-13. implement first-playable support features next: joypad input, then Window
-    interaction;
-14. refine DMG sprite ordering details as needed for the simple-game target;
-15. import broader timer coverage later if the local Blargg package proves too
+13. preserve the initial real JOYP register slice as the current input baseline;
+14. implement Window rendering next;
+15. refine DMG sprite ordering details as needed for the simple-game target;
+16. define the final physical direction-input path through confirmed DIP pins or
+    PS/2 keyboard input;
+17. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -395,9 +397,10 @@ pixel fetch/composition slice, and the OBP1/BG-priority/two-candidate sprite
 composition slice, expanded to all 10 per-line OBJ candidates and then
 serialized to reduce the sprite selection path, plus the VGA raster scaler
 optimization, configurable bus/debug feature gates, HRAM M9K inference, and the
-first WRAM/Echo-backed OAM DMA slice, uses:
+first WRAM/Echo-backed OAM DMA slice, plus the initial real JOYP register slice,
+uses:
 
-- 3,741 / 6,272 logic elements;
+- 3,739 / 6,272 logic elements;
 - 180,224 / 276,480 block-memory bits;
 - 24 / 30 M9K blocks.
 
@@ -407,8 +410,11 @@ design below 5,000 logic elements, and the HRAM M9K inference step then removed
 1,321 retained logic elements by replacing a register-heavy HRAM implementation
 with one inferred M9K block. The project now has enough logic room to continue
 the first-playable path. The first OAM DMA slice then added a gameplay-relevant
-transfer path for 67 logic elements and no new M9K blocks. The design still
-needs strict discipline because only six M9K blocks remain free. New work should
+transfer path for 67 logic elements and no new M9K blocks. The initial JOYP
+slice then added the CPU-visible `0xFF00` input path and Joypad interrupt
+request with unchanged memory usage and only four additional registers in the
+fitted top. The design still needs strict discipline because only six M9K blocks
+remain free. New work should
 prefer:
 
 - shared CPU states instead of duplicated datapaths;

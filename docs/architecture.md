@@ -127,12 +127,16 @@ between white and checkerboard tiles, proving the complete live chain:
 hardware checkpoint, the PPU path has also gained continuous frame looping,
 initial LCDC/BGP/OBP handling, OAM storage, OAM scan, first 10-candidate sprite
 composition, and an initial WRAM/Echo-backed OAM DMA path triggered by writes to
-`0xFF46`.
+`0xFF46`. The bus now also implements the real `0xFF00` JOYP register contract:
+CPU-written select bits choose the action and direction groups, reads return
+active-low button state, and selected press edges request IF bit 4. The current
+hardware top maps the four verified `key_n` pins to A, B, Select, and Start;
+direction input remains inactive until the final physical input path is defined.
 
 The next architectural steps are:
 
-1. Add real joypad input through the existing `0xFF00` register path.
-2. Add Window rendering on top of the current background/sprite renderer.
+1. Add Window rendering on top of the current background/sprite renderer.
+2. Define the final direction-input path through confirmed DIP pins or PS/2.
 3. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
 

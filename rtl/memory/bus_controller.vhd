@@ -29,6 +29,7 @@
 -- 2026-05-20 - Added generics for demo-only framebuffer and debug features
 -- 2026-05-21 - Moved HRAM into a dedicated inferable memory block
 -- 2026-05-22 - Added first WRAM/Echo-backed OAM DMA transfer path
+-- 2026-05-22 - Added real JOYP register input decode and interrupt request
 -- =============================================================================
 
 library ieee;
@@ -53,6 +54,14 @@ entity bus_controller is
         cpu_ready           : out std_logic;
         unsupported_opcode  : in  std_logic;
         rom_data            : in  std_logic_vector(7 downto 0);
+        btn_right           : in  std_logic;
+        btn_left            : in  std_logic;
+        btn_up              : in  std_logic;
+        btn_down            : in  std_logic;
+        btn_a               : in  std_logic;
+        btn_b               : in  std_logic;
+        btn_select          : in  std_logic;
+        btn_start           : in  std_logic;
 
         fb_clear_active     : in  std_logic;
         fb_clear_addr       : in  unsigned(14 downto 0);
@@ -139,6 +148,12 @@ architecture rtl of bus_controller is
     signal io_led_reg        : std_logic_vector(7 downto 0);
     signal io_status_reg     : std_logic_vector(7 downto 0);
     signal joyp_select_reg   : std_logic_vector(1 downto 0);
+    signal joyp_action_n     : std_logic_vector(3 downto 0);
+    signal joyp_direction_n  : std_logic_vector(3 downto 0);
+    signal joyp_buttons_n    : std_logic_vector(3 downto 0);
+    signal joyp_buttons_n_reg: std_logic_vector(3 downto 0);
+    signal joyp_read_value   : std_logic_vector(7 downto 0);
+    signal joyp_pressed_edge : std_logic;
     signal serial_sb_reg     : std_logic_vector(7 downto 0);
     signal serial_sc_reg     : std_logic_vector(7 downto 0);
     signal serial_debug_valid_reg : std_logic;
@@ -288,6 +303,13 @@ begin
     oam_write_addr <= dma_index when dma_oam_we = '1' else unsigned(cpu_addr(7 downto 0));
     oam_write_data <= wram_q when dma_oam_we = '1' else cpu_data_out;
     hram_cpu_we <= cpu_write and hram_selected;
+    joyp_action_n <= (not btn_start) & (not btn_select) & (not btn_b) & (not btn_a);
+    joyp_direction_n <= (not btn_down) & (not btn_up) & (not btn_left) & (not btn_right);
+    joyp_read_value <= "11" & joyp_select_reg & joyp_buttons_n;
+    joyp_pressed_edge <= '1' when (joyp_buttons_n_reg(0) = '1' and joyp_buttons_n(0) = '0') or
+                                  (joyp_buttons_n_reg(1) = '1' and joyp_buttons_n(1) = '0') or
+                                  (joyp_buttons_n_reg(2) = '1' and joyp_buttons_n(2) = '0') or
+                                  (joyp_buttons_n_reg(3) = '1' and joyp_buttons_n(3) = '0') else '0';
     vblank_irq_condition <= '1' when lcdc_reg(7) = '1' and
                                       ppu_effective_mode = "01" and
                                       ppu_effective_line = to_unsigned(144, 8) else '0';
@@ -297,6 +319,22 @@ begin
         (stat_reg(5) = '1' and ppu_effective_mode = "10") or
         (stat_reg(4) = '1' and ppu_effective_mode = "01") or
         (stat_reg(3) = '1' and ppu_effective_mode = "00")) else '0';
+
+    p_joyp_decode: process(joyp_select_reg, joyp_action_n, joyp_direction_n)
+        variable selected_buttons_v : std_logic_vector(3 downto 0);
+    begin
+        selected_buttons_v := "1111";
+
+        if joyp_select_reg(1) = '0' then
+            selected_buttons_v := selected_buttons_v and joyp_action_n;
+        end if;
+
+        if joyp_select_reg(0) = '0' then
+            selected_buttons_v := selected_buttons_v and joyp_direction_n;
+        end if;
+
+        joyp_buttons_n <= selected_buttons_v;
+    end process p_joyp_decode;
 
     u_timer: entity work.timer
         port map (
@@ -335,7 +373,7 @@ begin
         );
 
     p_memory_read: process(cpu_addr, cpu_read, io_led_reg, io_status_reg,
-                           joyp_select_reg, serial_sb_reg, serial_sc_reg,
+                           joyp_read_value, serial_sb_reg, serial_sc_reg,
                            div_read, tima_read, tma_read, tac_read,
                            lcdc_reg, stat_reg, scy_reg, scx_reg, lyc_reg,
                            dma_reg, bgp_reg, obp0_reg, obp1_reg, wy_reg,
@@ -348,7 +386,7 @@ begin
         if cpu_read = '1' then
             case cpu_addr is
                 when IO_JOYP_ADDR =>
-                    cpu_data_in <= "11" & joyp_select_reg & "1111";
+                    cpu_data_in <= joyp_read_value;
                 when IO_SB_ADDR =>
                     cpu_data_in <= serial_sb_reg;
                 when IO_SC_ADDR =>
@@ -431,6 +469,7 @@ begin
                 io_led_reg <= (others => '0');
                 io_status_reg <= (others => '0');
                 joyp_select_reg <= "11";
+                joyp_buttons_n_reg <= "1111";
                 serial_sb_reg <= (others => '0');
                 serial_sc_reg <= x"7E";
                 serial_debug_valid_reg <= '0';
@@ -463,6 +502,7 @@ begin
                 serial_debug_valid_reg <= '0';
                 vblank_irq_condition_reg <= vblank_irq_condition;
                 stat_irq_condition_reg <= stat_irq_condition;
+                joyp_buttons_n_reg <= joyp_buttons_n;
 
                 if dma_active = '1' then
                     if dma_phase = '0' then
@@ -488,6 +528,10 @@ begin
 
                 if stat_irq_condition = '1' and stat_irq_condition_reg = '0' then
                     if_reg(1) <= '1';
+                end if;
+
+                if joyp_pressed_edge = '1' then
+                    if_reg(4) <= '1';
                 end if;
 
                 if interrupt_ack = '1' then
