@@ -196,7 +196,10 @@ Alguns pontos do projeto já têm valor claro para o futuro artigo:
 - a evolução da CPU de funcional para temporalmente fiel;
 - o uso de Blargg como trilha de verificação incremental;
 - o smoke test visual com `1234` no display de sete segmentos;
-- a extração do timer compartilhado e o custo real medido em síntese.
+- a extração do timer compartilhado e o custo real medido em síntese;
+- o processo de otimizacao que reduziu o top de 4.995 para 3.674 LEs ao mover
+  a HRAM para um bloco M9K inferido, registrado em
+  `optimization_process_pt.md`.
 
 Esses casos são bons porque mostram engenharia de verdade: havia um problema,
 uma decisão, uma verificação e uma consequência mensurável.

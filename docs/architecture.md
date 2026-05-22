@@ -88,10 +88,11 @@ tops instantiate their own ROM module and feed the resulting byte into the bus.
 That keeps the bus contract closer to the future cartridge/ROM-loader path and
 lets future visual programs change without editing the memory-map block itself.
 
-WRAM and VRAM are inferred by Quartus as M9K-backed `altsyncram` blocks. HRAM
-remains small enough to keep as local logic in this slice, but the same
-ready-state path can be reused later if HRAM or other memory blocks need to move
-into embedded RAM.
+WRAM, VRAM, and HRAM are inferred by Quartus as M9K-backed `altsyncram` blocks.
+HRAM was originally kept as local bus-controller logic, but that structure
+retained a large register footprint. It is now isolated in a dedicated
+synchronous single-port memory module so the same CPU ready-state path can keep
+RAM-backed reads compatible with the bus contract.
 
 The CPU is now validated against all individual Blargg `cpu_instrs` ROMs,
 `instr_timing.gb`, the `mem_timing`/`mem_timing-2` individual plus aggregate

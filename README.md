@@ -110,6 +110,7 @@ vsim -c -do run_cpu_video_smoke_top.do
 - [M3 CPU implementation](docs/m3_cpu.md)
 - [M3/M4 checkpoint process](docs/m3_m4_checkpoint.md)
 - [M3/M4 visual checkpoint report](docs/html/m3_m4_checkpoint.html)
+- [Optimization process notes for TCC](docs/optimization_process_pt.md)
 - [Resource utilization](docs/resource_utilization.md)
 - [Pinout notes](docs/pinout_sources.md)
 
