@@ -2018,3 +2018,40 @@ Notes:
   unused SDRAM pin assignments.
 - The active `cpu_ppu_background_demo_top` remains at the previous PS/2 joypad
   resource level until the SDRAM path is integrated into the system bus.
+
+## SDRAM ROM Loader Core Simulation Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-23
+
+This slice adds `rtl/memory/sdram_rom_loader.vhd`, a transport-independent byte
+stream loader for the future Virtual JTAG ROM-loading path. The module accepts
+bytes, packs them into little-endian 16-bit SDRAM words, emits write commands
+through the existing SDRAM controller handshake, and flushes a final odd byte
+with `byte_enable = "01"` when `finish` is asserted.
+
+Validated behavior:
+
+- restart from SDRAM word address zero on `start`;
+- little-endian packing: ROM byte 0 in SDRAM data bits `7 downto 0`, ROM byte 1
+  in bits `15 downto 8`;
+- `stream_ready` backpressure while a write command is pending;
+- delayed `sdram_cmd_accept` and delayed `sdram_ready`;
+- odd-byte final flush through lower-byte `DQM`/byte-enable behavior;
+- restart after a completed load.
+
+Resource impact on current fitted top:
+
+- no change while uninstantiated: the active `cpu_ppu_background_demo_top`
+  remains at 3,887 logic elements, 994 registers, 180,224 memory bits, and
+  24 M9K blocks;
+- no additional M9K, multiplier, PLL, or pin usage in the active top.
+
+Next measurement point:
+
+- synthesize a dedicated Virtual JTAG loader top that instantiates
+  `sdram_rom_loader`, `sdram_controller`, the SDRAM pins, and the smallest
+  possible JTAG stream wrapper.

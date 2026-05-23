@@ -2531,3 +2531,58 @@ Proximo passo recomendado:
 4. se LED2 acender, capturar com SignalTap sinais como estado do checker,
    `init_done`, `cmd_valid`, `cmd_accept`, `ready`, `read_valid`, `read_data`
    e comandos SDRAM externos.
+
+## 32. Nucleo de Loader ROM para SDRAM
+
+Nesta etapa iniciamos o caminho do loader sem ainda acoplar o bloco ao
+Virtual JTAG fisico. A decisao foi separar a logica de transporte da logica de
+escrita em SDRAM: primeiro um nucleo recebe bytes, empacota em palavras de
+16 bits e conversa com o `sdram_controller`; depois um wrapper pequeno de
+Virtual JTAG fornecera esses bytes.
+
+Escopo fechado nesta fatia:
+
+- criar `sdram_rom_loader.vhd`;
+- receber fluxo de bytes por `stream_valid`, `stream_data` e `stream_ready`;
+- iniciar uma nova carga com `start`;
+- finalizar a carga com `finish`;
+- empacotar bytes em formato little-endian para SDRAM de 16 bits;
+- emitir comandos de escrita com `sdram_cmd_valid`, `sdram_cmd_addr`,
+  `sdram_write_data` e `sdram_byte_enable`;
+- respeitar `sdram_cmd_accept` antes de avancar;
+- esperar `sdram_ready` antes de aceitar os proximos bytes;
+- suportar flush de byte impar final com `byte_enable = "01"`;
+- reportar `busy`, `done`, `error` e `loaded_words`;
+- criar testbench dedicado e script ModelSim.
+
+Contrato de empacotamento:
+
+- byte ROM 0 -> SDRAM word 0 bits `7 downto 0`;
+- byte ROM 1 -> SDRAM word 0 bits `15 downto 8`;
+- byte ROM 2 -> SDRAM word 1 bits `7 downto 0`;
+- byte ROM 3 -> SDRAM word 1 bits `15 downto 8`;
+- se a carga terminar com byte impar, apenas o byte baixo da ultima palavra e
+  escrito.
+
+Regressao executada:
+
+- `run_sdram_rom_loader.do` passou.
+
+Impacto no top principal:
+
+- o novo arquivo foi adicionado ao QSF, mas ainda nao e instanciado pelo
+  `cpu_ppu_background_demo_top`;
+- portanto, o top principal deve permanecer no mesmo patamar de recursos ate a
+  criacao do top fisico de loader.
+
+Conclusao tecnica:
+
+Esta fatia reduz risco antes do Virtual JTAG. Agora ja temos um contrato limpo:
+qualquer transporte que entregue bytes com `valid/ready/start/finish` consegue
+carregar uma ROM na SDRAM. A proxima etapa recomendada e criar o wrapper
+Virtual JTAG minimo e um top fisico de loader que combine:
+
+1. `sdram_controller`;
+2. `sdram_rom_loader`;
+3. wrapper Virtual JTAG;
+4. LEDs de estado para init, loading, done e error.

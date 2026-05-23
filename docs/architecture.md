@@ -19,6 +19,8 @@ initial shared M6 timer block:
 - `rtl/memory/vram.vhd`: 8 KiB dual-port VRAM used by CPU writes and PPU reads.
 - `rtl/memory/sdram_controller.vhd`: first isolated SDRAM controller slice for
   future ROM loading and cartridge-backed reads.
+- `rtl/memory/sdram_rom_loader.vhd`: byte-stream ROM loader core that packs
+  incoming bytes into little-endian 16-bit SDRAM write commands.
 - `rtl/memory/cpu_video_smoke_rom.vhd`: standalone ROM image for the legacy
   CPU-to-framebuffer smoke program.
 - `rtl/memory/cpu_ppu_background_demo_rom.vhd`: standalone ROM image for the
@@ -153,12 +155,14 @@ The next architectural steps are:
 
 1. Program the dedicated SDRAM hardware test top and confirm init/pass/refresh
    behavior on the physical board.
-2. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
+2. Wrap `sdram_rom_loader` with the physical Virtual JTAG transport so bytes
+   can be streamed from the PC into SDRAM through USB-Blaster.
+3. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
-3. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
+4. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
    compatibility issue.
-4. Grow the SDRAM path from the hardware test top into a JTAG ROM loader and
-   ROM-only cartridge mapper.
+5. Grow the SDRAM path from the hardware test top into a ROM-only cartridge
+   mapper.
 
 The design should continue to keep module-level testbenches close to each RTL
 block and add integration testbenches only when a cross-module contract exists.

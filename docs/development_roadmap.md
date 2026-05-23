@@ -378,7 +378,9 @@ The next recommended sequence is:
     storage baseline;
 18. preserve the dedicated SDRAM hardware bring-up top as the first physical
     external-memory baseline;
-19. import broader timer coverage later if the local Blargg package proves too
+19. preserve the byte-stream SDRAM ROM loader core as the transport-independent
+    loading baseline before adding the physical Virtual JTAG wrapper;
+20. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -443,6 +445,12 @@ loader. A dedicated `sdram_test_top` now exposes the physical SDRAM pins only
 for bring-up, runs a deterministic write/read checker, and restores the main
 Quartus QSF after its dedicated build. That keeps the storage path testable
 without destabilizing the current CPU/PPU visual baseline.
+
+The first ROM-loading slice is also transport-independent. `sdram_rom_loader`
+accepts a byte stream, packs bytes into little-endian 16-bit SDRAM words, and
+uses the existing `cmd_accept`/`ready` SDRAM command handshake. The next step is
+to connect that stream interface to a small Virtual JTAG wrapper rather than
+mixing JTAG protocol parsing with SDRAM command sequencing.
 
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.
