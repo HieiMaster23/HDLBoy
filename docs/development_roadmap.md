@@ -372,8 +372,8 @@ The next recommended sequence is:
     baseline;
 15. preserve the DMG sprite priority refinement as the current OBJ composition
     baseline;
-16. define the final physical direction-input path through confirmed DIP pins or
-    PS/2 keyboard input;
+16. preserve the compact PS/2 keyboard joypad mapper as the first physical
+    direction-input baseline;
 17. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
@@ -400,9 +400,10 @@ composition slice, expanded to all 10 per-line OBJ candidates and then
 serialized to reduce the sprite selection path, plus the VGA raster scaler
 optimization, configurable bus/debug feature gates, HRAM M9K inference, and the
 first WRAM/Echo-backed OAM DMA slice, plus the initial real JOYP register slice,
-initial Window rendering, and DMG sprite priority refinement, uses:
+initial Window rendering, DMG sprite priority refinement, and the compact PS/2
+keyboard joypad mapper, uses:
 
-- 3,831 / 6,272 logic elements;
+- 3,887 / 6,272 logic elements;
 - 180,224 / 276,480 block-memory bits;
 - 24 / 30 M9K blocks.
 
@@ -419,7 +420,10 @@ fitted top. The initial Window slice added the `WY/WX` path and LCDC-controlled
 Window tile-map selection for 70 additional logic elements and no extra memory.
 The DMG sprite priority refinement then added a serial selected-OBJ accumulator
 for 22 logic elements and 12 registers, preserving the 10-candidate limit. The
-design still needs strict discipline because only six M9K blocks remain free.
+compact PS/2 joypad mapper then added the first full physical direction-input
+path for 56 additional logic elements and 27 registers, with unchanged memory
+usage. The design still needs strict discipline because only six M9K blocks
+remain free.
 New work should
 prefer:
 

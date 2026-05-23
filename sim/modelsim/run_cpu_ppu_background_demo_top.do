@@ -12,6 +12,7 @@ vcom -93 ../../rtl/cpu/registers.vhd
 vcom -93 ../../rtl/cpu/decoder.vhd
 vcom -93 ../../rtl/cpu/cpu.vhd
 vcom -93 ../../rtl/io/timer.vhd
+vcom -93 ../../rtl/io/ps2_keyboard_joypad.vhd
 vcom -93 ../../rtl/video/vga_controller.vhd
 vcom -93 ../../rtl/video/vga_pixel_pipeline.vhd
 vcom -93 ../../rtl/memory/framebuffer.vhd

@@ -6,7 +6,7 @@
 # UART, PS/2, VGA, and SDRAM pins below. Verify against the exact board
 # schematic before connecting external hardware.
 #
-# Current canonical top: cpu_video_smoke_top
+# Current canonical top: cpu_ppu_background_demo_top
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -78,10 +78,12 @@ set_location_assignment PIN_91 -to key_n[3]
 # set_location_assignment PIN_115 -to uart_rx
 
 # -----------------------------------------------------------------------------
-# Future PS/2
+# PS/2 Keyboard
+# Initial playable input path. Public references map these pins to the PS/2
+# connector; verify against the exact board schematic before final hardware use.
 # -----------------------------------------------------------------------------
-# set_location_assignment PIN_119 -to ps2_clk
-# set_location_assignment PIN_120 -to ps2_data
+set_location_assignment PIN_119 -to ps2_clk
+set_location_assignment PIN_120 -to ps2_data
 
 # -----------------------------------------------------------------------------
 # Future SDRAM (64 Mbit HY57V641620F-family on common boards)
@@ -134,6 +136,8 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to led[*]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to seg[*]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to digit_n[*]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to key_n[*]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ps2_clk
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ps2_data
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_r
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_g
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to vga_b

@@ -21,6 +21,8 @@ architecture sim of tb_cpu_ppu_background_demo_top is
     signal clk_50mhz  : std_logic := '0';
     signal reset_n    : std_logic := '0';
     signal key_n      : std_logic_vector(3 downto 0) := "1111";
+    signal ps2_clk    : std_logic := '1';
+    signal ps2_data   : std_logic := '1';
     signal vga_r      : std_logic;
     signal vga_g      : std_logic;
     signal vga_b      : std_logic;
@@ -49,6 +51,8 @@ begin
             clk_50mhz => clk_50mhz,
             reset_n   => reset_n,
             key_n     => key_n,
+            ps2_clk   => ps2_clk,
+            ps2_data  => ps2_data,
             vga_r     => vga_r,
             vga_g     => vga_g,
             vga_b     => vga_b,

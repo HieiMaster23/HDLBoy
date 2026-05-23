@@ -28,6 +28,11 @@ if {[get_collection_size $key_ports] > 0} {
     set_false_path -from $key_ports
 }
 
+set ps2_ports [get_ports -nowarn {ps2_clk ps2_data}]
+if {[get_collection_size $ps2_ports] > 0} {
+    set_false_path -from $ps2_ports
+}
+
 set led_ports [get_ports -nowarn {led[*]}]
 if {[get_collection_size $led_ports] > 0} {
     set_false_path -to $led_ports

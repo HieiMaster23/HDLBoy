@@ -1885,3 +1885,47 @@ Notes:
   small selected-OBJ accumulator, avoiding a parallel 10-way sorter.
 - Compared with the Window checkpoint, this costs 22 logic elements and 12
   registers, with unchanged memory and M9K usage.
+
+## PS/2 Joypad Input Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-22
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 3,887 | 6,272 | 62% |
+| Registers | 994 | 6,272 | 16% |
+| Pins | 17 | 92 | 18% |
+| Memory bits | 180,224 | 276,480 | 65% |
+| M9Ks | 24 | 30 | 80% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 29.313 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 173.511 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.432 ns |
+| Hold, slow 1200 mV 85 C, PLL VGA clock | 0.453 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+TimeQuest reports the design as fully constrained for setup and hold.
+
+Notes:
+
+- `ps2_keyboard_joypad` adds a compact PS/2 Set-2 receiver with make/break
+  tracking for `W/A/S/D`, `J/K`, Space, and Enter.
+- The current hardware top now maps PS/2 direction keys to the real JOYP
+  direction group and ORs PS/2 action keys with the verified `key_n` action
+  buttons.
+- `ps2_clk` and `ps2_data` are synchronized into the CPU clock domain and
+  constrained as asynchronous input false paths.
+- The module costs 59 hierarchy logic cells and 27 registers, with no RAM,
+  M9K, multiplier, or PLL usage.
+- Compared with the sprite-priority checkpoint, the full fitted top costs 56
+  additional logic elements and 27 registers, plus two input pins.

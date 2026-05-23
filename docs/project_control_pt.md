@@ -2297,3 +2297,81 @@ Proximo passo recomendado:
 2. definir input direcional fisico;
 3. usar ROMs alvo simples para decidir quais refinamentos PPU ainda sao
    realmente necessarios antes de investir em FIFO pixel-perfect.
+
+## 29. Entrada Fisica por Teclado PS/2 para JOYP
+
+Nesta etapa fechamos o primeiro caminho fisico completo de entrada para o
+joypad. Os quatro botoes `key_n` continuam mapeados para A, B, Select e Start,
+mas o direcional agora deixa de ser apenas sinal logico interno: o top atual
+expoe `ps2_clk` e `ps2_data` e usa um decodificador PS/2 Set-2 enxuto.
+
+Mapeamento implementado:
+
+- `D` -> Right;
+- `A` -> Left;
+- `W` -> Up;
+- `S` -> Down;
+- `J` -> A;
+- `K` -> B;
+- Space -> Select;
+- Enter -> Start.
+
+Alteracoes feitas:
+
+- novo modulo `ps2_keyboard_joypad.vhd`;
+- novo teste `tb_ps2_keyboard_joypad.vhd`;
+- novo script `run_ps2_keyboard_joypad.do`;
+- `cpu_ppu_background_demo_top` agora instancia o decoder PS/2;
+- PS/2 alimenta os sinais reais do JOYP no `bus_controller`;
+- botoes de acao vindos do PS/2 sao combinados com os `key_n` fisicos;
+- `pin_assignments.qsf` habilita `ps2_clk` em `PIN_119` e `ps2_data` em
+  `PIN_120`;
+- `timing.sdc` marca `ps2_clk` e `ps2_data` como entradas assincronas em false
+  path;
+- `quartus/gameboy_core.qsf` inclui o novo RTL.
+
+Regressoes executadas:
+
+- `run_ps2_keyboard_joypad.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_bus_controller.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou com 0 erros e 29 warnings.
+
+Resultado de sintese:
+
+- 3,887 / 6,272 LEs, 62%;
+- 994 registradores, 16%;
+- 180,224 / 276,480 bits de memoria, 65%;
+- 24 / 30 M9Ks, 80%;
+- 0 multiplicadores;
+- 1 / 2 PLLs;
+- 17 / 92 pinos, 18%;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 29.313 ns no clock VGA e 173.511 ns no clock CPU;
+- pior hold slack: 0.432 ns no clock CPU e 0.453 ns no clock VGA.
+
+Comparacao com o checkpoint anterior:
+
+- top completo: 3,831 LEs para 3,887 LEs, custo de +56 LEs;
+- registradores: 967 para 994, custo de +27 registradores;
+- pinos: 15 para 17, custo de +2 pinos;
+- memoria e M9K permaneceram iguais.
+
+Conclusao tecnica:
+
+A escolha por PS/2 foi mais segura do que tentar usar DIP switches neste
+momento, porque o arquivo de pinos registra que os DIP podem compartilhar os
+mesmos quatro pinos dos botoes na revisao publica da placa. O PS/2 usa pinos
+ja documentados, custa pouca logica e entrega um controle completo para testes
+de jogos simples sem consumir M9K. O modulo ainda e intencionalmente simples:
+decodifica make/break Set-2 e ignora sequencias estendidas, suficiente para o
+mapeamento escolhido.
+
+Proximo passo recomendado:
+
+1. iniciar o caminho de ROM/boot para programas maiores e controlados;
+2. preparar um ROM de teste visual/interativo que leia JOYP e mova um sprite;
+3. depois disso, decidir se o proximo gargalo e ROM/cartridge/MBC ou refinamento
+   de temporizacao da PPU.

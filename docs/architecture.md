@@ -43,6 +43,8 @@ initial shared M6 timer block:
   IF/IE registers, basic I/O stubs, debug I/O, and the memory-ready contract.
 - `rtl/io/timer.vhd`: initial shared DMG-style timer block with DIV/TIMA/TMA/TAC,
   TAC-selected divider edges, delayed TIMA reload, and timer interrupt output.
+- `rtl/io/ps2_keyboard_joypad.vhd`: compact PS/2 Set-2 make/break decoder
+  that maps keyboard keys to the Game Boy joypad button signals.
 
 ## Clock Domains
 
@@ -130,8 +132,11 @@ composition, and an initial WRAM/Echo-backed OAM DMA path triggered by writes to
 `0xFF46`. The bus now also implements the real `0xFF00` JOYP register contract:
 CPU-written select bits choose the action and direction groups, reads return
 active-low button state, and selected press edges request IF bit 4. The current
-hardware top maps the four verified `key_n` pins to A, B, Select, and Start;
-direction input remains inactive until the final physical input path is defined.
+hardware top maps the four verified `key_n` pins to A, B, Select, and Start,
+and also exposes the first PS/2 keyboard input path: `D/A/W/S` map to
+Right/Left/Up/Down, `J/K` map to A/B, Space maps to Select, and Enter maps to
+Start. PS/2 inputs are synchronized into the CPU domain before they reach the
+JOYP register path.
 The PPU path now also has initial Window rendering: `WY/WX` are exposed by the
 bus, `LCDC(5)` enables Window pixels, `LCDC(6)` selects the Window tile map, and
 the renderer switches from scroll-based background coordinates to
@@ -142,11 +147,11 @@ with lower OAM order preserved when X coordinates are equal.
 
 The next architectural steps are:
 
-1. Define the final direction-input path through confirmed DIP pins or PS/2.
-2. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
+1. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
-3. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
+2. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
    compatibility issue.
+3. Begin the ROM/boot path for larger controlled visual/input test programs.
 
 The design should continue to keep module-level testbenches close to each RTL
 block and add integration testbenches only when a cross-module contract exists.

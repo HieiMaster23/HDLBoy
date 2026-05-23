@@ -11,6 +11,7 @@
 -- 2026-05-17 - Connected the extracted CPU/PPU demo ROM module
 -- 2026-05-22 - Mapped physical keys to the initial JOYP action inputs
 -- 2026-05-22 - Routed WY/WX into the Window-capable PPU renderer
+-- 2026-05-22 - Added PS/2 keyboard JOYP input path
 -- =============================================================================
 
 library ieee;
@@ -22,6 +23,8 @@ entity cpu_ppu_background_demo_top is
         clk_50mhz : in  std_logic;
         reset_n   : in  std_logic;
         key_n     : in  std_logic_vector(3 downto 0);
+        ps2_clk   : in  std_logic;
+        ps2_data  : in  std_logic;
 
         vga_r     : out std_logic;
         vga_g     : out std_logic;
@@ -100,6 +103,18 @@ architecture rtl of cpu_ppu_background_demo_top is
     signal btn_b_pressed      : std_logic;
     signal btn_select_pressed : std_logic;
     signal btn_start_pressed  : std_logic;
+    signal ps2_btn_right      : std_logic;
+    signal ps2_btn_left       : std_logic;
+    signal ps2_btn_up         : std_logic;
+    signal ps2_btn_down       : std_logic;
+    signal ps2_btn_a          : std_logic;
+    signal ps2_btn_b          : std_logic;
+    signal ps2_btn_select     : std_logic;
+    signal ps2_btn_start      : std_logic;
+    signal joyp_btn_a         : std_logic;
+    signal joyp_btn_b         : std_logic;
+    signal joyp_btn_select    : std_logic;
+    signal joyp_btn_start     : std_logic;
 
     signal fb_addr_b      : unsigned(14 downto 0);
     signal fb_data_b      : std_logic_vector(1 downto 0);
@@ -143,6 +158,10 @@ begin
     btn_b_pressed <= not key_n(1);
     btn_select_pressed <= not key_n(2);
     btn_start_pressed <= not key_n(3);
+    joyp_btn_a <= btn_a_pressed or ps2_btn_a;
+    joyp_btn_b <= btn_b_pressed or ps2_btn_b;
+    joyp_btn_select <= btn_select_pressed or ps2_btn_select;
+    joyp_btn_start <= btn_start_pressed or ps2_btn_start;
 
     u_pll: entity work.pll_core
         port map (
@@ -221,6 +240,22 @@ begin
             data => rom_data
         );
 
+    u_ps2_joypad: entity work.ps2_keyboard_joypad
+        port map (
+            clk        => clk_cpu,
+            reset      => reset_cpu,
+            ps2_clk    => ps2_clk,
+            ps2_data   => ps2_data,
+            btn_right  => ps2_btn_right,
+            btn_left   => ps2_btn_left,
+            btn_up     => ps2_btn_up,
+            btn_down   => ps2_btn_down,
+            btn_a      => ps2_btn_a,
+            btn_b      => ps2_btn_b,
+            btn_select => ps2_btn_select,
+            btn_start  => ps2_btn_start
+        );
+
     u_bus: entity work.bus_controller
         generic map (
             G_ENABLE_FB_WINDOW     => false,
@@ -238,14 +273,14 @@ begin
             cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
             rom_data             => rom_data,
-            btn_right            => '0',
-            btn_left             => '0',
-            btn_up               => '0',
-            btn_down             => '0',
-            btn_a                => btn_a_pressed,
-            btn_b                => btn_b_pressed,
-            btn_select           => btn_select_pressed,
-            btn_start            => btn_start_pressed,
+            btn_right            => ps2_btn_right,
+            btn_left             => ps2_btn_left,
+            btn_up               => ps2_btn_up,
+            btn_down             => ps2_btn_down,
+            btn_a                => joyp_btn_a,
+            btn_b                => joyp_btn_b,
+            btn_select           => joyp_btn_select,
+            btn_start            => joyp_btn_start,
             fb_clear_active      => '0',
             fb_clear_addr        => (others => '0'),
             fb_we                => open,
