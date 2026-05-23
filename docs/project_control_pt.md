@@ -2225,3 +2225,75 @@ Proximo passo recomendado:
 2. definir o input direcional final, por DIP confirmado ou PS/2;
 3. refinar detalhes de sprites/Window apenas se um ROM alvo demonstrar falha
    visual concreta.
+
+## 28. Refino de Prioridade DMG entre Sprites
+
+Nesta etapa corrigimos a prioridade entre sprites sobrepostos no renderer.
+Antes, a composicao aceitava o primeiro candidato nao transparente em ordem de
+OAM scan. Isso era deterministico, mas ainda nao representava a regra do DMG
+para sprites com X diferentes.
+
+Regra implementada:
+
+- entre sprites sobrepostos, menor coordenada X tem prioridade;
+- se X for igual, permanece o candidato anterior, preservando menor indice OAM;
+- o limite de ate 10 candidatos por scanline foi mantido;
+- a regra de prioridade BG/OBJ por atributo bit 7 foi preservada.
+
+Alteracoes feitas:
+
+- `ppu_background_renderer.vhd` ganhou um acumulador pequeno de sprite
+  selecionado por pixel:
+  - `selected_obj_valid_reg`;
+  - `selected_obj_x_reg`;
+  - `selected_obj_attr_reg`;
+  - `selected_obj_color_reg`;
+- durante `S_COMPOSE_CHECK`, o renderer continua varrendo os candidatos e
+  substitui o sprite selecionado apenas quando encontra um OBJ elegivel com X
+  menor;
+- em empate de X, nao substitui, entao o menor indice OAM continua vencendo;
+- `tb_ppu_background_renderer` agora cobre:
+  - sprite posterior em OAM vencendo por X menor;
+  - sprite anterior em OAM vencendo quando X empata;
+  - composicao ate o decimo candidato continua preservada.
+
+Regressoes executadas:
+
+- `run_ppu_background_renderer.do` passou;
+- `run_bus_controller.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `run_ppu_background_demo_top.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- build Quartus completo passou com 0 erros e 29 warnings.
+
+Resultado de sintese:
+
+- 3,831 / 6,272 LEs, 61%;
+- 967 registradores, 15%;
+- 180,224 / 276,480 bits de memoria, 65%;
+- 24 / 30 M9Ks, 80%;
+- 0 multiplicadores;
+- 1 / 2 PLLs;
+- TimeQuest totalmente constrained para setup e hold;
+- pior setup slack: 29.631 ns no clock VGA e 174.824 ns no clock CPU;
+- pior hold slack: 0.445 ns no clock CPU e 0.453 ns no clock VGA.
+
+Comparacao com o checkpoint anterior:
+
+- top completo: 3,809 LEs para 3,831 LEs, custo de +22 LEs;
+- registradores: 955 para 967, custo de +12 registradores;
+- memoria e M9K permaneceram iguais.
+
+Conclusao tecnica:
+
+O refino fecha uma diferenca importante de comportamento DMG sem criar uma
+ordenacao paralela de 10 sprites. A escolha por acumulador serial conserva area
+e combina com a arquitetura atual do renderer, que ja percorre os candidatos
+por pixel. O custo ficou pequeno e nao pressiona o gargalo de M9K.
+
+Proximo passo recomendado:
+
+1. iniciar o caminho de ROM/boot para permitir programas maiores;
+2. definir input direcional fisico;
+3. usar ROMs alvo simples para decidir quais refinamentos PPU ainda sao
+   realmente necessarios antes de investir em FIFO pixel-perfect.

@@ -136,7 +136,9 @@ The PPU path now also has initial Window rendering: `WY/WX` are exposed by the
 bus, `LCDC(5)` enables Window pixels, `LCDC(6)` selects the Window tile map, and
 the renderer switches from scroll-based background coordinates to
 `screen_x + 7 - WX` / `screen_y - WY` Window coordinates when the pixel is
-inside the Window region.
+inside the Window region. Sprite composition now keeps the 10-candidate
+scanline limit and applies the DMG OBJ priority rule: lower X coordinate wins,
+with lower OAM order preserved when X coordinates are equal.
 
 The next architectural steps are:
 

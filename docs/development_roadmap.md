@@ -370,7 +370,8 @@ The next recommended sequence is:
 13. preserve the initial real JOYP register slice as the current input baseline;
 14. preserve the initial Window rendering slice as the current BG/Window visual
     baseline;
-15. refine DMG sprite ordering details as needed for the simple-game target;
+15. preserve the DMG sprite priority refinement as the current OBJ composition
+    baseline;
 16. define the final physical direction-input path through confirmed DIP pins or
     PS/2 keyboard input;
 17. import broader timer coverage later if the local Blargg package proves too
@@ -399,9 +400,9 @@ composition slice, expanded to all 10 per-line OBJ candidates and then
 serialized to reduce the sprite selection path, plus the VGA raster scaler
 optimization, configurable bus/debug feature gates, HRAM M9K inference, and the
 first WRAM/Echo-backed OAM DMA slice, plus the initial real JOYP register slice,
-and initial Window rendering, uses:
+initial Window rendering, and DMG sprite priority refinement, uses:
 
-- 3,809 / 6,272 logic elements;
+- 3,831 / 6,272 logic elements;
 - 180,224 / 276,480 block-memory bits;
 - 24 / 30 M9K blocks.
 
@@ -416,8 +417,10 @@ slice then added the CPU-visible `0xFF00` input path and Joypad interrupt
 request with unchanged memory usage and only four additional registers in the
 fitted top. The initial Window slice added the `WY/WX` path and LCDC-controlled
 Window tile-map selection for 70 additional logic elements and no extra memory.
-The design still needs strict discipline because only six M9K blocks remain
-free. New work should
+The DMG sprite priority refinement then added a serial selected-OBJ accumulator
+for 22 logic elements and 12 registers, preserving the 10-candidate limit. The
+design still needs strict discipline because only six M9K blocks remain free.
+New work should
 prefer:
 
 - shared CPU states instead of duplicated datapaths;

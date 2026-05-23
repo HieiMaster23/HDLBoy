@@ -21,6 +21,7 @@
 -- 2026-05-20 - Expanded sprite composition storage to the 10 per-line candidates
 -- 2026-05-20 - Serialized sprite pixel composition to reduce logic use
 -- 2026-05-22 - Added initial LCDC Window rendering support
+-- 2026-05-22 - Added DMG sprite X-coordinate priority selection
 -- =============================================================================
 -- This is the first PPU foundation slice, not the final scanline-accurate DMG
 -- pipeline. It renders the background tile map selected by LCDC bit 3 and the
@@ -29,6 +30,9 @@
 -- renderer loops continuously while LCD is enabled. The dot scheduler exposes
 -- the DMG 456-dot line structure for LY/STAT/IF work while the pixel fetch path
 -- is still intentionally simple and background-only.
+-- Sprite composition keeps the 10-candidate per-line limit and applies the DMG
+-- object priority rule: lower X coordinate wins, and equal X coordinates keep
+-- the earlier OAM candidate.
 -- =============================================================================
 
 library ieee;
@@ -144,6 +148,10 @@ architecture rtl of ppu_background_renderer is
     signal sprite_high_reg  : sprite_byte_array_t;
     signal compose_slot_reg : integer range 0 to MAX_COMPOSE_SPRITES - 1;
     signal bg_color_id_reg  : std_logic_vector(1 downto 0);
+    signal selected_obj_valid_reg : std_logic;
+    signal selected_obj_x_reg     : std_logic_vector(7 downto 0);
+    signal selected_obj_attr_reg  : std_logic_vector(7 downto 0);
+    signal selected_obj_color_reg : std_logic_vector(1 downto 0);
     signal fb_data_reg      : std_logic_vector(1 downto 0);
 
     function tile_map_addr(
@@ -397,6 +405,8 @@ begin
         variable use_window_v : std_logic;
         variable color_id_v : std_logic_vector(1 downto 0);
         variable sprite_color_id_v : std_logic_vector(1 downto 0);
+        variable sprite_eligible_v : std_logic;
+        variable sprite_better_v : std_logic;
     begin
         if rising_edge(clk) then
             if reset = '1' or lcd_enable = '0' then
@@ -421,6 +431,10 @@ begin
                 sprite_tile_reg <= (others => '0');
                 compose_slot_reg <= 0;
                 bg_color_id_reg <= (others => '0');
+                selected_obj_valid_reg <= '0';
+                selected_obj_x_reg <= (others => '0');
+                selected_obj_attr_reg <= (others => '0');
+                selected_obj_color_reg <= (others => '0');
                 fb_data_reg <= (others => '0');
             else
                 case state_reg is
@@ -549,6 +563,10 @@ begin
                         bg_color_id_reg <= color_id_v;
                         fb_data_reg <= apply_bgp_palette(color_id_v, bgp);
                         compose_slot_reg <= 0;
+                        selected_obj_valid_reg <= '0';
+                        selected_obj_x_reg <= (others => '1');
+                        selected_obj_attr_reg <= (others => '0');
+                        selected_obj_color_reg <= (others => '0');
                         if lcdc(1) = '1' and sprite_candidate_count /= to_unsigned(0, 4) then
                             state_reg <= S_COMPOSE_CHECK;
                         else
@@ -557,6 +575,8 @@ begin
 
                     when S_COMPOSE_CHECK =>
                         sprite_color_id_v := "00";
+                        sprite_eligible_v := '0';
+                        sprite_better_v := '0';
                         if sprite_covers_pixel(sprite_valid_reg(compose_slot_reg),
                                                sprite_x_reg(compose_slot_reg),
                                                pixel_x_reg) = '1' then
@@ -571,15 +591,39 @@ begin
                         if sprite_color_id_v /= "00" and
                            (sprite_attr_reg(compose_slot_reg)(7) = '0' or
                             bg_color_id_reg = "00") then
-                            if sprite_attr_reg(compose_slot_reg)(4) = '1' then
-                                fb_data_reg <= apply_obj_palette(sprite_color_id_v,
-                                                                 obp1);
-                            else
-                                fb_data_reg <= apply_obj_palette(sprite_color_id_v,
-                                                                 obp0);
+                            sprite_eligible_v := '1';
+                            if selected_obj_valid_reg = '0' then
+                                sprite_better_v := '1';
+                            elsif unsigned(sprite_x_reg(compose_slot_reg)) < unsigned(selected_obj_x_reg) then
+                                sprite_better_v := '1';
                             end if;
-                            state_reg <= S_WRITE_PIXEL;
-                        elsif compose_slot_reg = MAX_COMPOSE_SPRITES - 1 then
+
+                            if sprite_better_v = '1' then
+                                selected_obj_valid_reg <= '1';
+                                selected_obj_x_reg <= sprite_x_reg(compose_slot_reg);
+                                selected_obj_attr_reg <= sprite_attr_reg(compose_slot_reg);
+                                selected_obj_color_reg <= sprite_color_id_v;
+                            end if;
+                        end if;
+
+                        if compose_slot_reg = MAX_COMPOSE_SPRITES - 1 then
+                            if sprite_eligible_v = '1' and sprite_better_v = '1' then
+                                if sprite_attr_reg(compose_slot_reg)(4) = '1' then
+                                    fb_data_reg <= apply_obj_palette(sprite_color_id_v,
+                                                                     obp1);
+                                else
+                                    fb_data_reg <= apply_obj_palette(sprite_color_id_v,
+                                                                     obp0);
+                                end if;
+                            elsif selected_obj_valid_reg = '1' then
+                                if selected_obj_attr_reg(4) = '1' then
+                                    fb_data_reg <= apply_obj_palette(selected_obj_color_reg,
+                                                                     obp1);
+                                else
+                                    fb_data_reg <= apply_obj_palette(selected_obj_color_reg,
+                                                                     obp0);
+                                end if;
+                            end if;
                             state_reg <= S_WRITE_PIXEL;
                         else
                             compose_slot_reg <= compose_slot_reg + 1;
@@ -648,7 +692,9 @@ begin
                        tile_index_reg, tile_low_reg, tile_high_reg,
                        sprite_index_reg, sprite_slot_reg, sprite_valid_reg, sprite_x_reg, sprite_y_reg,
                        sprite_tile_reg, sprite_attr_reg, sprite_low_reg, sprite_high_reg,
-                       compose_slot_reg, bg_color_id_reg, fb_data_reg,
+                       compose_slot_reg, bg_color_id_reg, selected_obj_valid_reg,
+                       selected_obj_x_reg, selected_obj_attr_reg, selected_obj_color_reg,
+                       fb_data_reg,
                        scroll_x, scroll_y, window_x, window_y, bgp, obp0, obp1, lcdc)
         variable bg_x_v : unsigned(7 downto 0);
         variable bg_y_v : unsigned(7 downto 0);

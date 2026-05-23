@@ -686,6 +686,80 @@ begin
         lcdc <= x"93";
         bgp <= x"FC";
         obp0 <= x"E4";
+        sprite_candidate_count <= to_unsigned(2, 4);
+        sprite_candidate_indices <= (others => '0');
+        sprite_candidate_indices(15 downto 8) <= x"01";
+        oam_mem <= (others => x"00");
+        oam_mem(0) <= x"10";
+        oam_mem(1) <= x"09";
+        oam_mem(2) <= x"02";
+        oam_mem(3) <= x"00";
+        oam_mem(4) <= x"10";
+        oam_mem(5) <= x"08";
+        oam_mem(6) <= x"03";
+        oam_mem(7) <= x"00";
+        vram_mem(0) <= x"00";
+        vram_mem(1) <= x"00";
+        vram_mem(16#1800#) <= x"00";
+        vram_mem(32) <= x"80";
+        vram_mem(33) <= x"00";
+        vram_mem(48) <= x"00";
+        vram_mem(49) <= x"80";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "10"
+            report "FAIL: DMG sprite priority should prefer lower X over earlier OAM"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"93";
+        bgp <= x"FC";
+        obp0 <= x"E4";
+        sprite_candidate_count <= to_unsigned(2, 4);
+        sprite_candidate_indices <= (others => '0');
+        sprite_candidate_indices(15 downto 8) <= x"01";
+        oam_mem <= (others => x"00");
+        oam_mem(0) <= x"10";
+        oam_mem(1) <= x"08";
+        oam_mem(2) <= x"02";
+        oam_mem(3) <= x"00";
+        oam_mem(4) <= x"10";
+        oam_mem(5) <= x"08";
+        oam_mem(6) <= x"03";
+        oam_mem(7) <= x"00";
+        vram_mem(0) <= x"00";
+        vram_mem(1) <= x"00";
+        vram_mem(16#1800#) <= x"00";
+        vram_mem(32) <= x"80";
+        vram_mem(33) <= x"00";
+        vram_mem(48) <= x"00";
+        vram_mem(49) <= x"80";
+        reset <= '0';
+        start <= '1';
+        wait until rising_edge(clk);
+        start <= '0';
+
+        wait for 1 ns;
+        wait until done = '1';
+        wait for 1 ns;
+
+        assert fb_mem(0) = "01"
+            report "FAIL: DMG sprite priority should prefer earlier OAM when X coordinates match"
+            severity failure;
+
+        reset <= '1';
+        wait until rising_edge(clk);
+        lcdc <= x"93";
+        bgp <= x"FC";
+        obp0 <= x"E4";
         sprite_candidate_count <= to_unsigned(10, 4);
         sprite_candidate_indices <= (others => '0');
         sprite_candidate_indices(15 downto 8) <= x"01";
