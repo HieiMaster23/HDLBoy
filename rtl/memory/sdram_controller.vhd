@@ -35,9 +35,11 @@ entity sdram_controller is
         write_data   : in    std_logic_vector(15 downto 0);
         byte_enable  : in    std_logic_vector(1 downto 0);
         ready        : out   std_logic;
+        cmd_accept   : out   std_logic;
         read_valid   : out   std_logic;
         read_data    : out   std_logic_vector(15 downto 0);
         init_done    : out   std_logic;
+        refresh_pulse: out   std_logic;
 
         sdram_clk    : out   std_logic;
         sdram_cke    : out   std_logic;
@@ -94,9 +96,11 @@ architecture rtl of sdram_controller is
     signal dqm_reg          : std_logic_vector(1 downto 0);
     signal dq_out_reg       : std_logic_vector(15 downto 0);
     signal dq_oe_reg        : std_logic;
+    signal cmd_accept_reg   : std_logic;
     signal read_valid_reg   : std_logic;
     signal read_data_reg    : std_logic_vector(15 downto 0);
     signal init_done_reg    : std_logic;
+    signal refresh_pulse_reg: std_logic;
 
     function timer_done(value_in : natural) return boolean is
     begin
@@ -105,7 +109,10 @@ architecture rtl of sdram_controller is
 
 begin
 
-    sdram_clk <= clk;
+    -- The external SDRAM samples on its rising edge. Driving an inverted clock
+    -- gives the registered command/address/data outputs about half a cycle to
+    -- settle before the memory captures them during the initial 50 MHz bring-up.
+    sdram_clk <= not clk;
     sdram_cke <= '1';
     sdram_cs_n <= command_reg(3);
     sdram_ras_n <= command_reg(2);
@@ -117,9 +124,11 @@ begin
     sdram_dq <= dq_out_reg when dq_oe_reg = '1' else (others => 'Z');
 
     ready <= '1' when state_reg = S_IDLE and refresh_pending_reg = '0' and init_done_reg = '1' else '0';
+    cmd_accept <= cmd_accept_reg;
     read_valid <= read_valid_reg;
     read_data <= read_data_reg;
     init_done <= init_done_reg;
+    refresh_pulse <= refresh_pulse_reg;
 
     p_controller: process(clk)
     begin
@@ -139,16 +148,20 @@ begin
                 dqm_reg <= "00";
                 dq_out_reg <= (others => '0');
                 dq_oe_reg <= '0';
+                cmd_accept_reg <= '0';
                 read_valid_reg <= '0';
                 read_data_reg <= (others => '0');
                 init_done_reg <= '0';
+                refresh_pulse_reg <= '0';
             else
                 command_reg <= SDRAM_CMD_NOP;
                 addr_reg <= (others => '0');
                 ba_reg <= (others => '0');
                 dqm_reg <= "00";
                 dq_oe_reg <= '0';
+                cmd_accept_reg <= '0';
                 read_valid_reg <= '0';
+                refresh_pulse_reg <= '0';
 
                 if init_done_reg = '1' then
                     if refresh_count_reg = 0 then
@@ -210,6 +223,7 @@ begin
                         if refresh_pending_reg = '1' then
                             command_reg <= SDRAM_CMD_REFRESH;
                             refresh_pending_reg <= '0';
+                            refresh_pulse_reg <= '1';
                             delay_reg <= G_TRC_CYCLES - 1;
                             state_reg <= S_REFRESH;
                         elsif cmd_valid = '1' then
@@ -217,6 +231,7 @@ begin
                             pending_addr_reg <= cmd_addr;
                             pending_data_reg <= write_data;
                             pending_be_reg <= byte_enable;
+                            cmd_accept_reg <= '1';
                             command_reg <= SDRAM_CMD_ACTIVE;
                             ba_reg <= std_logic_vector(cmd_addr(9 downto 8));
                             addr_reg <= std_logic_vector(cmd_addr(21 downto 10));

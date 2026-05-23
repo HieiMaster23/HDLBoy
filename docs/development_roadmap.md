@@ -376,7 +376,9 @@ The next recommended sequence is:
     direction-input baseline;
 17. preserve the isolated SDRAM controller simulation slice as the first M7
     storage baseline;
-18. import broader timer coverage later if the local Blargg package proves too
+18. preserve the dedicated SDRAM hardware bring-up top as the first physical
+    external-memory baseline;
+19. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -436,9 +438,11 @@ prefer:
 
 The first SDRAM controller slice is intentionally isolated from the top-level
 Game Boy integration. It establishes init, refresh, single-word read, and
-single-word write behavior in simulation before the project exposes the SDRAM
-pins or adds a JTAG ROM loader. That keeps the storage path testable without
-destabilizing the current CPU/PPU visual baseline.
+single-word write behavior in simulation before the project adds a JTAG ROM
+loader. A dedicated `sdram_test_top` now exposes the physical SDRAM pins only
+for bring-up, runs a deterministic write/read checker, and restores the main
+Quartus QSF after its dedicated build. That keeps the storage path testable
+without destabilizing the current CPU/PPU visual baseline.
 
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.

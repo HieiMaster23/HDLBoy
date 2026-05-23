@@ -2453,3 +2453,81 @@ necessaria para chegar la de forma controlada. O caminho agora e:
 4. loader via Virtual JTAG;
 5. mapper ROM-only para `0x0000..0x7FFF`;
 6. carregar Tetris na SDRAM.
+
+## 31. Top Fisico de Teste SDRAM
+
+Nesta etapa fechamos a primeira ponte entre o controlador SDRAM simulado e a
+placa fisica. A ideia foi manter o teste pequeno, observavel por LEDs e
+separado do top principal do Game Boy, para validar a memoria externa antes de
+coloca-la no caminho de cartucho.
+
+Escopo fechado nesta fatia:
+
+- criar `sdram_test_top.vhd`;
+- expor os pinos fisicos da SDRAM em um arquivo QSF dedicado;
+- criar um SDC temporario para o bring-up inicial;
+- adicionar `cmd_accept` ao controlador para handshake real de comando aceito;
+- escrever dois padroes de 16 bits em enderecos diferentes;
+- ler e comparar os dois padroes;
+- validar escrita parcial com `DQM` no byte baixo;
+- reportar inicializacao, PASS, FAIL e refresh por LEDs;
+- criar testbench de integracao com modelo comportamental simples de SDRAM;
+- criar script Quartus dedicado para compilar o top de teste sem poluir o QSF
+  principal.
+
+Mapa dos LEDs no `sdram_test_top`:
+
+- LED0 aceso: `init_done`;
+- LED1 aceso: teste passou;
+- LED2 aceso: teste falhou;
+- LED3 aceso: pelo menos um refresh periodico foi observado.
+
+Como os LEDs da placa sao active-low, o RTL dirige nivel baixo para acender o
+indicador.
+
+Regressoes executadas:
+
+- `run_sdram_controller.do` passou;
+- `run_sdram_test_top.do` passou;
+- `build_sdram_test.tcl` passou com 0 erros;
+- `build.tcl` do top principal passou com 0 erros.
+
+Recursos do top fisico SDRAM:
+
+- 243 / 6,272 LEs, 4%;
+- 148 registradores, 2%;
+- 0 bits de memoria interna;
+- 0 M9Ks;
+- 0 multiplicadores;
+- 0 PLLs;
+- 44 / 92 pinos, 48%.
+
+Timing do top SDRAM:
+
+- pior setup slack em 50 MHz: 13.950 ns;
+- pior hold slack em 50 MHz: 0.453 ns;
+- minimo pulse width em `clk_50mhz`: 9.741 ns;
+- TimeQuest totalmente constrained para setup e hold internos.
+
+Observacoes tecnicas:
+
+- o clock externo da SDRAM foi dirigido como `not clk` para dar cerca de meio
+  ciclo de acomodacao aos sinais registrados de comando, endereco e dados antes
+  da borda de amostragem da memoria;
+- o SDC de SDRAM ainda usa false paths para I/O externo. Isso e aceitavel para
+  o primeiro teste funcional com LEDs, mas nao substitui constraints reais de
+  interface SDRAM quando a memoria virar barramento de cartucho;
+- os pinos SDRAM ficam em `constraints/sdram_pin_assignments.qsf` e nao sao
+  mantidos no QSF principal;
+- o script `build_sdram_test.tcl` salva o QSF original, aplica top/pinos/SDC
+  temporariamente, compila e restaura o projeto principal ao final.
+
+Proximo passo recomendado:
+
+1. programar o `sdram_test_top` via USB-Blaster;
+2. observar os quatro LEDs;
+3. se LED1 acender e LED2 permanecer apagado, seguir para loader via Virtual
+   JTAG;
+4. se LED2 acender, capturar com SignalTap sinais como estado do checker,
+   `init_done`, `cmd_valid`, `cmd_accept`, `ready`, `read_valid`, `read_data`
+   e comandos SDRAM externos.

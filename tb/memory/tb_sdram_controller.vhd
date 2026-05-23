@@ -36,9 +36,11 @@ architecture sim of tb_sdram_controller is
     signal write_data   : std_logic_vector(15 downto 0) := (others => '0');
     signal byte_enable  : std_logic_vector(1 downto 0) := "11";
     signal ready        : std_logic;
+    signal cmd_accept   : std_logic;
     signal read_valid   : std_logic;
     signal read_data    : std_logic_vector(15 downto 0);
     signal init_done    : std_logic;
+    signal refresh_pulse: std_logic;
 
     signal sdram_clk    : std_logic;
     signal sdram_cke    : std_logic;
@@ -147,9 +149,11 @@ begin
             write_data  => write_data,
             byte_enable => byte_enable,
             ready       => ready,
+            cmd_accept  => cmd_accept,
             read_valid  => read_valid,
             read_data   => read_data,
             init_done   => init_done,
+            refresh_pulse => refresh_pulse,
             sdram_clk   => sdram_clk,
             sdram_cke   => sdram_cke,
             sdram_cs_n  => sdram_cs_n,

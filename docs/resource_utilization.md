@@ -1966,3 +1966,55 @@ Next measurement point:
 - synthesize a dedicated SDRAM hardware test top after the SDRAM pins are
   enabled and the controller is connected to a deterministic write/read
   checker.
+
+## SDRAM Hardware Bring-Up Top
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `sdram_test_top`
+
+Report date: 2026-05-23
+
+This checkpoint adds a dedicated physical SDRAM test top and keeps it separate
+from the active Game Boy visual top. The test top exposes the SDRAM pins,
+initializes the memory, performs deterministic write/read checks, verifies
+lower-byte DQM masking, and reports status through LEDs.
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 243 | 6,272 | 4% |
+| Registers | 148 | 6,272 | 2% |
+| Pins | 44 | 92 | 48% |
+| Memory bits | 0 | 276,480 | 0% |
+| M9Ks | 0 | 30 | 0% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 0 | 2 | 0% |
+
+Timing summary for the 50 MHz bring-up clock:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C | 13.950 ns |
+| Hold, slow 1200 mV 85 C | 0.453 ns |
+| Minimum pulse width, `clk_50mhz` | 9.741 ns |
+
+TimeQuest reports the SDRAM test top as fully constrained for internal setup
+and hold. The SDRAM board-level I/O constraints in
+`constraints/sdram_test_timing.sdc` are intentionally temporary false paths for
+first functional bring-up. They must be replaced by proper external SDRAM I/O
+timing constraints before the SDRAM path becomes part of the cartridge bus.
+
+Notes:
+
+- `sdram_controller` now exposes `cmd_accept`, allowing a client FSM to advance
+  only when a command is actually captured. This avoids lost write/read
+  requests when an automatic refresh has priority.
+- The external SDRAM clock is driven inverted relative to the controller clock
+  so registered command/address/data outputs settle before the memory samples
+  them during the initial 50 MHz hardware bring-up.
+- `scripts/build_sdram_test.tcl` temporarily switches the project top to
+  `sdram_test_top`, applies the dedicated SDRAM pins and timing file, runs the
+  compile, then restores the main QSF so the normal Game Boy top does not keep
+  unused SDRAM pin assignments.
+- The active `cpu_ppu_background_demo_top` remains at the previous PS/2 joypad
+  resource level until the SDRAM path is integrated into the system bus.

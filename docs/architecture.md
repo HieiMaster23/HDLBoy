@@ -47,6 +47,8 @@ initial shared M6 timer block:
   TAC-selected divider edges, delayed TIMA reload, and timer interrupt output.
 - `rtl/io/ps2_keyboard_joypad.vhd`: compact PS/2 Set-2 make/break decoder
   that maps keyboard keys to the Game Boy joypad button signals.
+- `rtl/top/sdram_test_top.vhd`: dedicated physical SDRAM bring-up top with a
+  deterministic write/read checker and LED status outputs.
 
 ## Clock Domains
 
@@ -149,12 +151,14 @@ with lower OAM order preserved when X coordinates are equal.
 
 The next architectural steps are:
 
-1. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
+1. Program the dedicated SDRAM hardware test top and confirm init/pass/refresh
+   behavior on the physical board.
+2. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
-2. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
+3. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
    compatibility issue.
-3. Grow the SDRAM path from the isolated controller into a hardware test top,
-   then into a JTAG ROM loader and ROM-only cartridge mapper.
+4. Grow the SDRAM path from the hardware test top into a JTAG ROM loader and
+   ROM-only cartridge mapper.
 
 The design should continue to keep module-level testbenches close to each RTL
 block and add integration testbenches only when a cross-module contract exists.
