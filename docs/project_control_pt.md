@@ -2375,3 +2375,81 @@ Proximo passo recomendado:
 2. preparar um ROM de teste visual/interativo que leia JOYP e mova um sprite;
 3. depois disso, decidir se o proximo gargalo e ROM/cartridge/MBC ou refinamento
    de temporizacao da PPU.
+
+## 30. Primeiro Controlador SDRAM Isolado
+
+Nesta etapa iniciamos a linha correta para carregar ROMs maiores, incluindo o
+Tetris ROM-only de 32 KiB, sem depender de cabo RS-232. A decisao arquitetural
+e usar a SDRAM externa como armazenamento de cartucho e, em uma etapa posterior,
+carregar os bytes via USB-Blaster/JTAG.
+
+Escopo fechado nesta fatia:
+
+- criar `sdram_controller.vhd`;
+- manter o controlador isolado, ainda fora do top principal;
+- validar inicializacao basica;
+- validar escrita/leitura de palavra de 16 bits;
+- validar `DQM`/byte enable;
+- validar refresh periodico;
+- criar testbench comportamental simples da SDRAM;
+- adicionar script ModelSim dedicado.
+
+Interface criada:
+
+- `cmd_valid`;
+- `cmd_write`;
+- `cmd_addr[21:0]`, endereco linear em palavras de 16 bits;
+- `write_data[15:0]`;
+- `byte_enable[1:0]`;
+- `ready`;
+- `read_valid`;
+- `read_data[15:0]`;
+- `init_done`;
+- sinais externos SDRAM: clock, CKE, CS/RAS/CAS/WE, DQM, BA, ADDR e DQ.
+
+Comportamento validado:
+
+- espera inicial parametrizavel;
+- precharge-all;
+- dois auto-refresh iniciais;
+- load mode register;
+- activate -> write -> precharge;
+- activate -> read -> capture -> precharge;
+- refresh automatico enquanto idle.
+
+Regressoes executadas:
+
+- `run_sdram_controller.do` passou.
+- build Quartus completo do top atual passou com 0 erros e 29 warnings.
+
+Recursos do top atual apos incluir a fonte no projeto:
+
+- 3,887 / 6,272 LEs, 62%;
+- 994 registradores, 16%;
+- 180,224 / 276,480 bits de memoria, 65%;
+- 24 / 30 M9Ks, 80%;
+- sem alteracao em relacao ao checkpoint PS/2, pois o controlador ainda nao e
+  instanciado.
+
+Observacoes tecnicas:
+
+- o controlador foi adicionado ao `quartus/gameboy_core.qsf`, mas ainda nao e
+  instanciado pelo `cpu_ppu_background_demo_top`;
+- por isso, o top principal nao deve mudar recursos nesta fatia;
+- os pinos SDRAM permanecem comentados em `pin_assignments.qsf` ate criarmos um
+  top de teste fisico dedicado;
+- esta escolha reduz risco: primeiro validamos o protocolo em simulacao, depois
+  fazemos bring-up fisico com LEDs/SignalTap, e so entao ligamos ao mapper de
+  ROM.
+
+Conclusao tecnica:
+
+Esta e a primeira fatia de M7. Ela nao roda Tetris ainda, mas cria a base
+necessaria para chegar la de forma controlada. O caminho agora e:
+
+1. top de teste fisico da SDRAM;
+2. habilitar pinos SDRAM confirmados;
+3. checker de escrita/leitura em hardware;
+4. loader via Virtual JTAG;
+5. mapper ROM-only para `0x0000..0x7FFF`;
+6. carregar Tetris na SDRAM.

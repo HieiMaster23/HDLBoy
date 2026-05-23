@@ -1929,3 +1929,40 @@ Notes:
   M9K, multiplier, or PLL usage.
 - Compared with the sprite-priority checkpoint, the full fitted top costs 56
   additional logic elements and 27 registers, plus two input pins.
+
+## Isolated SDRAM Controller Simulation Slice
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-22
+
+This slice adds `rtl/memory/sdram_controller.vhd` and its ModelSim testbench,
+but does not instantiate the controller in the current top-level design yet.
+The fitted Game Boy top therefore remains at the PS/2 joypad checkpoint
+resource level until a dedicated SDRAM hardware test top is introduced.
+
+Validated behavior:
+
+- reset/init wait;
+- precharge-all command;
+- two initial auto-refresh commands;
+- mode-register load;
+- single-word write;
+- single-word read;
+- byte-enable masking through DQM;
+- periodic refresh while idle.
+
+Resource impact on current fitted top:
+
+- no change while uninstantiated: the current top remains at 3,887 logic
+  elements, 994 registers, 180,224 memory bits, and 24 M9K blocks;
+- no additional M9K usage;
+- no SDRAM pins exposed by the active top yet.
+
+Next measurement point:
+
+- synthesize a dedicated SDRAM hardware test top after the SDRAM pins are
+  enabled and the controller is connected to a deterministic write/read
+  checker.

@@ -17,6 +17,8 @@ initial shared M6 timer block:
 - `rtl/video/vga_color_bar.vhd`: simple color bar generator for M1 hardware testing.
 - `rtl/memory/framebuffer.vhd`: 160x144x2-bit dual-port framebuffer.
 - `rtl/memory/vram.vhd`: 8 KiB dual-port VRAM used by CPU writes and PPU reads.
+- `rtl/memory/sdram_controller.vhd`: first isolated SDRAM controller slice for
+  future ROM loading and cartridge-backed reads.
 - `rtl/memory/cpu_video_smoke_rom.vhd`: standalone ROM image for the legacy
   CPU-to-framebuffer smoke program.
 - `rtl/memory/cpu_ppu_background_demo_rom.vhd`: standalone ROM image for the
@@ -151,7 +153,8 @@ The next architectural steps are:
    defined.
 2. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
    compatibility issue.
-3. Begin the ROM/boot path for larger controlled visual/input test programs.
+3. Grow the SDRAM path from the isolated controller into a hardware test top,
+   then into a JTAG ROM loader and ROM-only cartridge mapper.
 
 The design should continue to keep module-level testbenches close to each RTL
 block and add integration testbenches only when a cross-module contract exists.
