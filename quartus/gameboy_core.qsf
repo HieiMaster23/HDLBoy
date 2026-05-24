@@ -40,6 +40,8 @@ set_global_assignment -name VHDL_FILE ../rtl/cpu/decoder.vhd
 set_global_assignment -name VHDL_FILE ../rtl/cpu/cpu.vhd
 set_global_assignment -name VHDL_FILE ../rtl/io/timer.vhd
 set_global_assignment -name VHDL_FILE ../rtl/io/ps2_keyboard_joypad.vhd
+set_global_assignment -name VHDL_FILE ../rtl/io/virtual_jtag_rom_stream_core.vhd
+set_global_assignment -name VHDL_FILE ../rtl/io/virtual_jtag_rom_stream.vhd
 set_global_assignment -name VHDL_FILE ../rtl/io/seven_segment_mux.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/blink_led.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/pll_core.vhd
@@ -65,6 +67,7 @@ set_global_assignment -name VHDL_FILE ../rtl/top/cpu_video_smoke_top.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/ppu_background_demo_top.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/cpu_ppu_background_demo_top.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/sdram_test_top.vhd
+set_global_assignment -name VHDL_FILE ../rtl/top/sdram_jtag_loader_top.vhd
 
 # -----------------------------------------------------------------------------
 # Constraint Files

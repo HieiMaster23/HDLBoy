@@ -2586,3 +2586,87 @@ Virtual JTAG minimo e um top fisico de loader que combine:
 2. `sdram_rom_loader`;
 3. wrapper Virtual JTAG;
 4. LEDs de estado para init, loading, done e error.
+
+## 33. Top Fisico de Loader ROM via Virtual JTAG
+
+Nesta etapa criamos o primeiro caminho fisico para carregar bytes na SDRAM
+usando apenas o USB-Blaster/JTAG. A implementacao ainda nao carrega um arquivo
+`.gb` automaticamente pelo PC; ela fecha o hardware de recepcao, protocolo,
+CDC e escrita em SDRAM. O script host vem na proxima fatia.
+
+Escopo fechado nesta fatia:
+
+- criar `virtual_jtag_rom_stream_core.vhd`;
+- criar `virtual_jtag_rom_stream.vhd` como wrapper fino de `sld_virtual_jtag`;
+- criar `sdram_jtag_loader_top.vhd`;
+- criar `sdram_jtag_loader_timing.sdc`;
+- criar `build_sdram_jtag_loader.tcl`;
+- criar testbench do core de protocolo/CDC;
+- validar o wrapper fisico com build Quartus completo.
+
+Protocolo JTAG definido:
+
+- IR `001`: DATA, desloca 8 bits de byte ROM;
+- IR `010`: CONTROL, bit 0 gera `start`, bit 1 gera `finish`, bit 2 limpa erro
+  de overflow;
+- IR `011`: STATUS, retorna bits de estado;
+- STATUS bit 0: stream pronto;
+- STATUS bit 1: loader ocupado;
+- STATUS bit 2: loader concluido;
+- STATUS bit 3: erro do loader;
+- STATUS bit 4: SDRAM inicializada;
+- STATUS bit 5: byte pendente no dominio JTAG;
+- STATUS bit 6: overflow de protocolo;
+- STATUS bit 7: assinatura fixa em 1.
+
+Decisao arquitetural importante:
+
+O Virtual JTAG trabalha no dominio `altera_reserved_tck`, enquanto a SDRAM e o
+loader trabalham em `clk_50mhz`. Por isso, o core usa toggle handshakes e
+sincronizadores entre dominios, em vez de simplesmente amarrar `tdi/tdo` a
+logica de 50 MHz. O dado de 8 bits fica estavel no dominio JTAG ate o dominio
+de 50 MHz reconhecer a transferencia.
+
+Mapa dos LEDs no `sdram_jtag_loader_top`:
+
+- LED0 aceso: SDRAM inicializada;
+- LED1 aceso: loader ocupado;
+- LED2 aceso: carga concluida;
+- LED3 aceso: erro de loader ou overflow de protocolo.
+
+Regressoes executadas:
+
+- `run_virtual_jtag_rom_stream_core.do` passou;
+- `run_sdram_rom_loader.do` passou;
+- `run_sdram_controller.do` passou;
+- `run_sdram_test_top.do` passou;
+- `build_sdram_jtag_loader.tcl` passou com 0 erros;
+- `build.tcl` do top principal passou com 0 erros.
+
+Recursos do top fisico Virtual JTAG loader:
+
+- 473 / 6,272 LEs, 8%;
+- 316 registradores, 5%;
+- 0 bits de memoria interna;
+- 0 M9Ks;
+- 0 multiplicadores;
+- 0 PLLs;
+- 44 / 92 pinos, 48%.
+
+Timing do top Virtual JTAG loader:
+
+- pior setup slack em `clk_50mhz`: 13.508 ns;
+- pior setup slack em `altera_reserved_tck`: 45.302 ns;
+- pior hold slack: 0.453 ns;
+- minimo pulse width em `clk_50mhz`: 9.735 ns;
+- minimo pulse width em `altera_reserved_tck`: 49.442 ns;
+- TimeQuest totalmente constrained para setup e hold depois do SDC dedicado.
+
+Observacoes tecnicas:
+
+- o top principal do Game Boy continua sem instanciar o loader;
+- os pinos SDRAM continuam aplicados apenas durante o build dedicado;
+- `sdram_jtag_loader_timing.sdc` marca o dominio JTAG e `clk_50mhz` como
+  assincronos e mantem false paths temporarios para I/O SDRAM;
+- a proxima etapa e criar o script host para enviar uma ROM via Virtual JTAG e
+  observar `done/error` nos LEDs.

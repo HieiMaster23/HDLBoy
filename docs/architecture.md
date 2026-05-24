@@ -49,8 +49,14 @@ initial shared M6 timer block:
   TAC-selected divider edges, delayed TIMA reload, and timer interrupt output.
 - `rtl/io/ps2_keyboard_joypad.vhd`: compact PS/2 Set-2 make/break decoder
   that maps keyboard keys to the Game Boy joypad button signals.
+- `rtl/io/virtual_jtag_rom_stream_core.vhd`: simulatable Virtual JTAG protocol
+  and CDC core for streaming ROM bytes into the SDRAM loader.
+- `rtl/io/virtual_jtag_rom_stream.vhd`: thin Altera `sld_virtual_jtag` wrapper
+  around the ROM stream protocol core.
 - `rtl/top/sdram_test_top.vhd`: dedicated physical SDRAM bring-up top with a
   deterministic write/read checker and LED status outputs.
+- `rtl/top/sdram_jtag_loader_top.vhd`: dedicated physical loader top combining
+  Virtual JTAG, `sdram_rom_loader`, and `sdram_controller`.
 
 ## Clock Domains
 
@@ -155,8 +161,8 @@ The next architectural steps are:
 
 1. Program the dedicated SDRAM hardware test top and confirm init/pass/refresh
    behavior on the physical board.
-2. Wrap `sdram_rom_loader` with the physical Virtual JTAG transport so bytes
-   can be streamed from the PC into SDRAM through USB-Blaster.
+2. Add the host-side Tcl/Python script that talks to the Virtual JTAG instance
+   and streams a `.gb` file into SDRAM through USB-Blaster.
 3. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
 4. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete

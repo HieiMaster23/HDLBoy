@@ -380,7 +380,9 @@ The next recommended sequence is:
     external-memory baseline;
 19. preserve the byte-stream SDRAM ROM loader core as the transport-independent
     loading baseline before adding the physical Virtual JTAG wrapper;
-20. import broader timer coverage later if the local Blargg package proves too
+20. preserve the Virtual JTAG SDRAM loader top as the first USB-Blaster ROM
+    loading hardware baseline;
+21. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -451,6 +453,14 @@ accepts a byte stream, packs bytes into little-endian 16-bit SDRAM words, and
 uses the existing `cmd_accept`/`ready` SDRAM command handshake. The next step is
 to connect that stream interface to a small Virtual JTAG wrapper rather than
 mixing JTAG protocol parsing with SDRAM command sequencing.
+
+The first Virtual JTAG wrapper is now present as a dedicated loader top rather
+than part of the Game Boy top. `virtual_jtag_rom_stream_core` owns the JTAG
+data/control/status protocol and the `altera_reserved_tck` to `clk_50mhz`
+crossing; `virtual_jtag_rom_stream` is only the Altera `sld_virtual_jtag`
+binding. This preserves a clean test boundary and keeps the main CPU/PPU visual
+baseline unchanged until a host-side loader script and cartridge mapper are
+ready.
 
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.

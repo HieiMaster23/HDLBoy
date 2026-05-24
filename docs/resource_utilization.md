@@ -2055,3 +2055,58 @@ Next measurement point:
 - synthesize a dedicated Virtual JTAG loader top that instantiates
   `sdram_rom_loader`, `sdram_controller`, the SDRAM pins, and the smallest
   possible JTAG stream wrapper.
+
+## SDRAM Virtual JTAG Loader Top
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `sdram_jtag_loader_top`
+
+Report date: 2026-05-23
+
+This checkpoint adds the first physical ROM-loading top for the USB-Blaster
+path. The top instantiates Altera `sld_virtual_jtag`, a small JTAG protocol/CDC
+core, the transport-independent `sdram_rom_loader`, and the existing
+`sdram_controller`.
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 473 | 6,272 | 8% |
+| Registers | 316 | 6,272 | 5% |
+| Pins | 44 | 92 | 48% |
+| Memory bits | 0 | 276,480 | 0% |
+| M9Ks | 0 | 30 | 0% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 0 | 2 | 0% |
+
+Timing summary:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, `clk_50mhz` | 13.508 ns |
+| Setup, slow 1200 mV 85 C, `altera_reserved_tck` | 45.302 ns |
+| Hold, slow 1200 mV 85 C | 0.453 ns |
+| Minimum pulse width, `clk_50mhz` | 9.735 ns |
+| Minimum pulse width, `altera_reserved_tck` | 49.442 ns |
+
+TimeQuest reports the loader top as fully constrained for setup and hold after
+adding a dedicated SDC for the asynchronous Virtual JTAG and 50 MHz clock
+domains.
+
+Validated behavior:
+
+- `virtual_jtag_rom_stream_core` simulation passes for start, data, status,
+  stream backpressure, overflow detection, and overflow clear;
+- Quartus accepts the `sld_virtual_jtag` wrapper and emits the internal
+  `altera_reserved_tck` clock;
+- `scripts/build_sdram_jtag_loader.tcl` compiles the dedicated loader top and
+  restores the main QSF afterward.
+
+Notes:
+
+- LED0 reports SDRAM init done, LED1 reports loader busy, LED2 reports loader
+  done, and LED3 reports loader/protocol error, all active-low.
+- SDRAM board-level I/O timing still uses temporary false paths for bring-up.
+  It remains unsuitable as final cartridge-bus timing closure.
+- The active `cpu_ppu_background_demo_top` remains at the previous PS/2 joypad
+  resource level until the SDRAM ROM path is integrated into the CPU bus.
