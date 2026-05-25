@@ -2813,3 +2813,105 @@ CPU para executa-la. A proxima etapa natural e criar um top dedicado de
 experimento que combine SDRAM controller, Virtual JTAG loader, `sdram_rom_reader`
 e CPU/bus, com uma chave/estado de selecao entre fase de carga e fase de
 execucao.
+
+## 36. Top load-then-execute com CPU buscando ROM da SDRAM
+
+Nesta etapa fechamos o primeiro top unico que junta as duas metades isoladas da
+fase anterior:
+
+```text
+PC -> Virtual JTAG -> loader -> SDRAM -> reader -> bus -> CPU
+```
+
+Arquivos criados:
+
+- `rtl/top/sdram_cpu_rom_top.vhd`;
+- `constraints/sdram_cpu_rom_timing.sdc`;
+- `scripts/build_sdram_cpu_rom.tcl`.
+
+Arquivo atualizado:
+
+- `quartus/gameboy_core.qsf`, apenas para incluir o novo top na lista de fontes.
+
+Arquitetura adotada:
+
+- o top e dedicado a bring-up, separado do top principal com VGA/PPU;
+- `virtual_jtag_rom_stream` recebe bytes do USB-Blaster;
+- `sdram_rom_loader` empacota bytes em palavras SDRAM de 16 bits;
+- `sdram_controller` inicializa, refresca e atende escrita/leitura;
+- `sdram_rom_reader` converte fetches da CPU em leituras SDRAM;
+- `bus_controller` usa `rom_data` e `rom_ready` vindos do reader;
+- a CPU fica em reset ate:
+  - SDRAM inicializada;
+  - loader finalizado;
+  - sem erro de loader;
+  - sem erro de protocolo JTAG.
+
+Decisao importante de clock:
+
+- neste top inicial, SDRAM controller, loader, reader, CPU e bus rodam no
+  dominio `clk_cpu`;
+- isso evita CDC no caminho de leitura da ROM nesta primeira prova funcional;
+- como o clock e lento, `G_REFRESH_INTERVAL` foi reduzido para 32 ciclos.
+
+LEDs:
+
+- durante carga/erro:
+  - LED0 indica SDRAM inicializada;
+  - LED1 indica loader busy;
+  - LED2 indica loader done;
+  - LED3 indica erro fatal;
+- durante execucao sem erro, a ROM carregada pode escrever em `0xFF80` para
+  dirigir o padrao de LEDs.
+
+Comando de build dedicado:
+
+```text
+quartus_sh -t scripts\build_sdram_cpu_rom.tcl
+```
+
+O script:
+
+- salva o QSF atual;
+- muda temporariamente o top para `sdram_cpu_rom_top`;
+- aplica os pinos SDRAM e o SDC dedicado;
+- roda a compilacao completa;
+- restaura o top principal e o QSF original ao final.
+
+Validacao executada:
+
+- `quartus_sh -t scripts\build_sdram_cpu_rom.tcl` passou com 0 erros;
+- `quartus_sh -t scripts\build.tcl` passou com 0 erros depois disso.
+
+Recursos do top dedicado:
+
+- 3.159 LEs;
+- 774 registradores;
+- 134.144 bits de memoria;
+- 1 PLL;
+- setup slack minimo no clock CPU: 182,038 ns;
+- hold slack minimo no clock CPU: 0,452 ns.
+
+Recursos do top principal apos restauracao:
+
+- 3.887 LEs;
+- 994 registradores;
+- 180.224 bits de memoria;
+- 1 PLL.
+
+Limites atuais:
+
+- ainda nao e o top jogavel completo;
+- nao ha PPU/VGA neste experimento;
+- nao ha MBC;
+- o alvo inicial deve ser uma ROM pequena/no-MBC ou uma ROM propria de teste
+  que escreva em `0xFF80` para confirmar que a CPU realmente executou codigo
+  vindo da SDRAM.
+
+Proxima etapa recomendada:
+
+1. gerar ou selecionar uma ROM minima de teste;
+2. programar `sdram_cpu_rom_top` na placa;
+3. carregar a ROM via `scripts/load_rom_virtual_jtag.tcl`;
+4. confirmar nos LEDs a transicao de load para execucao;
+5. so depois disso integrar a mesma ideia ao top com PPU/VGA.

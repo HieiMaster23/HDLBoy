@@ -386,7 +386,10 @@ The next recommended sequence is:
     PC-to-SDRAM transfer path before wiring SDRAM reads into the CPU bus;
 22. preserve the SDRAM ROM reader and bus `rom_ready` contract as the first
     read-side cartridge baseline for 32 KiB no-MBC ROMs;
-23. import broader timer coverage later if the local Blargg package proves too
+23. preserve the dedicated SDRAM CPU ROM execution top as the first
+    load-then-execute baseline before merging SDRAM cartridge fetches into the
+    visual CPU/PPU top;
+24. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -478,6 +481,14 @@ The first read-side ROM slice is `sdram_rom_reader`. It maps CPU byte addresses
 and exposes a `rom_ready` wait-state signal to the existing bus. Existing
 embedded-ROM tops keep `rom_ready = '1'`, so their behavior and fitted resource
 use remain unchanged while the SDRAM cartridge path is prepared in isolation.
+
+The first combined SDRAM execution slice is now `sdram_cpu_rom_top`. It keeps
+the loader, SDRAM controller, ROM reader, CPU, and bus in one slow CPU-domain
+bring-up top, holds the CPU in reset until a Virtual JTAG load completes, and
+then lets ROM fetches come from SDRAM through the existing `rom_ready`
+contract. This is intentionally separate from the VGA/PPU top so the project
+can prove PC-to-SDRAM-to-CPU execution before spending resources on the final
+playable integration top.
 
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.

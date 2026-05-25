@@ -69,6 +69,7 @@ set_global_assignment -name VHDL_FILE ../rtl/top/ppu_background_demo_top.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/cpu_ppu_background_demo_top.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/sdram_test_top.vhd
 set_global_assignment -name VHDL_FILE ../rtl/top/sdram_jtag_loader_top.vhd
+set_global_assignment -name VHDL_FILE ../rtl/top/sdram_cpu_rom_top.vhd
 
 # -----------------------------------------------------------------------------
 # Constraint Files

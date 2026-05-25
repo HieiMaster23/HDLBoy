@@ -62,6 +62,9 @@ initial shared M6 timer block:
   deterministic write/read checker and LED status outputs.
 - `rtl/top/sdram_jtag_loader_top.vhd`: dedicated physical loader top combining
   Virtual JTAG, `sdram_rom_loader`, and `sdram_controller`.
+- `rtl/top/sdram_cpu_rom_top.vhd`: dedicated load-then-execute top that loads
+  ROM bytes into SDRAM through Virtual JTAG, then releases the CPU to fetch
+  cartridge ROM bytes through `sdram_rom_reader`.
 
 ## Clock Domains
 
@@ -170,8 +173,8 @@ The next architectural steps are:
 2. Program `sdram_jtag_loader_top`, then run
    `quartus_stp -t scripts/load_rom_virtual_jtag.tcl <rom.gb>` to validate the
    USB-Blaster-to-SDRAM loading path on hardware.
-3. Create a dedicated CPU plus SDRAM ROM-only top that arbitrates between the
-   Virtual JTAG loader phase and CPU fetches from `sdram_rom_reader`.
+3. Program `sdram_cpu_rom_top`, load a minimal no-MBC test ROM, and confirm
+   that the CPU executes code fetched from SDRAM.
 4. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
 5. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete

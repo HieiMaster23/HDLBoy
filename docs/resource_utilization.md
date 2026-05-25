@@ -2176,3 +2176,66 @@ Validated behavior:
 - the reader stalls until SDRAM is ready and until read data is valid;
 - `bus_controller` stalls CPU ROM reads while `rom_ready = '0'`;
 - existing embedded-ROM tops still pass with `rom_ready = '1'`.
+
+## SDRAM CPU ROM Execution Top
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `sdram_cpu_rom_top`
+
+Report date: 2026-05-25
+
+This checkpoint adds a dedicated load-then-execute top for the SDRAM cartridge
+path. It combines the Virtual JTAG byte stream, `sdram_rom_loader`,
+`sdram_controller`, `sdram_rom_reader`, CPU, and `bus_controller` in one
+bring-up design. The loader owns SDRAM until the host script asserts finish and
+the loader reports done. Then the CPU is released from reset and ROM fetches are
+served from SDRAM through the `rom_ready` wait-state contract.
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 3,159 | 6,272 | 50% |
+| Registers | 774 | 6,272 | 12% |
+| Pins | 48 | 92 | 52% |
+| Memory bits | 134,144 | 276,480 | 49% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary for the dedicated top:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 182.038 ns |
+| Hold, slow 1200 mV 85 C, PLL CPU clock | 0.452 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+| Minimum pulse width, `altera_reserved_tck` | 49.468 ns |
+
+TimeQuest reports the dedicated top as fully constrained for setup and hold.
+The dedicated timing file still uses temporary false paths for board-level SDRAM
+I/O timing and Virtual JTAG bring-up boundaries.
+
+Resource impact on current fitted Game Boy visual top:
+
+- unchanged: the active `cpu_ppu_background_demo_top` remains at 3,887 logic
+  elements, 994 registers, 180,224 memory bits, and 1 PLL;
+- `scripts/build_sdram_cpu_rom.tcl` temporarily switches the top-level entity
+  and applies SDRAM pins plus `constraints/sdram_cpu_rom_timing.sdc`, then
+  restores the main QSF after compilation.
+
+Validation:
+
+- `quartus_sh -t scripts\build_sdram_cpu_rom.tcl` passed with 0 errors;
+- `quartus_sh -t scripts\build.tcl` passed with 0 errors after the dedicated
+  build, confirming that the main top and QSF were restored.
+
+Notes:
+
+- This is still a CPU/SDRAM experiment, not the final playable top. It does not
+  instantiate the PPU/VGA path.
+- The SDRAM controller is clocked from the CPU-domain PLL output in this top to
+  avoid adding a read-path CDC during the first execution bring-up.
+- `G_REFRESH_INTERVAL` is reduced to 32 CPU cycles so refresh remains safely
+  frequent at the slow SDRAM bring-up clock.
+- During load, LEDs report SDRAM init, loader busy, loader done, and fatal
+  error status. During execution, a loaded test ROM can write `0xFF80` to drive
+  the LEDs through the existing debug register.
