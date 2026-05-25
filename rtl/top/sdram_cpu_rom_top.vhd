@@ -58,9 +58,13 @@ architecture rtl of sdram_cpu_rom_top is
     signal loader_busy          : std_logic;
     signal loader_done          : std_logic;
     signal loader_error         : std_logic;
+    signal cpu_run_reg          : std_logic;
     signal execute_enabled      : std_logic;
     signal fatal_error          : std_logic;
     signal status_led           : std_logic_vector(3 downto 0);
+    signal led_write_count      : unsigned(3 downto 0);
+    signal fetch_checkpoint     : std_logic_vector(3 downto 0);
+    signal execution_summary    : std_logic_vector(3 downto 0);
 
     signal loader_cmd_valid     : std_logic;
     signal loader_cmd_write     : std_logic;
@@ -98,16 +102,61 @@ architecture rtl of sdram_cpu_rom_top is
     signal interrupt_vector     : std_logic_vector(2 downto 0);
     signal interrupt_enable     : std_logic_vector(4 downto 0);
     signal interrupt_flags      : std_logic_vector(4 downto 0);
-    signal led_pattern          : std_logic_vector(3 downto 0);
+    signal debug_a              : std_logic_vector(7 downto 0);
 
 begin
 
     pll_areset <= not reset_n;
     reset_system <= reset_sync;
-    reset_cpu <= reset_system or (not execute_enabled);
-    execute_enabled <= loader_done and (not loader_error) and
-                       (not protocol_error) and sdram_init_done;
+    reset_cpu <= reset_system or (not cpu_run_reg);
+    execute_enabled <= cpu_run_reg;
     fatal_error <= loader_error or protocol_error or unsupported_opcode;
+
+    p_cpu_run_control: process(clk_cpu)
+    begin
+        if rising_edge(clk_cpu) then
+            if reset_system = '1' then
+                cpu_run_reg <= '0';
+            else
+                if start_pulse = '1' or loader_error = '1' or protocol_error = '1' then
+                    cpu_run_reg <= '0';
+                elsif loader_done = '1' and sdram_init_done = '1' then
+                    cpu_run_reg <= '1';
+                end if;
+            end if;
+        end if;
+    end process p_cpu_run_control;
+
+    p_execution_debug: process(clk_cpu)
+    begin
+        if rising_edge(clk_cpu) then
+            if reset_system = '1' or start_pulse = '1' then
+                led_write_count <= (others => '0');
+                fetch_checkpoint <= (others => '0');
+            else
+                if execute_enabled = '1' and mem_read = '1' and mem_ready = '1' then
+                    if mem_addr = x"0000" and mem_data_in = x"C3" then
+                        fetch_checkpoint(0) <= '1';
+                    end if;
+                    if mem_addr = x"0150" and mem_data_in = x"F3" then
+                        fetch_checkpoint(1) <= '1';
+                    end if;
+                    if mem_addr = x"0154" and mem_data_in = x"3C" then
+                        fetch_checkpoint(2) <= '1';
+                    end if;
+                    if mem_addr = x"0169" and mem_data_in = x"E0" then
+                        fetch_checkpoint(3) <= '1';
+                    end if;
+                end if;
+
+                if execute_enabled = '1' and mem_write = '1' and mem_addr = x"FF80" then
+                    if led_write_count /= x"F" then
+                        led_write_count <= led_write_count + 1;
+                    end if;
+                end if;
+            end if;
+        end if;
+    end process p_execution_debug;
 
     u_pll: entity work.pll_core
         port map (
@@ -250,7 +299,7 @@ begin
             ime_out            => open,
             interrupt_pending  => open,
             unsupported_opcode => unsupported_opcode,
-            debug_a            => open,
+            debug_a            => debug_a,
             debug_f            => open,
             debug_b            => open,
             debug_c            => open,
@@ -310,7 +359,7 @@ begin
             ppu_oam_data         => open,
             ppu_current_line     => (others => '0'),
             ppu_mode             => "00",
-            led_pattern          => led_pattern,
+            led_pattern          => open,
             display_digits       => open,
             checker_failed       => open,
             final_passed         => open,
@@ -323,13 +372,20 @@ begin
             debug_fb_write_count => open
         );
 
-    -- During load, LEDs show loader status. During execution, the loaded ROM can
-    -- drive the LEDs by writing to the existing debug register at 0xFF80.
+    -- During load, LEDs show loader status. During execution, expose a compact
+    -- pass/fail summary so board bring-up does not depend on button ordering.
     status_led(0) <= not sdram_init_done;
     status_led(1) <= not loader_busy;
     status_led(2) <= not loader_done;
     status_led(3) <= not fatal_error;
-    led <= not led_pattern when execute_enabled = '1' and fatal_error = '0' else
+
+    execution_summary(0) <= fetch_checkpoint(3);
+    execution_summary(1) <= '1' when led_write_count >= x"4" else '0';
+    execution_summary(2) <= '1' when debug_a(3 downto 0) = x"F" else '0';
+    execution_summary(3) <= not fatal_error;
+
+    led <= not execution_summary when execute_enabled = '1' else
+           "1010" when execute_enabled = '1' and fatal_error = '0' else
            status_led;
 
 end architecture rtl;

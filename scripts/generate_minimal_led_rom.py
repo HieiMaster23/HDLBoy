@@ -69,27 +69,27 @@ def build_rom() -> bytearray:
     rom[0x014B] = 0x00
     rom[0x014C] = 0x00
 
+    # Keep this bring-up program intentionally tiny and deterministic. Build the
+    # LED value through register-only increments and write checkpoints 1, 3, 7,
+    # and F. This isolates sequential ROM execution without depending on an
+    # immediate data byte for the A register.
     program = bytes(
         [
             0xF3,              # DI
             0x31, 0xFE, 0xDF,  # LD SP,$DFFE
-            0x3E, 0x05,        # loop: LD A,$05
-            0xE0, 0x80,        # LDH ($80),A  ; write 0xFF80 LED register
-            0x06, 0x00,        # LD B,$00
-            0x0E, 0x00,        # delay1_outer: LD C,$00
-            0x0D,              # delay1_inner: DEC C
-            0x20, 0xFD,        # JR NZ,delay1_inner
-            0x05,              # DEC B
-            0x20, 0xF8,        # JR NZ,delay1_outer
-            0x3E, 0x0A,        # LD A,$0A
+            0x3C,              # INC A -> $01
             0xE0, 0x80,        # LDH ($80),A
-            0x06, 0x00,        # LD B,$00
-            0x0E, 0x00,        # delay2_outer: LD C,$00
-            0x0D,              # delay2_inner: DEC C
-            0x20, 0xFD,        # JR NZ,delay2_inner
-            0x05,              # DEC B
-            0x20, 0xF8,        # JR NZ,delay2_outer
-            0x18, 0xE2,        # JR loop
+            0x3C, 0x3C,        # INC A x2 -> $03
+            0xE0, 0x80,        # LDH ($80),A
+            0x3C, 0x3C,        # INC A x4 -> $07
+            0x3C, 0x3C,
+            0xE0, 0x80,        # LDH ($80),A
+            0x3C, 0x3C,        # INC A x8 -> $0F
+            0x3C, 0x3C,
+            0x3C, 0x3C,
+            0x3C, 0x3C,
+            0xE0, 0x80,        # LDH ($80),A
+            0x18, 0xFE,        # JR $ ; hold final checkpoint
         ]
     )
     rom[ENTRY_ADDR:ENTRY_ADDR + len(program)] = program

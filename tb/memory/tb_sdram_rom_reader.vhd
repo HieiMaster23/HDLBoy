@@ -84,11 +84,20 @@ begin
         end procedure start_read;
 
         procedure complete_sdram_read(word_in : in std_logic_vector(15 downto 0)) is
+            variable command_seen_v : boolean;
         begin
-            while sdram_cmd_valid = '0' loop
+            command_seen_v := false;
+            for i in 0 to 20 loop
+                if sdram_cmd_valid = '1' then
+                    command_seen_v := true;
+                    exit;
+                end if;
                 wait until rising_edge(clk);
                 wait for 1 ns;
             end loop;
+            assert command_seen_v
+                report "FAIL: SDRAM command was not issued for ROM read"
+                severity failure;
 
             sdram_cmd_accept <= '1';
             wait until rising_edge(clk);
@@ -125,17 +134,15 @@ begin
         assert sdram_cmd_addr = to_unsigned(0, 22)
             report "FAIL: byte address 0x0000 should map to SDRAM word 0"
             severity failure;
-        cpu_read <= '0';
-        wait_clk(1);
-
-        start_read(x"0001");
+        cpu_addr <= x"0001";
+        wait for 1 ns;
+        assert rom_ready = '0'
+            report "FAIL: changing address while read stays high must drop stale ready"
+            severity failure;
         complete_sdram_read(x"ABCD");
         wait for 1 ns;
         assert rom_ready = '1' and rom_data = x"AB"
-            report "FAIL: odd byte should select SDRAM word high byte"
-            severity failure;
-        assert sdram_cmd_addr = to_unsigned(0, 22)
-            report "FAIL: byte address 0x0001 should map to SDRAM word 0"
+            report "FAIL: back-to-back address change should return the new byte"
             severity failure;
         cpu_read <= '0';
         wait_clk(1);

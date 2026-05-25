@@ -85,7 +85,7 @@ architecture rtl of sdram_rom_reader is
 begin
 
     rom_data <= data_reg;
-    rom_ready <= ready_reg;
+    rom_ready <= ready_reg when cpu_read = '1' and cpu_addr = addr_reg else '0';
     sdram_cmd_valid <= '1' when state_reg = S_CMD else '0';
     sdram_cmd_write <= '0';
     sdram_cmd_addr <= word_addr_reg;
