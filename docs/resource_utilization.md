@@ -2135,3 +2135,44 @@ Validation:
 The script intentionally polls STATUS before each DATA byte. This keeps the
 first hardware bring-up robust and debuggable before any later throughput
 optimization.
+
+## SDRAM ROM Reader Contract
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `cpu_ppu_background_demo_top`
+
+Report date: 2026-05-25
+
+This checkpoint adds `rtl/memory/sdram_rom_reader.vhd` and extends
+`bus_controller` with a `rom_ready` wait-state input. The active top still uses
+the embedded ROM path with `rom_ready = '1'`, so the new SDRAM reader is compiled
+but not yet instantiated in the fitted Game Boy demo top.
+
+Resource impact on current fitted top:
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 3,887 | 6,272 | 62% |
+| Registers | 994 | 6,272 | 16% |
+| Pins | 17 | 92 | 18% |
+| Memory bits | 180,224 | 276,480 | 65% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary for the active top remains unchanged:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, `clk_cpu` | 29.313 ns |
+| Setup, slow 1200 mV 85 C, `clk_vga` | 173.511 ns |
+| Hold, slow 1200 mV 85 C | 0.432 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+
+Validated behavior:
+
+- `sdram_rom_reader` converts byte addresses to 16-bit SDRAM word reads;
+- even addresses select the low byte and odd addresses select the high byte;
+- the reader stalls until SDRAM is ready and until read data is valid;
+- `bus_controller` stalls CPU ROM reads while `rom_ready = '0'`;
+- existing embedded-ROM tops still pass with `rom_ready = '1'`.

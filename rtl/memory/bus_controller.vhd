@@ -31,6 +31,7 @@
 -- 2026-05-22 - Added first WRAM/Echo-backed OAM DMA transfer path
 -- 2026-05-22 - Added real JOYP register input decode and interrupt request
 -- 2026-05-22 - Exposed WY/WX registers to the PPU renderer path
+-- 2026-05-25 - Added ROM-ready wait-state input for SDRAM-backed cartridge ROM
 -- =============================================================================
 
 library ieee;
@@ -55,6 +56,7 @@ entity bus_controller is
         cpu_ready           : out std_logic;
         unsupported_opcode  : in  std_logic;
         rom_data            : in  std_logic_vector(7 downto 0);
+        rom_ready           : in  std_logic;
         btn_right           : in  std_logic;
         btn_left            : in  std_logic;
         btn_up              : in  std_logic;
@@ -199,6 +201,7 @@ architecture rtl of bus_controller is
     signal vram_cpu_we       : std_logic;
     signal vram_cpu_blocked  : std_logic;
     signal fb_selected       : std_logic;
+    signal rom_selected      : std_logic;
     signal wram_selected     : std_logic;
     signal wram_read_addr    : unsigned(12 downto 0);
     signal oam_selected      : std_logic;
@@ -254,6 +257,7 @@ begin
     fb_selected <= '1' when G_ENABLE_FB_WINDOW and
                             unsigned(cpu_addr) >= unsigned(FB_BASE_ADDR) and
                             unsigned(cpu_addr) <= unsigned(FB_LAST_ADDR) else '0';
+    rom_selected <= '1' when unsigned(cpu_addr) <= x"7FFF" else '0';
     wram_selected <= '1' when (unsigned(cpu_addr) >= unsigned(WRAM_BASE_ADDR) and
                                unsigned(cpu_addr) <= unsigned(WRAM_LAST_ADDR)) or
                               (unsigned(cpu_addr) >= unsigned(ECHO_BASE_ADDR) and
@@ -271,6 +275,8 @@ begin
                                     cpu_addr /= IO_LED_ADDR and
                                     cpu_addr /= IO_STATUS_ADDR) else '0';
     cpu_ready <= '0' when dma_active = '1' else
+                 '0' when cpu_read = '1' and rom_selected = '1' and
+                          rom_ready = '0' else
                  '0' when cpu_read = '1' and sync_read_selected = '1' and
                           (sync_read_valid = '0' or sync_read_addr /= cpu_addr) else '1';
 

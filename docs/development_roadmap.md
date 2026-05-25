@@ -384,7 +384,9 @@ The next recommended sequence is:
     loading hardware baseline;
 21. preserve the host-side Quartus STP ROM loader script as the first practical
     PC-to-SDRAM transfer path before wiring SDRAM reads into the CPU bus;
-22. import broader timer coverage later if the local Blargg package proves too
+22. preserve the SDRAM ROM reader and bus `rom_ready` contract as the first
+    read-side cartridge baseline for 32 KiB no-MBC ROMs;
+23. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -470,6 +472,12 @@ new DATA byte when the hardware reports `stream_ready = 1`, no pending byte, no
 loader error, and no protocol overflow. That keeps the first board test easy to
 debug. Throughput can be improved later by batching scans only after the basic
 USB-Blaster-to-SDRAM transfer is proven on hardware.
+
+The first read-side ROM slice is `sdram_rom_reader`. It maps CPU byte addresses
+`0x0000..0x7FFF` to 16-bit SDRAM word addresses, selects the low or high byte,
+and exposes a `rom_ready` wait-state signal to the existing bus. Existing
+embedded-ROM tops keep `rom_ready = '1'`, so their behavior and fitted resource
+use remain unchanged while the SDRAM cartridge path is prepared in isolation.
 
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.

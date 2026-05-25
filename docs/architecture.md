@@ -21,6 +21,8 @@ initial shared M6 timer block:
   future ROM loading and cartridge-backed reads.
 - `rtl/memory/sdram_rom_loader.vhd`: byte-stream ROM loader core that packs
   incoming bytes into little-endian 16-bit SDRAM write commands.
+- `rtl/memory/sdram_rom_reader.vhd`: ROM-only byte reader that translates CPU
+  cartridge addresses into SDRAM word reads with wait-state support.
 - `rtl/memory/cpu_video_smoke_rom.vhd`: standalone ROM image for the legacy
   CPU-to-framebuffer smoke program.
 - `rtl/memory/cpu_ppu_background_demo_rom.vhd`: standalone ROM image for the
@@ -101,9 +103,10 @@ arrays onto the EP4CE6 fabric.
 
 The test-program boundary is now also explicit. `bus_controller` maps the ROM
 address range but no longer owns the embedded program contents. Small bring-up
-tops instantiate their own ROM module and feed the resulting byte into the bus.
-That keeps the bus contract closer to the future cartridge/ROM-loader path and
-lets future visual programs change without editing the memory-map block itself.
+tops instantiate their own ROM module and feed the resulting byte plus
+`rom_ready = '1'` into the bus. The same bus contract now also supports a
+wait-stated ROM source, which is the boundary needed for the SDRAM-backed
+cartridge path.
 
 WRAM, VRAM, and HRAM are inferred by Quartus as M9K-backed `altsyncram` blocks.
 HRAM was originally kept as local bus-controller logic, but that structure
@@ -167,8 +170,8 @@ The next architectural steps are:
 2. Program `sdram_jtag_loader_top`, then run
    `quartus_stp -t scripts/load_rom_virtual_jtag.tcl <rom.gb>` to validate the
    USB-Blaster-to-SDRAM loading path on hardware.
-3. Connect the SDRAM-backed ROM path to the CPU bus as a read-only cartridge
-   source for the first no-MBC 32 KiB ROM tests.
+3. Create a dedicated CPU plus SDRAM ROM-only top that arbitrates between the
+   Virtual JTAG loader phase and CPU fetches from `sdram_rom_reader`.
 4. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
 5. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete

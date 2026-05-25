@@ -194,6 +194,7 @@ begin
             cpu_ready            => unused_cpu_ready,
             unsupported_opcode   => '0',
             rom_data             => x"00",
+            rom_ready            => '1',
             btn_right            => '0',
             btn_left             => '0',
             btn_up               => '0',

@@ -28,6 +28,7 @@ architecture sim of tb_bus_controller is
     signal cpu_ready            : std_logic;
     signal unsupported_opcode   : std_logic := '0';
     signal rom_data             : std_logic_vector(7 downto 0);
+    signal rom_ready            : std_logic := '1';
     signal btn_right            : std_logic := '0';
     signal btn_left             : std_logic := '0';
     signal btn_up               : std_logic := '0';
@@ -101,6 +102,7 @@ begin
             cpu_ready            => cpu_ready,
             unsupported_opcode   => unsupported_opcode,
             rom_data             => rom_data,
+            rom_ready            => rom_ready,
             btn_right            => btn_right,
             btn_left             => btn_left,
             btn_up               => btn_up,
@@ -183,6 +185,21 @@ begin
         wait until rising_edge(clk);
         reset <= '0';
         wait for 1 ns;
+
+        rom_ready <= '0';
+        cpu_addr <= x"0000";
+        cpu_read <= '1';
+        cpu_write <= '0';
+        wait for 1 ns;
+        assert cpu_ready = '0'
+            report "FAIL: ROM reads should stall while rom_ready is low"
+            severity failure;
+        rom_ready <= '1';
+        wait for 1 ns;
+        assert cpu_ready = '1' and cpu_data_in = x"31"
+            report "FAIL: ROM read should resume when rom_ready returns high"
+            severity failure;
+        cpu_read <= '0';
 
         bus_read_check(x"0000", x"31", "FAIL: ROM byte at 0x0000 should be LD SP opcode");
         bus_read_check(x"0119", x"00", "FAIL: unmapped ROM byte should read 0x00");

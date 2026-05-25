@@ -2743,3 +2743,73 @@ Limite importante:
 Este script carrega bytes na SDRAM, mas ainda nao faz a CPU buscar instrucoes a
 partir da SDRAM. A proxima fatia funcional e criar um caminho de leitura
 ROM-only no barramento da CPU, inicialmente sem MBC, para ROMs de ate 32 KiB.
+
+## 35. Leitor ROM-only da SDRAM para CPU
+
+Nesta etapa criamos o primeiro caminho de leitura para a futura ROM de cartucho
+armazenada na SDRAM. O objetivo nao foi ainda criar o top jogavel completo; foi
+fechar o contrato minimo entre CPU/barramento e uma fonte ROM com latencia.
+
+Arquivos criados:
+
+- `rtl/memory/sdram_rom_reader.vhd`;
+- `tb/memory/tb_sdram_rom_reader.vhd`;
+- `sim/modelsim/run_sdram_rom_reader.do`.
+
+Arquivos atualizados:
+
+- `rtl/memory/bus_controller.vhd`;
+- tops e testbenches que instanciam `bus_controller`;
+- `quartus/gameboy_core.qsf`.
+
+Contrato novo no `bus_controller`:
+
+- `rom_data` continua fornecendo o byte da area `0x0000..0x7FFF`;
+- `rom_ready` agora indica se esse byte esta valido;
+- ROMs internas existentes usam `rom_ready = '1'`;
+- uma ROM vinda de SDRAM pode segurar `rom_ready = '0'` e estender o ciclo da
+  CPU ate a leitura completar.
+
+Comportamento do `sdram_rom_reader`:
+
+- aceita `cpu_addr` e `cpu_read`;
+- atende apenas enderecos `0x0000..0x7FFF`;
+- converte endereco de byte em endereco de palavra SDRAM:
+  - `0x0000` e `0x0001` -> palavra SDRAM `0x0000`;
+  - `0x7FFE` e `0x7FFF` -> palavra SDRAM `0x3FFF`;
+- seleciona byte baixo para endereco par;
+- seleciona byte alto para endereco impar;
+- emite comando de leitura para o `sdram_controller`;
+- espera `sdram_read_valid`;
+- entrega o byte com `rom_ready = '1'`;
+- mantem um cache simples de um byte para repetir uma leitura identica sem nova
+  transacao SDRAM.
+
+Validacao executada:
+
+- `run_sdram_rom_reader.do` passou;
+- `run_bus_controller.do` passou;
+- `run_cpu_video_smoke_top.do` passou;
+- `run_cpu_ppu_background_demo_top.do` passou;
+- `build.tcl` do top principal passou com 0 erros.
+
+Impacto de recursos no top principal:
+
+- sem impacto medido no `cpu_ppu_background_demo_top`, porque o leitor SDRAM
+  ainda nao esta instanciado no top principal;
+- recursos continuam em 3.887 LEs, 994 registradores e 180.224 bits de memoria.
+
+Limite atual:
+
+Agora temos as duas metades isoladas:
+
+```text
+PC -> Virtual JTAG -> loader -> SDRAM
+CPU -> bus -> sdram_rom_reader -> SDRAM
+```
+
+Mas ainda nao temos um top unico que permita carregar a ROM e depois liberar a
+CPU para executa-la. A proxima etapa natural e criar um top dedicado de
+experimento que combine SDRAM controller, Virtual JTAG loader, `sdram_rom_reader`
+e CPU/bus, com uma chave/estado de selecao entre fase de carga e fase de
+execucao.

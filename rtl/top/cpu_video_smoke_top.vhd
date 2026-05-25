@@ -208,6 +208,7 @@ begin
             cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
             rom_data             => rom_data,
+            rom_ready            => '1',
             btn_right            => '0',
             btn_left             => '0',
             btn_up               => '0',

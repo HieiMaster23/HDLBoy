@@ -273,6 +273,7 @@ begin
             cpu_ready            => mem_ready,
             unsupported_opcode   => unsupported_opcode,
             rom_data             => rom_data,
+            rom_ready            => '1',
             btn_right            => ps2_btn_right,
             btn_left             => ps2_btn_left,
             btn_up               => ps2_btn_up,
