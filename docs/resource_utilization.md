@@ -2110,3 +2110,28 @@ Notes:
   It remains unsuitable as final cartridge-bus timing closure.
 - The active `cpu_ppu_background_demo_top` remains at the previous PS/2 joypad
   resource level until the SDRAM ROM path is integrated into the CPU bus.
+
+## SDRAM Virtual JTAG Host Loader Script
+
+Canonical project: `gameboy_core`
+
+Report date: 2026-05-25
+
+This checkpoint adds `scripts/load_rom_virtual_jtag.tcl`, the host-side Quartus
+STP script that streams a `.gb` file to the dedicated Virtual JTAG SDRAM loader
+top.
+
+Resource impact:
+
+- no FPGA resource change;
+- no QSF source-list change;
+- no timing change.
+
+Validation:
+
+- `quartus_stp -t scripts/load_rom_virtual_jtag.tcl --dry-run --max-bytes 16
+  gb-test-roms-master\cpu_instrs\individual\01-special.gb` passed.
+
+The script intentionally polls STATUS before each DATA byte. This keeps the
+first hardware bring-up robust and debuggable before any later throughput
+optimization.

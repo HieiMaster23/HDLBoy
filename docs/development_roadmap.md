@@ -382,7 +382,9 @@ The next recommended sequence is:
     loading baseline before adding the physical Virtual JTAG wrapper;
 20. preserve the Virtual JTAG SDRAM loader top as the first USB-Blaster ROM
     loading hardware baseline;
-21. import broader timer coverage later if the local Blargg package proves too
+21. preserve the host-side Quartus STP ROM loader script as the first practical
+    PC-to-SDRAM transfer path before wiring SDRAM reads into the CPU bus;
+22. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -461,6 +463,13 @@ crossing; `virtual_jtag_rom_stream` is only the Altera `sld_virtual_jtag`
 binding. This preserves a clean test boundary and keeps the main CPU/PPU visual
 baseline unchanged until a host-side loader script and cartridge mapper are
 ready.
+
+The matching host-side script is now `scripts/load_rom_virtual_jtag.tcl`. It is
+intentionally conservative: it polls STATUS before each byte and only shifts a
+new DATA byte when the hardware reports `stream_ready = 1`, no pending byte, no
+loader error, and no protocol overflow. That keeps the first board test easy to
+debug. Throughput can be improved later by batching scans only after the basic
+USB-Blaster-to-SDRAM transfer is proven on hardware.
 
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.

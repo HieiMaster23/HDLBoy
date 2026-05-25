@@ -2670,3 +2670,76 @@ Observacoes tecnicas:
   assincronos e mantem false paths temporarios para I/O SDRAM;
 - a proxima etapa e criar o script host para enviar uma ROM via Virtual JTAG e
   observar `done/error` nos LEDs.
+
+## 34. Script Host de Carga ROM via Virtual JTAG
+
+Nesta etapa criamos o primeiro utilitario pratico do lado do PC para enviar uma
+ROM `.gb` ao top fisico `sdram_jtag_loader_top` usando apenas o USB-Blaster.
+Isto fecha o caminho operacional basico:
+
+1. Quartus programa o bitstream do loader dedicado;
+2. `quartus_stp` acessa a instancia `sld_virtual_jtag`;
+3. o script le o arquivo `.gb`;
+4. cada byte e enviado pelo IR DATA;
+5. o hardware escreve os bytes empacotados na SDRAM.
+
+Arquivo criado:
+
+- `scripts/load_rom_virtual_jtag.tcl`.
+
+Comando principal:
+
+```text
+quartus_stp -t scripts/load_rom_virtual_jtag.tcl caminho/rom.gb
+```
+
+Comando de validacao sem placa:
+
+```text
+quartus_stp -t scripts/load_rom_virtual_jtag.tcl --dry-run --max-bytes 16 caminho/rom.gb
+```
+
+Opcoes uteis:
+
+- `--hardware-name <name>` seleciona manualmente o USB-Blaster;
+- `--device-name <name>` seleciona manualmente o FPGA na cadeia JTAG;
+- `--instance-index <n>` seleciona a instancia Virtual JTAG, padrao 0;
+- `--max-bytes <n>` limita a carga para bring-up incremental;
+- `--progress-step <n>` ajusta a frequencia dos logs de progresso;
+- `--quiet` reduz saida textual.
+
+Estrategia de transferencia:
+
+- primeiro espera `STATUS bit 4 = 1`, indicando SDRAM inicializada;
+- envia CONTROL bit 2 para limpar eventual overflow anterior;
+- envia CONTROL bit 0 para iniciar uma nova carga;
+- antes de cada byte, espera:
+  - `stream_ready = 1`;
+  - `pending = 0`;
+  - `loader_error = 0`;
+  - `overflow = 0`;
+- envia o byte pelo IR DATA;
+- ao final, espera o ultimo byte ser aceito e envia CONTROL bit 1 para
+  finalizar;
+- espera `done = 1`.
+
+Esta estrategia e propositalmente conservadora. O objetivo desta fatia nao e
+maximizar throughput JTAG; e reduzir ambiguidade no primeiro teste de placa. Se
+algo falhar, o erro tende a ficar localizado em uma destas regioes:
+
+- SDRAM nao inicializou;
+- instancia Virtual JTAG nao foi encontrada;
+- byte pendente nao foi consumido;
+- overflow de protocolo;
+- erro interno do loader.
+
+Validacao executada:
+
+- `quartus_stp -t scripts/load_rom_virtual_jtag.tcl --dry-run --max-bytes 16
+  gb-test-roms-master\cpu_instrs\individual\01-special.gb` passou.
+
+Limite importante:
+
+Este script carrega bytes na SDRAM, mas ainda nao faz a CPU buscar instrucoes a
+partir da SDRAM. A proxima fatia funcional e criar um caminho de leitura
+ROM-only no barramento da CPU, inicialmente sem MBC, para ROMs de ate 32 KiB.

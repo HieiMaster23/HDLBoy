@@ -53,6 +53,9 @@ initial shared M6 timer block:
   and CDC core for streaming ROM bytes into the SDRAM loader.
 - `rtl/io/virtual_jtag_rom_stream.vhd`: thin Altera `sld_virtual_jtag` wrapper
   around the ROM stream protocol core.
+- `scripts/load_rom_virtual_jtag.tcl`: host-side Quartus STP script that reads
+  a `.gb` file and streams it through the Virtual JTAG DATA/CONTROL/STATUS
+  protocol.
 - `rtl/top/sdram_test_top.vhd`: dedicated physical SDRAM bring-up top with a
   deterministic write/read checker and LED status outputs.
 - `rtl/top/sdram_jtag_loader_top.vhd`: dedicated physical loader top combining
@@ -161,13 +164,16 @@ The next architectural steps are:
 
 1. Program the dedicated SDRAM hardware test top and confirm init/pass/refresh
    behavior on the physical board.
-2. Add the host-side Tcl/Python script that talks to the Virtual JTAG instance
-   and streams a `.gb` file into SDRAM through USB-Blaster.
-3. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
+2. Program `sdram_jtag_loader_top`, then run
+   `quartus_stp -t scripts/load_rom_virtual_jtag.tcl <rom.gb>` to validate the
+   USB-Blaster-to-SDRAM loading path on hardware.
+3. Connect the SDRAM-backed ROM path to the CPU bus as a read-only cartridge
+   source for the first no-MBC 32 KiB ROM tests.
+4. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
-4. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
+5. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
    compatibility issue.
-5. Grow the SDRAM path from the hardware test top into a ROM-only cartridge
+6. Grow the SDRAM path from the hardware test top into a ROM-only cartridge
    mapper.
 
 The design should continue to keep module-level testbenches close to each RTL
