@@ -58,6 +58,10 @@ initial shared M6 timer block:
 - `scripts/load_rom_virtual_jtag.tcl`: host-side Quartus STP script that reads
   a `.gb` file and streams it through the Virtual JTAG DATA/CONTROL/STATUS
   protocol.
+- `scripts/generate_minimal_led_rom.py`: generator for the project-owned
+  `roms/minimal_led_blink.gb` no-MBC LED smoke ROM.
+- `roms/minimal_led_blink.gb`: 32 KiB `ROM ONLY` cartridge image that writes
+  alternating LED patterns to `0xFF80` for SDRAM CPU execution bring-up.
 - `rtl/top/sdram_test_top.vhd`: dedicated physical SDRAM bring-up top with a
   deterministic write/read checker and LED status outputs.
 - `rtl/top/sdram_jtag_loader_top.vhd`: dedicated physical loader top combining
@@ -173,7 +177,7 @@ The next architectural steps are:
 2. Program `sdram_jtag_loader_top`, then run
    `quartus_stp -t scripts/load_rom_virtual_jtag.tcl <rom.gb>` to validate the
    USB-Blaster-to-SDRAM loading path on hardware.
-3. Program `sdram_cpu_rom_top`, load a minimal no-MBC test ROM, and confirm
+3. Program `sdram_cpu_rom_top`, load `roms/minimal_led_blink.gb`, and confirm
    that the CPU executes code fetched from SDRAM.
 4. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.

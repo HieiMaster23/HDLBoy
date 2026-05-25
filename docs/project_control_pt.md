@@ -2915,3 +2915,75 @@ Proxima etapa recomendada:
 3. carregar a ROM via `scripts/load_rom_virtual_jtag.tcl`;
 4. confirmar nos LEDs a transicao de load para execucao;
 5. so depois disso integrar a mesma ideia ao top com PPU/VGA.
+
+## 37. ROM minima no-MBC para prova CPU -> SDRAM -> LED
+
+Criamos uma ROM propria e reproduzivel para testar o top
+`sdram_cpu_rom_top` antes de tentar Tetris.
+
+Arquivos criados:
+
+- `scripts/generate_minimal_led_rom.py`;
+- `roms/minimal_led_blink.gb`;
+- `roms/README.md`.
+
+Caracteristicas da ROM:
+
+- 32 KiB;
+- cartridge type `0x00`, ou seja, `ROM ONLY`;
+- ROM size code `0x00`, ou seja, 32 KiB;
+- RAM size code `0x00`, sem RAM externa;
+- titulo no header: `MINLED`;
+- checksum de header: `0x2D`;
+- checksum global: `0x2551`.
+
+Programa:
+
+```text
+0x0000: JP 0x0150
+0x0100: JP 0x0150
+0x0150: DI
+        LD SP,$DFFE
+loop:   LD A,$05
+        LDH ($80),A
+        delay
+        LD A,$0A
+        LDH ($80),A
+        delay
+        JR loop
+```
+
+O salto em `0x0000` existe porque a CPU atual do projeto reseta PC em zero. O
+salto em `0x0100` preserva o entry point padrao de cartucho Game Boy para
+ferramentas e para uma futura etapa com boot/handoff mais realista.
+
+Comando para regenerar:
+
+```text
+python scripts/generate_minimal_led_rom.py
+```
+
+Validacao executada:
+
+- header conferido localmente;
+- `quartus_stp -t scripts\load_rom_virtual_jtag.tcl --dry-run --max-bytes 32
+  roms\minimal_led_blink.gb` passou;
+- `quartus_stp -t scripts\load_rom_virtual_jtag.tcl --dry-run
+  roms\minimal_led_blink.gb` passou para os 32 KiB completos;
+- simulação curta com `tb_cpu_rom_runner` carregou a ROM sem erro de opcode no
+  trecho inicial executado.
+
+Uso esperado em hardware:
+
+1. compilar/programar `sdram_cpu_rom_top`;
+2. carregar `roms/minimal_led_blink.gb` pela Virtual JTAG;
+3. observar os LEDs alternando entre os padroes derivados de `0x05` e `0x0A`.
+
+Se isso funcionar, teremos prova pratica de:
+
+```text
+PC -> USB-Blaster -> Virtual JTAG -> SDRAM -> sdram_rom_reader -> bus -> CPU
+```
+
+Nesse ponto, Tetris passa a ser o proximo teste no-MBC realista, mas ainda
+depende de integrar o mesmo caminho SDRAM-ROM ao top com PPU/VGA.
