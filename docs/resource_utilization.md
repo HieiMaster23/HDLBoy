@@ -2239,3 +2239,34 @@ Notes:
 - During load, LEDs report SDRAM init, loader busy, loader done, and fatal
   error status. During execution, a loaded test ROM can write `0xFF80` to drive
   the LEDs through the existing debug register.
+
+### Hardware Loader Follow-Up
+
+Report date: 2026-05-25
+
+The first hardware attempt exposed a Virtual JTAG STATUS read alignment issue.
+`vj_tdo` was previously registered on the same TCK edge used for the scan, so
+the host observed a one-bit delayed STATUS value (`0x20`) instead of the
+signature-bearing value. `virtual_jtag_rom_stream_core` now drives `vj_tdo`
+combinationally from `status_shift_reg(0)` while shifting STATUS.
+
+Dedicated `sdram_cpu_rom_top` resources after this fix:
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 3,158 | 6,272 | 50% |
+| Registers | 773 | 6,272 | 12% |
+| Pins | 48 | 92 | 52% |
+| Memory bits | 134,144 | 276,480 | 49% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Validation:
+
+- `run_virtual_jtag_rom_stream_core.do` passed;
+- `quartus_sh -t scripts\build_sdram_cpu_rom.tcl` passed;
+- `quartus_pgm -m jtag -o "p;quartus\output_files\gameboy_core.sof"` configured
+  the EP4CE6 successfully;
+- `quartus_stp -t scripts\load_rom_virtual_jtag.tcl --progress-step 4096
+  roms\minimal_led_blink.gb` loaded the full 32 KiB ROM successfully;
+- loader status was `0x90` before transfer and `0x94` after transfer.

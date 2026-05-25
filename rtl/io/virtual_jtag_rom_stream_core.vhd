@@ -56,8 +56,6 @@ architecture rtl of virtual_jtag_rom_stream_core is
     signal start_req_tck_reg    : std_logic;
     signal finish_req_tck_reg   : std_logic;
     signal overflow_tck_reg     : std_logic;
-    signal vj_tdo_reg           : std_logic;
-
     signal stream_ready_tck_meta: std_logic;
     signal stream_ready_tck_sync: std_logic;
     signal busy_tck_meta        : std_logic;
@@ -97,7 +95,8 @@ begin
     start_pulse <= start_pulse_reg;
     finish_pulse <= finish_pulse_reg;
     protocol_error <= overflow_clk_sync;
-    vj_tdo <= vj_tdo_reg;
+    vj_tdo <= status_shift_reg(0) when vj_ir_in = IR_STATUS and vj_state_sdr = '1' else
+              '0';
 
     p_jtag_domain: process(vj_tck, reset)
     begin
@@ -109,7 +108,6 @@ begin
             start_req_tck_reg <= '0';
             finish_req_tck_reg <= '0';
             overflow_tck_reg <= '0';
-            vj_tdo_reg <= '0';
             stream_ready_tck_meta <= '0';
             stream_ready_tck_sync <= '0';
             busy_tck_meta <= '0';
@@ -153,11 +151,9 @@ begin
 
             if vj_state_sdr = '1' then
                 if vj_ir_in = IR_STATUS then
-                    vj_tdo_reg <= status_shift_reg(0);
                     status_shift_reg <= '0' & status_shift_reg(7 downto 1);
                 else
                     dr_shift_reg <= vj_tdi & dr_shift_reg(7 downto 1);
-                    vj_tdo_reg <= '0';
                 end if;
             end if;
 

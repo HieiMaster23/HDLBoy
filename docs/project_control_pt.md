@@ -2987,3 +2987,67 @@ PC -> USB-Blaster -> Virtual JTAG -> SDRAM -> sdram_rom_reader -> bus -> CPU
 
 Nesse ponto, Tetris passa a ser o proximo teste no-MBC realista, mas ainda
 depende de integrar o mesmo caminho SDRAM-ROM ao top com PPU/VGA.
+
+## 38. Primeiro carregamento real da ROM LED via USB-Blaster
+
+Executamos o primeiro teste real de placa com `sdram_cpu_rom_top` e
+`roms/minimal_led_blink.gb`.
+
+Sequencia executada:
+
+```text
+quartus_sh -t scripts\build_sdram_cpu_rom.tcl
+quartus_pgm -l
+quartus_pgm -m jtag -o "p;quartus\output_files\gameboy_core.sof"
+quartus_stp -t scripts\load_rom_virtual_jtag.tcl --progress-step 4096 roms\minimal_led_blink.gb
+```
+
+Resultado:
+
+- USB-Blaster detectado como `USB-Blaster [USB-0]`;
+- FPGA `EP4CE6E22` configurada com sucesso;
+- carga completa de 32 KiB concluida pela Virtual JTAG;
+- status inicial do loader: `0x90`, ou seja, SDRAM init + assinatura;
+- progresso confirmado a cada 4096 bytes;
+- status final: `0x94`, ou seja, loader done + SDRAM init + assinatura.
+
+Bug encontrado durante o primeiro teste:
+
+- a primeira tentativa de leitura STATUS retornou `0x20`;
+- esse valor era compativel com o status real deslocado por um bit;
+- causa: `vj_tdo` era registrado no mesmo edge de shift, atrasando a primeira
+  amostra de STATUS no `sld_virtual_jtag`;
+- correcao: `vj_tdo` agora e dirigido combinacionalmente por
+  `status_shift_reg(0)` durante `IR_STATUS` + `vj_state_sdr`;
+- o testbench `tb_virtual_jtag_rom_stream_core` foi ajustado para amostrar TDO
+  no momento correto do shift.
+
+Validacao apos correcao:
+
+- `run_virtual_jtag_rom_stream_core.do` passou;
+- `build_sdram_cpu_rom.tcl` passou;
+- `quartus_pgm` configurou a FPGA com 0 erros;
+- `load_rom_virtual_jtag.tcl` carregou `minimal_led_blink.gb` com 0 erros.
+
+Recursos do top dedicado apos a correcao:
+
+- 3.158 LEs;
+- 773 registradores;
+- 134.144 bits de memoria;
+- 1 PLL.
+
+Leitura importante:
+
+Agora temos prova de carga real:
+
+```text
+PC -> USB-Blaster -> Virtual JTAG -> SDRAM
+```
+
+O proximo ponto de observacao fisica e visual: confirmar nos LEDs da placa se a
+CPU saiu do reset e alternou os padroes escritos pela ROM em `0xFF80`. Se os
+LEDs nao alternarem, o problema fica localizado no trecho:
+
+```text
+SDRAM -> sdram_rom_reader -> bus_controller -> CPU execute -> 0xFF80
+```

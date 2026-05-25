@@ -105,9 +105,10 @@ architecture sim of tb_virtual_jtag_rom_stream_core is
         cdr_out <= '0';
 
         sdr_out <= '1';
+        wait for TCK_PERIOD / 4;
         for i in 0 to 7 loop
-            tck_cycle(tck_out);
             status_out(i) := vj_tdo;
+            tck_cycle(tck_out);
         end loop;
         sdr_out <= '0';
         tck_cycle(tck_out);
