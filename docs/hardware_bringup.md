@@ -106,3 +106,75 @@ Expected observation:
 - If the checker fails, the display shows `EEEE` and all LEDs are forced on.
 - Initial hardware observation showed `4321`, so the logical digit-enable pin
   mapping was reversed in `constraints/pin_assignments.qsf`.
+
+## 2026-05-25 SDRAM ROM Execution Bring-Up
+
+Top-level entity: `sdram_cpu_rom_top`
+
+Purpose: validate the first end-to-end cartridge path:
+
+1. load a 32 KiB no-MBC ROM into external SDRAM through Virtual JTAG;
+2. release the CPU only after SDRAM initialization and loader completion;
+3. fetch ROM bytes from SDRAM through `sdram_rom_reader`;
+4. execute a minimal LED checkpoint program that writes to debug I/O `0xFF80`.
+
+Initial symptom:
+
+- Virtual JTAG reported successful transfer and final status `0x94`
+  (`done`, `sdram_init`, and protocol signature set).
+- The CPU reached at least one write to `0xFF80`.
+- The expected final LED pattern did not appear consistently; the design looked
+  as if execution stopped after the first visible checkpoint or accepted an
+  unexpected value.
+
+Debug method:
+
+- Reduced the ROM to deterministic LED checkpoints.
+- First tested direct `LD A,$0F` plus `LDH ($80),A`.
+- Then removed dependency on the immediate `A` byte by generating `0x0F`
+  through repeated `INC A`.
+- Added compact LED diagnostics in `sdram_cpu_rom_top` to expose:
+  - fetch checkpoint progress;
+  - number of writes to `0xFF80`;
+  - low nibble of CPU register `A`;
+  - fatal error status.
+- Added `tb_cpu_minimal_led_rom` to verify that the CPU alone executes the
+  minimal checkpoint sequence correctly.
+
+Root cause:
+
+`sdram_rom_reader` asserted `rom_ready` from an internal ready register without
+also checking that the current CPU address still matched the address that had
+produced `rom_data`. During sequential instruction fetches, the CPU could move
+to the next address while the reader still presented a ready pulse for the
+previous byte. The bus has no address tag, so this stale ready condition could
+be interpreted as valid data for the new fetch.
+
+Fix:
+
+```vhdl
+rom_ready <= ready_reg when cpu_read = '1' and cpu_addr = addr_reg else '0';
+```
+
+Validation after the fix:
+
+- `run_sdram_rom_reader.do` passes, including the case where `cpu_addr` changes
+  while `cpu_read` remains asserted.
+- `run_cpu_minimal_led_rom.do` passes.
+- `scripts/build_sdram_cpu_rom.tcl` completes successfully and TimeQuest remains
+  fully constrained.
+- Hardware observation after loading the ROM through Virtual JTAG: all four LEDs
+  are on in the summary view.
+
+Final LED summary meaning:
+
+- LED1: CPU fetched the final ROM checkpoint.
+- LED2: CPU performed at least four writes to `0xFF80`.
+- LED3: CPU register `A` reached `0x0F`.
+- LED4: no fatal error was observed.
+
+This bug is a useful portfolio/TCC case study because the failure was not in a
+large subsystem such as the CPU or SDRAM initialization. It was a one-bit
+validity contract at a module boundary. The successful diagnosis depended on
+reducing the ROM, making hardware-visible checkpoints, and adding a regression
+that captures the exact handshake behavior.

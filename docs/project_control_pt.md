@@ -3051,3 +3051,67 @@ LEDs nao alternarem, o problema fica localizado no trecho:
 ```text
 SDRAM -> sdram_rom_reader -> bus_controller -> CPU execute -> 0xFF80
 ```
+
+## 39. Debug do reader SDRAM-ROM durante execucao real da CPU
+
+Esta foi uma das primeiras falhas de bring-up realmente representativas do
+projeto, porque a carga da ROM funcionava, a SDRAM inicializava e a CPU chegava
+a escrever em `0xFF80`, mas a execucao nao avancava de forma confiavel ate o
+checkpoint final.
+
+Sintoma observado em hardware:
+
+- `load_rom_virtual_jtag.tcl` concluia com status final `0x94`;
+- o caminho `PC -> USB-Blaster -> Virtual JTAG -> SDRAM` estava confirmado;
+- os LEDs indicavam que a CPU fazia ao menos uma escrita em `0xFF80`;
+- porem a ROM minima nao chegava claramente ao padrao final esperado.
+
+Metodo de diagnostico:
+
+- reduzir a ROM minima para checkpoints deterministas;
+- testar primeiro `LD A,$0F` + `LDH ($80),A`;
+- depois remover a dependencia do imediato usando varias instrucoes `INC A`;
+- instrumentar `sdram_cpu_rom_top` para resumir nos LEDs:
+  - fetch do checkpoint final;
+  - quantidade de writes em `0xFF80`;
+  - registrador `A = 0x0F`;
+  - ausencia de erro fatal;
+- criar `tb_cpu_minimal_led_rom` para provar que o CPU puro executa a sequencia;
+- reforcar `tb_sdram_rom_reader` com o caso de troca de endereco mantendo
+  `cpu_read` ativo.
+
+Causa raiz:
+
+O `sdram_rom_reader` podia manter `rom_ready` ativo para o byte do endereco
+anterior enquanto a CPU ja havia avancado para o proximo endereco de fetch. Como
+o barramento nao carrega uma tag de endereco junto com o dado, a CPU podia
+aceitar byte antigo como se fosse valido para o endereco atual.
+
+Correcao aplicada:
+
+```vhdl
+rom_ready <= ready_reg when cpu_read = '1' and cpu_addr = addr_reg else '0';
+```
+
+Validacao:
+
+- `run_sdram_rom_reader.do` passou;
+- `run_cpu_minimal_led_rom.do` passou;
+- `build_sdram_cpu_rom.tcl` passou com timing fechado;
+- apos programar o bitstream e carregar a ROM via Virtual JTAG, os 4 LEDs
+  ficaram acesos no resumo de execucao.
+
+Significado dos 4 LEDs acesos no resumo:
+
+- checkpoint final de fetch alcancado;
+- ao menos quatro writes em `0xFF80`;
+- registrador `A` chegou a `0x0F`;
+- nenhum erro fatal.
+
+Licao tecnica:
+
+Esta falha deve ser mencionada no TCC como exemplo de debug incremental de
+hardware. O problema nao estava em um bloco grande como CPU, SDRAM ou loader,
+mas em um contrato de validade de um bit na fronteira entre modulos. A solucao
+veio de reduzir o programa, tornar o progresso observavel em hardware e depois
+transformar o caso em regressao de simulacao.

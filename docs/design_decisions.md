@@ -259,6 +259,31 @@ pipeline keeps 3-bit RGB channels so color depth can be adapted later, but the
 board-level top should map only the physically available pins unless the exact
 board schematic confirms a wider resistor DAC.
 
+## SDRAM ROM Ready Must Be Address-Qualified
+
+The first Virtual JTAG-to-SDRAM ROM execution bring-up exposed a subtle
+handshake bug between the CPU bus and `sdram_rom_reader`. The ROM loader
+completed successfully and the CPU reached the first LED-visible write to
+`0xFF80`, but later checkpoints were inconsistent on hardware.
+
+The root cause was that `rom_ready` could remain asserted for the byte cached
+from the previous CPU address while the CPU had already advanced to the next ROM
+address. Since the bus only observes a `ready` qualifier, the CPU could accept a
+stale byte as if it belonged to the current fetch.
+
+The adopted contract is stricter:
+
+- `rom_data` may keep the last fetched byte internally;
+- `rom_ready` is valid only when `cpu_read = '1'` and `cpu_addr = addr_reg`;
+- changing `cpu_addr` while `cpu_read` stays asserted must immediately deassert
+  `rom_ready` until the reader serves the new address.
+
+This keeps the reader interface simple while making the data-valid condition
+explicit. The regression `tb_sdram_rom_reader` now includes the back-to-back
+address-change case that exposed the hardware failure mode, and
+`tb_cpu_minimal_led_rom` validates the minimal CPU sequence used during board
+bring-up.
+
 ## Resource Discipline
 
 The EP4CE6 has only 6,272 logic elements and 276,480 block RAM bits. Large
