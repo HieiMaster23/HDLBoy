@@ -389,7 +389,9 @@ The next recommended sequence is:
 23. preserve the dedicated SDRAM CPU ROM execution top as the first
     load-then-execute baseline before merging SDRAM cartridge fetches into the
     visual CPU/PPU top;
-24. import broader timer coverage later if the local Blargg package proves too
+24. preserve `sdram_video_rom_top` as the first compiled load-then-execute
+    cartridge/video integration top before attempting a real no-MBC game ROM;
+25. import broader timer coverage later if the local Blargg package proves too
    narrow for the next stages.
 
 ## Resource Discipline
@@ -489,6 +491,14 @@ then lets ROM fetches come from SDRAM through the existing `rom_ready`
 contract. This is intentionally separate from the VGA/PPU top so the project
 can prove PC-to-SDRAM-to-CPU execution before spending resources on the final
 playable integration top.
+
+The first SDRAM/video integration slice is now `sdram_video_rom_top`. It adds
+the existing PPU background/sprite renderer, framebuffer, VGA pipeline, and PS/2
+joypad path to the load-then-execute SDRAM cartridge flow. The dedicated Quartus
+build closes at 4,372 logic elements, 180,224 memory bits, and 24 M9Ks. This is
+the right bridge toward a first playable no-MBC ROM, but hardware validation
+still needs a minimal visual ROM that initializes VRAM and PPU registers before
+starting the renderer.
 
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.

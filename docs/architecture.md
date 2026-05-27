@@ -115,6 +115,14 @@ tops instantiate their own ROM module and feed the resulting byte plus
 wait-stated ROM source, which is the boundary needed for the SDRAM-backed
 cartridge path.
 
+`sdram_video_rom_top` is the first dedicated bridge between the SDRAM cartridge
+path and the visual CPU/PPU/VGA path. It keeps the CPU reset while the Virtual
+JTAG stream loads a ROM into SDRAM, then lets the CPU fetch bytes through
+`sdram_rom_reader` and the bus `rom_ready` contract. The same top instantiates
+the PPU renderer, OAM scan, framebuffer, VGA timing, VGA pixel pipeline, and
+PS/2 joypad mapper, so a minimal loaded ROM can now initialize video state and
+produce a hardware-visible VGA result.
+
 WRAM, VRAM, and HRAM are inferred by Quartus as M9K-backed `altsyncram` blocks.
 HRAM was originally kept as local bus-controller logic, but that structure
 retained a large register footprint. It is now isolated in a dedicated
@@ -172,19 +180,16 @@ with lower OAM order preserved when X coordinates are equal.
 
 The next architectural steps are:
 
-1. Program the dedicated SDRAM hardware test top and confirm init/pass/refresh
-   behavior on the physical board.
-2. Program `sdram_jtag_loader_top`, then run
-   `quartus_stp -t scripts/load_rom_virtual_jtag.tcl <rom.gb>` to validate the
-   USB-Blaster-to-SDRAM loading path on hardware.
-3. Program `sdram_cpu_rom_top`, load `roms/minimal_led_blink.gb`, and confirm
-   that the CPU executes code fetched from SDRAM.
-4. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
+1. Create a minimal no-MBC visual ROM that writes VRAM, tile map data, PPU
+   registers, and the debug start bit used by the current renderer.
+2. Program `sdram_video_rom_top`, load that ROM through
+   `scripts/load_rom_virtual_jtag.tcl`, and confirm the first ROM-driven VGA
+   image from SDRAM.
+3. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
-5. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
+4. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
    compatibility issue.
-6. Grow the SDRAM path from the hardware test top into a ROM-only cartridge
-   mapper.
+5. Grow the SDRAM path from the bring-up top into a ROM-only cartridge mapper.
 
 The design should continue to keep module-level testbenches close to each RTL
 block and add integration testbenches only when a cross-module contract exists.

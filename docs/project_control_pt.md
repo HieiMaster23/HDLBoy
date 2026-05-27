@@ -3115,3 +3115,68 @@ hardware. O problema nao estava em um bloco grande como CPU, SDRAM ou loader,
 mas em um contrato de validade de um bit na fronteira entre modulos. A solucao
 veio de reduzir o programa, tornar o progresso observavel em hardware e depois
 transformar o caso em regressao de simulacao.
+
+## 40. Primeiro top integrado SDRAM-ROM com video
+
+Criamos o primeiro top dedicado que une o caminho de ROM em SDRAM com o caminho
+visual ja existente do projeto.
+
+Top novo:
+
+```text
+sdram_video_rom_top
+```
+
+Fluxo integrado:
+
+```text
+PC -> USB-Blaster -> Virtual JTAG -> SDRAM loader -> SDRAM
+SDRAM -> sdram_rom_reader -> bus_controller -> CPU
+CPU -> VRAM/OAM/PPU registers -> PPU -> framebuffer -> VGA
+```
+
+O objetivo desta fatia nao e ainda rodar Tetris diretamente, mas remover a
+separacao artificial entre dois checkpoints anteriores:
+
+- `sdram_cpu_rom_top`, que provava execucao da CPU a partir da SDRAM;
+- `cpu_ppu_background_demo_top`, que provava o caminho visual CPU/PPU/VGA.
+
+Decisoes de arquitetura:
+
+- manter um top dedicado de bring-up, sem trocar o top canonico do projeto;
+- segurar a CPU em reset ate a SDRAM inicializar e o loader finalizar;
+- reutilizar o contrato `rom_ready` do `bus_controller`, em vez de criar um
+  caminho paralelo especial para cartucho;
+- manter o SDRAM controller no clock da CPU durante esta fase para evitar CDC
+  adicional no primeiro bring-up integrado;
+- preservar o start do renderer pelo bit de debug ja usado no projeto
+  (`0xFF80`, bit 0), para que uma ROM minima possa preparar VRAM/registradores
+  e depois liberar o PPU.
+
+Resultado de build Quartus:
+
+- `scripts/build_sdram_video_rom.tcl` passou com 0 erros;
+- top sintetizado: `sdram_video_rom_top`;
+- 4.372 / 6.272 LEs, 70%;
+- 1.379 registradores;
+- 180.224 / 276.480 bits de memoria, 65%;
+- 24 / 30 M9Ks, 80%;
+- 1 / 2 PLLs;
+- pior setup slack no clock VGA: 29,202 ns;
+- pior setup slack no clock CPU: 179,383 ns;
+- pior hold slack: 0,451 ns.
+
+Leitura do checkpoint:
+
+O projeto agora tem o primeiro ponto compilavel onde uma ROM carregada pela
+USB-Blaster pode, em principio, programar o estado de video do Game Boy e ser
+exibida via VGA. Ainda falta validar esse caminho em hardware com uma ROM visual
+minima. A diferenca e importante: ja temos a estrutura integrada, mas ainda nao
+temos a prova fisica de imagem vinda de uma ROM carregada na SDRAM.
+
+Proxima etapa recomendada:
+
+Criar uma ROM minima no-MBC para o novo top. Ela deve escrever tile data, tile
+map, `LCDC`, `BGP`, `SCX/SCY` e, ao final, escrever em `0xFF80` para iniciar o
+renderer. Depois disso, programar `sdram_video_rom_top`, carregar a ROM pela
+Virtual JTAG e observar se a imagem aparece na VGA.

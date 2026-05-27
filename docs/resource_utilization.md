@@ -2270,3 +2270,56 @@ Validation:
 - `quartus_stp -t scripts\load_rom_virtual_jtag.tcl --progress-step 4096
   roms\minimal_led_blink.gb` loaded the full 32 KiB ROM successfully;
 - loader status was `0x90` before transfer and `0x94` after transfer.
+
+## SDRAM Video ROM Execution Top
+
+Canonical project: `gameboy_core`
+
+Top-level entity: `sdram_video_rom_top`
+
+Report date: 2026-05-27
+
+This checkpoint adds the first integrated load-then-execute cartridge/video top.
+It combines the Virtual JTAG ROM stream, SDRAM ROM loader, SDRAM controller,
+SDRAM ROM reader, CPU, `bus_controller`, PS/2 joypad path, PPU background/sprite
+renderer, framebuffer, VGA timing, and VGA pixel pipeline in one dedicated
+bring-up design. The CPU remains in reset until SDRAM initialization and the ROM
+load are complete, then fetches cartridge bytes from SDRAM through the existing
+`rom_ready` wait-state contract.
+
+| Resource | Used | Available | Utilization |
+| --- | ---: | ---: | ---: |
+| Logic elements | 4,372 | 6,272 | 70% |
+| Registers | 1,379 | 6,272 | 22% |
+| Pins | 55 | 92 | 60% |
+| Memory bits | 180,224 | 276,480 | 65% |
+| 9-bit multiplier elements | 0 | 30 | 0% |
+| PLLs | 1 | 2 | 50% |
+
+Timing summary for the dedicated top:
+
+| Check | Worst Slack |
+| --- | ---: |
+| Setup, slow 1200 mV 85 C, PLL VGA clock | 29.202 ns |
+| Setup, slow 1200 mV 85 C, PLL CPU clock | 179.383 ns |
+| Hold, slow 1200 mV 85 C | 0.451 ns |
+| Minimum pulse width, `clk_50mhz` | 9.858 ns |
+| Minimum pulse width, `altera_reserved_tck` | 49.461 ns |
+
+Validation:
+
+- `quartus_sh -t scripts\build_sdram_video_rom.tcl` passed with 0 errors;
+- TimeQuest reports setup and hold as fully constrained for this dedicated top;
+- the build script temporarily switches the top-level entity to
+  `sdram_video_rom_top`, applies SDRAM pins and
+  `constraints/sdram_video_rom_timing.sdc`, then restores the main QSF.
+
+Notes:
+
+- This is the first compiled bridge from SDRAM cartridge loading to the existing
+  visible CPU/PPU/VGA path.
+- Board-level SDRAM I/O timing is still intentionally relaxed with false paths
+  during bring-up. Exact SDRAM timing closure remains a later hardware
+  characterization task.
+- Hardware validation still needs a minimal visual ROM that writes VRAM, PPU
+  registers, and the debug start bit used by the current renderer.
