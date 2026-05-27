@@ -500,6 +500,14 @@ the right bridge toward a first playable no-MBC ROM, but hardware validation
 still needs a minimal visual ROM that initializes VRAM and PPU registers before
 starting the renderer.
 
+The minimal visual ROM now exists as `roms/minimal_visual.gb`. It is generated
+by `scripts/generate_minimal_visual_rom.py`, writes deterministic tile data,
+background map contents, scroll and palette registers, re-enables LCDC, and
+then writes the current renderer start marker at `0xFF80`. The next project
+step is physical validation through `sdram_video_rom_top`; if that succeeds,
+the SDRAM cartridge path has reached the same visual proof point as the earlier
+embedded ROM demo.
+
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.
 

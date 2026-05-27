@@ -62,6 +62,11 @@ initial shared M6 timer block:
   `roms/minimal_led_blink.gb` no-MBC LED smoke ROM.
 - `roms/minimal_led_blink.gb`: 32 KiB `ROM ONLY` cartridge image that writes
   alternating LED patterns to `0xFF80` for SDRAM CPU execution bring-up.
+- `scripts/generate_minimal_visual_rom.py`: generator for the project-owned
+  `roms/minimal_visual.gb` no-MBC SDRAM/video smoke ROM.
+- `roms/minimal_visual.gb`: 32 KiB `ROM ONLY` cartridge image that initializes
+  VRAM, background map contents, scroll, palette, LCDC, and the current renderer
+  start marker at `0xFF80`.
 - `rtl/top/sdram_test_top.vhd`: dedicated physical SDRAM bring-up top with a
   deterministic write/read checker and LED status outputs.
 - `rtl/top/sdram_jtag_loader_top.vhd`: dedicated physical loader top combining
@@ -180,16 +185,14 @@ with lower OAM order preserved when X coordinates are equal.
 
 The next architectural steps are:
 
-1. Create a minimal no-MBC visual ROM that writes VRAM, tile map data, PPU
-   registers, and the debug start bit used by the current renderer.
-2. Program `sdram_video_rom_top`, load that ROM through
+1. Program `sdram_video_rom_top`, load `roms/minimal_visual.gb` through
    `scripts/load_rom_virtual_jtag.tcl`, and confirm the first ROM-driven VGA
    image from SDRAM.
-3. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
+2. Extend OAM DMA source coverage later when the ROM/cartridge/SDRAM path is
    defined.
-4. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
+3. Revisit exact PPU FIFO/fetch timing only when a target ROM exposes a concrete
    compatibility issue.
-5. Grow the SDRAM path from the bring-up top into a ROM-only cartridge mapper.
+4. Grow the SDRAM path from the bring-up top into a ROM-only cartridge mapper.
 
 The design should continue to keep module-level testbenches close to each RTL
 block and add integration testbenches only when a cross-module contract exists.

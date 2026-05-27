@@ -3180,3 +3180,65 @@ Criar uma ROM minima no-MBC para o novo top. Ela deve escrever tile data, tile
 map, `LCDC`, `BGP`, `SCX/SCY` e, ao final, escrever em `0xFF80` para iniciar o
 renderer. Depois disso, programar `sdram_video_rom_top`, carregar a ROM pela
 Virtual JTAG e observar se a imagem aparece na VGA.
+
+## 41. ROM visual minima para o top SDRAM/video
+
+Criamos a primeira ROM propria do projeto para validar imagem vinda do caminho
+SDRAM-ROM, e nao mais de uma ROM interna em VHDL.
+
+Arquivos adicionados:
+
+- `scripts/generate_minimal_visual_rom.py`;
+- `roms/minimal_visual.gb`;
+- `tb/cpu/tb_cpu_minimal_visual_rom.vhd`;
+- `sim/modelsim/run_cpu_minimal_visual_rom.do`.
+
+Comportamento da ROM:
+
+- imagem `ROM ONLY`, 32 KiB, sem MBC;
+- salto em `0x0000` e `0x0100` para o programa em `0x0150`;
+- desliga `LCDC` antes de preparar VRAM;
+- limpa o tile 0 em `0x8000..0x800F`;
+- escreve o tile 1 quadriculado em `0x8010..0x801F`;
+- limpa a background map `0x9800..0x9BFF`;
+- escreve a primeira linha alternando tile 1 e tile 0;
+- configura `BGP = 0xFC`, `SCY = 1`, `SCX = 8` e `LCDC = 0x91`;
+- escreve `0x01` em `0xFF80` para liberar o renderer atual;
+- estaciona em `JR $`.
+
+Validacao executada:
+
+- `python scripts\generate_minimal_visual_rom.py` gerou uma ROM de 32 KiB;
+- `vsim -c -do run_cpu_minimal_visual_rom.do` passou;
+- o testbench confirmou writes de VRAM, conteudo final do tile map, registradores
+  `BGP/SCY/SCX/LCDC` e o marcador `0xFF80 = 0x01`;
+- `quartus_stp -t scripts\load_rom_virtual_jtag.tcl --dry-run --max-bytes 32
+  roms\minimal_visual.gb` passou;
+- `quartus_stp -t scripts\load_rom_virtual_jtag.tcl --dry-run
+  roms\minimal_visual.gb` passou para a ROM completa.
+
+Proximo teste fisico recomendado:
+
+```text
+quartus_sh -t scripts\build_sdram_video_rom.tcl
+quartus_pgm -m jtag -o "p;quartus\output_files\gameboy_core.sof"
+quartus_stp -t scripts\load_rom_virtual_jtag.tcl --progress-step 4096 roms\minimal_visual.gb
+```
+
+Resultado esperado:
+
+- loader finaliza com status de done;
+- os LEDs devem indicar SDRAM init, loader done, renderer start e frame visto,
+  conforme o resumo ativo do `sdram_video_rom_top`;
+- a VGA deve mostrar a area Game Boy centralizada com a primeira linha de tiles
+  alternando branco/quadriculado, deslocada por `SCX = 8`.
+
+Leitura do checkpoint:
+
+Esta ROM fecha a ponte entre o mundo "programa interno de demo" e o mundo
+"cartucho carregado pela USB-Blaster". Se a imagem aparecer no monitor, teremos
+prova pratica do caminho:
+
+```text
+PC -> USB-Blaster -> Virtual JTAG -> SDRAM -> CPU -> VRAM -> PPU -> VGA
+```
