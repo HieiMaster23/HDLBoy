@@ -178,3 +178,55 @@ large subsystem such as the CPU or SDRAM initialization. It was a one-bit
 validity contract at a module boundary. The successful diagnosis depended on
 reducing the ROM, making hardware-visible checkpoints, and adding a regression
 that captures the exact handshake behavior.
+
+## 2026-05-28 SDRAM ROM to VGA Visual Bring-Up
+
+Top-level entity: `sdram_video_rom_top`
+
+ROM image: `roms/minimal_visual.gb`
+
+Purpose: validate the first complete visual cartridge path:
+
+1. load a 32 KiB no-MBC ROM into external SDRAM through Virtual JTAG;
+2. release the CPU after SDRAM initialization and loader completion;
+3. fetch ROM bytes from SDRAM through `sdram_rom_reader`;
+4. let the CPU initialize VRAM, PPU registers, and the renderer start marker;
+5. let the PPU render the ROM-authored tile pattern to the framebuffer and VGA.
+
+Commands used:
+
+```text
+quartus_pgm -m jtag -o "p;quartus\output_files\gameboy_core.sof"
+quartus_stp -t scripts\load_rom_virtual_jtag.tcl --progress-step 4096 roms\minimal_visual.gb
+```
+
+Loader result:
+
+- initial status: `0x90` (`sdram_init`, protocol signature);
+- final status: `0x94` (`done`, `sdram_init`, protocol signature);
+- 32 KiB transferred successfully.
+
+Hardware observation:
+
+- all four board LEDs were on after execution;
+- VGA showed the centered Game Boy viewport with the expected alternating
+  white/checkerboard tile row produced by `minimal_visual.gb`.
+
+Final LED summary meaning in `sdram_video_rom_top`:
+
+- SDRAM initialization completed;
+- Virtual JTAG ROM load completed;
+- the CPU wrote the renderer start marker through `0xFF80`;
+- the PPU completed at least one frame.
+
+Checkpoint meaning:
+
+This confirms the first practical visual cartridge flow:
+
+```text
+PC -> USB-Blaster -> Virtual JTAG -> SDRAM -> CPU -> VRAM -> PPU -> framebuffer -> VGA
+```
+
+The result is not yet a commercial game, but it proves that a project-owned
+no-MBC ROM loaded from the host can execute from SDRAM and produce a real VGA
+image through the hardware CPU/PPU path.

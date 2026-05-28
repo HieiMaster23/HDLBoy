@@ -508,6 +508,14 @@ step is physical validation through `sdram_video_rom_top`; if that succeeds,
 the SDRAM cartridge path has reached the same visual proof point as the earlier
 embedded ROM demo.
 
+That physical validation now passes on the OMDAZZ board. `minimal_visual.gb`
+loads through Virtual JTAG into SDRAM, the loader reports final status `0x94`,
+the four summary LEDs indicate SDRAM init, loader done, renderer start, and
+frame completion, and VGA displays the expected alternating tile row. The next
+work should move from controlled visual ROMs toward a stricter no-MBC game
+environment: reduce debug-only dependencies, confirm the VBlank/interrupt
+contract needed by commercial software, and then attempt a simple no-MBC ROM.
+
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.
 

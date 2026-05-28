@@ -3242,3 +3242,52 @@ prova pratica do caminho:
 ```text
 PC -> USB-Blaster -> Virtual JTAG -> SDRAM -> CPU -> VRAM -> PPU -> VGA
 ```
+
+## 42. Validacao visual em hardware com ROM carregada na SDRAM
+
+Executamos o teste fisico do caminho `sdram_video_rom_top` com a ROM
+`roms/minimal_visual.gb`.
+
+Comandos executados:
+
+```text
+quartus_pgm -m jtag -o "p;quartus\output_files\gameboy_core.sof"
+quartus_stp -t scripts\load_rom_virtual_jtag.tcl --progress-step 4096 roms\minimal_visual.gb
+```
+
+Resultado do loader:
+
+- status inicial: `0x90`, indicando `sdram_init` e assinatura do protocolo;
+- 32 KiB transferidos para a SDRAM;
+- status final: `0x94`, indicando `done`, `sdram_init` e assinatura.
+
+Observacao em hardware:
+
+- os 4 LEDs da placa ficaram acesos;
+- a VGA exibiu a area Game Boy centralizada;
+- a primeira linha visivel apresentou o padrao esperado de tiles alternando
+  branco e quadriculado, conforme a ROM minima visual.
+
+Significado dos 4 LEDs acesos neste top:
+
+- SDRAM inicializada;
+- loader finalizado;
+- CPU escreveu o marcador de start em `0xFF80`;
+- PPU concluiu ao menos um frame.
+
+Leitura do checkpoint:
+
+Este e o primeiro marco em que uma ROM carregada pelo PC via USB-Blaster passa
+por SDRAM, e nao por ROM interna em VHDL, e ainda assim produz imagem real no
+monitor VGA. Na pratica, o caminho abaixo foi validado em hardware:
+
+```text
+PC -> USB-Blaster -> Virtual JTAG -> SDRAM -> CPU -> VRAM -> PPU -> framebuffer -> VGA
+```
+
+Isso nao significa que Tetris ja deve rodar sem ajustes, mas significa que o
+caminho de cartucho no-MBC ate video esta funcional para uma ROM minima
+controlada. A proxima etapa recomendada e aproximar essa ROM minima de um
+ambiente de jogo simples: remover dependencias de debug quando possivel,
+confirmar interrupcoes/VBlank usadas por jogos reais e entao tentar uma ROM
+no-MBC pequena com comportamento mais proximo de software comercial.

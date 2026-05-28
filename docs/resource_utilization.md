@@ -2321,5 +2321,8 @@ Notes:
 - Board-level SDRAM I/O timing is still intentionally relaxed with false paths
   during bring-up. Exact SDRAM timing closure remains a later hardware
   characterization task.
-- Hardware validation still needs a minimal visual ROM that writes VRAM, PPU
-  registers, and the debug start bit used by the current renderer.
+- Hardware validation with `roms/minimal_visual.gb` on 2026-05-28 confirmed the
+  full `PC -> USB-Blaster -> Virtual JTAG -> SDRAM -> CPU -> VRAM -> PPU ->
+  framebuffer -> VGA` path. The loader completed with final status `0x94`, all
+  four summary LEDs were on, and VGA displayed the expected alternating
+  white/checkerboard tile row.
