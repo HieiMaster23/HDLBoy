@@ -3419,3 +3419,72 @@ Criar um teste/diagnostico mais especifico para o caminho integrado com Tetris:
 observar writes em VRAM/OAM/DMA e confirmar se o top `sdram_video_rom_top`
 reflete `LY`, `STAT`, `IF`, DMA e LCDC de forma suficiente para a rotina
 principal progredir sem reinicializar video continuamente.
+
+## 46. Primeiro checkpoint funcional com ROM comercial: Tetris
+
+Executamos o passo natural apos as ROMs proprias de diagnostico: carregar uma
+ROM comercial no-MBC real na SDRAM e observar o comportamento em hardware.
+
+ROM usada:
+
+- titulo: `TETRIS`;
+- tamanho: 32 KiB;
+- cartridge type: `0x00`, `ROM ONLY`;
+- sem RAM externa;
+- sem MBC.
+
+Fluxo executado:
+
+```text
+quartus_pgm -m jtag -o "p;quartus\output_files\gameboy_core.sof"
+quartus_stp -t scripts\load_rom_virtual_jtag.tcl --progress-step 4096 "<caminho local da ROM Tetris>"
+```
+
+Resultado do loader:
+
+- checksum16 reportado pelo loader: `0x1794`;
+- status inicial: `0x90`;
+- transferencia completa de 32 KiB;
+- status final: `0x94`, com `done`, `sdram_init` e assinatura do protocolo.
+
+Resultado em hardware:
+
+- o VGA exibiu a tela inicial do Tetris;
+- a imagem mostrou o logo `TETRIS`, menu `1PLAYER` e `2PLAYER`, e a linha de
+  copyright `1989 Nintendo`;
+- o resultado foi observado diretamente na placa OMDAZZ com o top
+  `sdram_video_rom_top`.
+
+Leitura tecnica:
+
+Este e um marco fundamental do projeto. Ate aqui, o core ja havia demonstrado
+CPU, barramento, SDRAM, PPU e VGA com ROMs proprias controladas. Com este teste,
+o sistema passou a executar uma ROM comercial real, carregada externamente pela
+Virtual JTAG para a SDRAM, e renderizou uma tela reconhecivel do jogo.
+
+O que este checkpoint prova:
+
+- o caminho USB-Blaster -> Virtual JTAG -> SDRAM funciona para uma ROM
+  comercial de 32 KiB;
+- o CPU consegue buscar e executar codigo real de cartucho no-MBC;
+- os registradores e memorias de video estao suficientemente funcionais para a
+  rotina inicial do Tetris;
+- interrupcoes/VBlank, `LCDC`, scroll, paletas, tile data/tile map e caminho
+  framebuffer/VGA estao coerentes o bastante para renderizar a tela inicial;
+- o projeto atingiu o primeiro estado "first playable candidate", ainda sem
+  declarar compatibilidade completa.
+
+Limites que continuam conhecidos:
+
+- APU segue fora do escopo de curto prazo;
+- ainda precisamos testar entrada de usuario, selecao de menu e inicio de
+  partida;
+- compatibilidade longa ainda precisa de testes de estabilidade;
+- outras ROMs podem exigir refinamentos adicionais de PPU, DMA, timers ou
+  comportamento pos-boot.
+
+Proxima etapa recomendada:
+
+Testar interacao no menu do Tetris usando o mapeamento atual de botoes/PS2.
+Se o menu responder, o proximo objetivo e iniciar uma partida e observar queda
+de pecas, resposta a direcional/botoes e estabilidade por alguns minutos.

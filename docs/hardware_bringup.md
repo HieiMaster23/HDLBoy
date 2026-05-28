@@ -274,3 +274,58 @@ VBlank IF -> CPU interrupt entry -> handler at 0x0040 -> SCX update -> RETI
 
 That behavior is an important step toward simple commercial no-MBC games, which
 typically rely on VBlank synchronization for video updates.
+
+## 2026-05-28 First Commercial ROM Bring-Up: Tetris
+
+Top-level entity: `sdram_video_rom_top`
+
+ROM image used for hardware validation: Tetris, 32 KiB `ROM ONLY`, no external
+RAM, no MBC. The ROM image is not stored in this repository.
+
+Purpose: validate the first real commercial no-MBC game path through the
+integrated hardware system:
+
+```text
+USB-Blaster -> Virtual JTAG -> SDRAM cartridge storage -> CPU -> bus -> PPU ->
+framebuffer -> VGA
+```
+
+Commands used:
+
+```text
+quartus_pgm -m jtag -o "p;quartus\output_files\gameboy_core.sof"
+quartus_stp -t scripts\load_rom_virtual_jtag.tcl --progress-step 4096 "<local Tetris ROM path>"
+```
+
+Loader result:
+
+- ROM title: `TETRIS`;
+- cartridge type: `0x00` (`ROM ONLY`);
+- ROM size: 32 KiB;
+- RAM size: none;
+- loader checksum16: `0x1794`;
+- initial status: `0x90` (`sdram_init`, protocol signature);
+- final status: `0x94` (`done`, `sdram_init`, protocol signature);
+- 32 KiB transferred successfully.
+
+Hardware observation:
+
+- VGA displayed the Tetris title screen, including the `1PLAYER` and `2PLAYER`
+  menu text and the copyright line;
+- this confirms that the game executed far enough to initialize video memory,
+  configure PPU registers, run the title/menu code, and drive the visible
+  background/window/sprite path through the FPGA implementation.
+
+Checkpoint meaning:
+
+This is the first confirmed commercial-game checkpoint for the project. It does
+not mean the full Game Boy is complete, but it proves that the current
+non-audio core can boot and render a real no-MBC DMG title on the OMDAZZ
+Cyclone IV board using an SDRAM-loaded cartridge image.
+
+Known scope at this checkpoint:
+
+- APU is still intentionally out of scope;
+- broad compatibility is not claimed yet;
+- further tests still need to confirm input behavior, gameplay progression,
+  long-run stability, and additional ROMs.

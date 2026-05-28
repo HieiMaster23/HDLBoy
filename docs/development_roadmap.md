@@ -526,6 +526,15 @@ initial `LY = 0x94` wait and writes real video state, so the next compatibility
 work should focus on the integrated PPU/boot contract rather than on ROM loading
 or MBC support.
 
+The first commercial no-MBC hardware checkpoint now passes. Tetris loads as a
+32 KiB `ROM ONLY` image through Virtual JTAG into SDRAM, the loader finishes
+with status `0x94`, and the OMDAZZ board renders the Tetris title/menu screen
+over VGA. This is the first "commercial game running" milestone for the
+project. It should be treated as an initial functional checkpoint, not a full
+compatibility claim: the next work is to validate menu input, start a game, and
+watch for gameplay-time failures in joypad, timer, DMA, interrupt, or PPU
+behavior.
+
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.
 

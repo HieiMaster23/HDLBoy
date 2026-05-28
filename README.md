@@ -30,30 +30,26 @@ logic that runs directly on the FPGA fabric.
 | M2 | Framebuffer and pixel pipeline | RTL, simulation, Quartus build, JTAG programming, and VGA-HDMI visual hardware validation complete |
 | M3 | CPU core - Sharp LR35902 | Broad multi-cycle subset implemented; all individual Blargg `cpu_instrs`, `instr_timing`, `mem_timing`, `mem_timing-2`, `interrupt_time`, and `halt_bug` ROMs pass |
 | M4 | Memory map and bus controller | Initial bus, full WRAM, HRAM, IE/IF, and memory-ready path implemented |
-| M5 | PPU | Not started |
-| M6 | Timer, joypad, and I/O | Initial DMG timer implemented; joypad and remaining I/O still pending |
-| M7 | SDRAM controller and ROM loading | Not started |
-| M8 | Final integration and boot ROM | Not started |
+| M5 | PPU | Background, Window, initial sprites, palette lookup, VBlank/STAT, and VGA path implemented for first playable bring-up |
+| M6 | Timer, joypad, and I/O | Timer, JOYP register, Joypad interrupt, and PS/2/button input path implemented |
+| M7 | SDRAM controller and ROM loading | SDRAM controller, Virtual JTAG ROM loader, and SDRAM ROM reader implemented |
+| M8 | Final integration and boot ROM | Initial SDRAM/video integration can run a 32 KiB no-MBC commercial ROM; Tetris title screen validated on hardware |
 | M9 | APU | Optional |
 | M10 | PS/2 keyboard | Optional |
 
-Current canonical Quartus top-level:
+Current commercial-ROM bring-up Quartus top-level:
 
 ```text
-cpu_video_smoke_top
+sdram_video_rom_top
 ```
 
-The current build runs a CPU-to-framebuffer smoke test program from a small
-internal ROM. The CPU writes directly into a framebuffer-mapped address window,
-VGA displays the result, and the four-digit seven-segment display shows `1234`
-when the monitored integration checks pass.
-
-The current development focus is the transition from functionally correct CPU
-behavior toward timing-faithful CPU behavior. The individual Blargg
-`cpu_instrs`, `instr_timing`, `mem_timing`, `mem_timing-2`,
-`interrupt_time`, and `halt_bug` ROMs now pass through the ROM runner. The next
-major architecture step is to checkpoint this CPU/timing phase and begin the
-real PPU foundation.
+The current bring-up build loads a 32 KiB no-MBC ROM into external SDRAM through
+USB-Blaster/Virtual JTAG, releases the CPU after the load completes, fetches
+cartridge bytes from SDRAM, and renders through the hardware PPU/framebuffer/VGA
+path. On 2026-05-28, this path displayed the Tetris title/menu screen on the
+OMDAZZ board. This is an initial first-playable checkpoint, not a full
+compatibility claim; the next focus is validating input, gameplay progression,
+and longer stability.
 
 ## Building
 

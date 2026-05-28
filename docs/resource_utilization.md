@@ -2326,3 +2326,9 @@ Notes:
   framebuffer -> VGA` path. The loader completed with final status `0x94`, all
   four summary LEDs were on, and VGA displayed the expected alternating
   white/checkerboard tile row.
+- Hardware validation with Tetris on 2026-05-28 confirmed the first commercial
+  no-MBC game checkpoint on the same fitted `sdram_video_rom_top` image. The
+  ROM was a 32 KiB `ROM ONLY` cartridge, loaded through Virtual JTAG into SDRAM
+  with final status `0x94`; VGA displayed the Tetris title/menu screen. This
+  checkpoint did not require additional RTL resources beyond the reported
+  `sdram_video_rom_top` fit.
