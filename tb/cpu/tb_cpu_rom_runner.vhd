@@ -25,7 +25,8 @@ entity tb_cpu_rom_runner is
         G_TIMER_DIV_RESET : integer := 4;
         G_TIMA_READ_AFTER_TICK : boolean := true;
         G_OBSERVE_MEMORY_STATUS : boolean := true;
-        G_TRACE_INSTR_TIMING : boolean := false
+        G_TRACE_INSTR_TIMING : boolean := false;
+        G_TRACE_GAME_IO : boolean := false
     );
 end entity tb_cpu_rom_runner;
 
@@ -51,6 +52,7 @@ architecture sim of tb_cpu_rom_runner is
     constant IO_WY_ADDR       : std_logic_vector(15 downto 0) := x"FF4A";
     constant IO_WX_ADDR       : std_logic_vector(15 downto 0) := x"FF4B";
     constant IE_ADDR          : std_logic_vector(15 downto 0) := x"FFFF";
+    constant PPU_LINE_CYCLES  : integer := 456;
     constant BLARGG_SAVED_SP_ADDR  : std_logic_vector(15 downto 0) := x"D81E";
     constant BLARGG_INSTR_ADDR     : std_logic_vector(15 downto 0) := x"D820";
     constant BLARGG_INSTR_JP_ADDR  : std_logic_vector(15 downto 0) := x"D826";
@@ -164,6 +166,7 @@ architecture sim of tb_cpu_rom_runner is
     signal io_wy_reg : std_logic_vector(7 downto 0) := x"00";
     signal io_wx_reg : std_logic_vector(7 downto 0) := x"00";
     signal ie_reg : std_logic_vector(7 downto 0) := x"00";
+    signal ppu_line_cycle : integer range 0 to PPU_LINE_CYCLES - 1 := 0;
     signal timer_interrupt_set : std_logic;
     signal timer_write_div : std_logic;
     signal timer_write_tima : std_logic;
@@ -321,11 +324,17 @@ begin
                 io_wy_reg <= x"00";
                 io_wx_reg <= x"00";
                 ie_reg <= x"00";
+                ppu_line_cycle <= 0;
             else
-                if io_ly_reg = x"99" then
-                    io_ly_reg <= x"00";
+                if ppu_line_cycle = PPU_LINE_CYCLES - 1 then
+                    ppu_line_cycle <= 0;
+                    if io_ly_reg = x"99" then
+                        io_ly_reg <= x"00";
+                    else
+                        io_ly_reg <= std_logic_vector(unsigned(io_ly_reg) + 1);
+                    end if;
                 else
-                    io_ly_reg <= std_logic_vector(unsigned(io_ly_reg) + 1);
+                    ppu_line_cycle <= ppu_line_cycle + 1;
                 end if;
 
                 if mem_read = '1' and mem_addr = x"0100" then
@@ -380,26 +389,81 @@ begin
                         io_if_reg <= "111" & mem_data_out(4 downto 0);
                     elsif mem_addr = IO_LCDC_ADDR then
                         io_lcdc_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO LCDC <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IO_STAT_ADDR then
                         io_stat_reg <= "1" & mem_data_out(6 downto 3) & "000";
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO STAT <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IO_SCY_ADDR then
                         io_scy_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO SCY <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IO_SCX_ADDR then
                         io_scx_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO SCX <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IO_LYC_ADDR then
                         io_lyc_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO LYC <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IO_BGP_ADDR then
                         io_bgp_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO BGP <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IO_OBP0_ADDR then
                         io_obp0_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO OBP0 <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IO_OBP1_ADDR then
                         io_obp1_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO OBP1 <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IO_WY_ADDR then
                         io_wy_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO WY <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IO_WX_ADDR then
                         io_wx_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO WX <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif mem_addr = IE_ADDR then
                         ie_reg <= mem_data_out;
+                        if G_TRACE_GAME_IO then
+                            report "GAMEIO IE <= $" & slv8_to_hex(mem_data_out) &
+                                   " PC=$" & slv16_to_hex(debug_pc)
+                                   severity note;
+                        end if;
                     elsif (unsigned(mem_addr) >= x"8000" and unsigned(mem_addr) <= x"9FFF") or
                           (unsigned(mem_addr) >= x"C000" and unsigned(mem_addr) <= x"FDFF") then
                         mem(to_integer(unsigned(mem_addr))) <= mem_data_out;
@@ -554,6 +618,13 @@ begin
                     report "FAIL: Blargg serial transcript contains Failed"
                     severity failure;
             end if;
+        end loop;
+
+        for j in 0 to TRACE_DEPTH - 1 loop
+            trace_index_v := (trace_wr_index + j) mod TRACE_DEPTH;
+            report "TRACE PC=$" & slv16_to_hex(trace_pc(trace_index_v)) &
+                   " OPC=$" & slv8_to_hex(trace_opcode(trace_index_v))
+                   severity note;
         end loop;
 
         assert halted = '0'

@@ -516,6 +516,16 @@ work should move from controlled visual ROMs toward a stricter no-MBC game
 environment: reduce debug-only dependencies, confirm the VBlank/interrupt
 contract needed by commercial software, and then attempt a simple no-MBC ROM.
 
+The VBlank contract now passes with `roms/minimal_vblank_scroll.gb`: a ROM
+loaded into SDRAM installs an interrupt handler at `0x0040`, updates `SCX` from
+that handler, returns with `RETI`, and hardware VGA shows the checkerboard tile
+row moving horizontally. The CPU ROM runner was also tightened for commercial
+no-MBC probing: its simulated `LY` now advances once per 456 cycles and it can
+trace game-facing video register writes. The first Tetris probe gets past the
+initial `LY = 0x94` wait and writes real video state, so the next compatibility
+work should focus on the integrated PPU/boot contract rather than on ROM loading
+or MBC support.
+
 The APU is intentionally outside the near-term resource budget. It should be
 reconsidered only after the non-audio first playable system is working.
 

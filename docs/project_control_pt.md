@@ -3378,3 +3378,44 @@ movimento confirma, no caminho integrado SDRAM/video, a cadeia:
 
 Esse passa a ser o novo checkpoint de compatibilidade funcional antes de tentar
 uma ROM no-MBC comercial simples.
+
+## 45. Probe inicial de ROM comercial no-MBC
+
+Depois do checkpoint de VBlank com a ROM propria, iniciamos uma investigacao
+controlada com uma ROM comercial `ROM ONLY` de 32 KiB, sem incluir a ROM no
+repositorio.
+
+Melhoria aplicada ao runner:
+
+- `tb_cpu_rom_runner` agora usa uma progressao simples de `LY` a cada 456
+  ciclos, em vez de incrementar `LY` a cada clock;
+- foi adicionado o generic `G_TRACE_GAME_IO`, que registra writes relevantes em
+  `LCDC`, `STAT`, `SCY`, `SCX`, `BGP`, `OBP0`, `OBP1`, `WY`, `WX` e `IE`;
+- o runner tambem imprime a janela de fetches recentes em caso de timeout, nao
+  apenas em opcode nao suportado.
+
+Resultado do probe:
+
+- a ROM foi identificada como `ROM ONLY`, 32 KiB;
+- o CPU nao encontrou opcode nao suportado na janela executada;
+- com o modelo anterior de `LY`, a ROM ficava presa no polling de `FF44`,
+  esperando `LY = 0x94`;
+- com `LY` avancando a cada 456 ciclos, a ROM passou desse ponto, configurou
+  registradores de video e repetiu ciclos de inicializacao mais profundos;
+- foram observados writes como `LCDC = 0x80`, `LCDC = 0x03`, `BGP = 0xE4`,
+  `OBP0 = 0xE4`, `OBP1 = 0xC4`, `IE = 0x09` e depois `LCDC = 0xD3`.
+
+Leitura tecnica:
+
+Esse resultado e positivo porque o problema inicial nao e mais "a ROM nao
+executa". O Tetris ja consegue rodar instrucoes, esperar uma linha de PPU,
+configurar registradores de video e entrar em rotinas internas. O proximo
+gargalo parece estar no contrato de ambiente PPU/boot usado durante o loop
+principal, nao em MBC nem em fetch basico de cartucho.
+
+Proxima etapa recomendada:
+
+Criar um teste/diagnostico mais especifico para o caminho integrado com Tetris:
+observar writes em VRAM/OAM/DMA e confirmar se o top `sdram_video_rom_top`
+reflete `LY`, `STAT`, `IF`, DMA e LCDC de forma suficiente para a rotina
+principal progredir sem reinicializar video continuamente.
