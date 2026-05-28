@@ -3326,3 +3326,55 @@ Esse ajuste aproxima o top de um comportamento esperado por software real. A
 ROM minima ainda e controlada, mas agora ela nao precisa conhecer um registrador
 de debug fora do Game Boy para iniciar video; basta configurar `LCDC`, como um
 programa real faria.
+
+## 44. ROM minima com VBlank interrupt e scroll por ISR
+
+Criamos uma segunda ROM visual controlada, agora para validar o contrato de
+interrupcao de VBlank no caminho de cartucho SDRAM/video.
+
+Arquivos adicionados:
+
+- `scripts/generate_minimal_vblank_scroll_rom.py`;
+- `roms/minimal_vblank_scroll.gb`;
+- `tb/cpu/tb_cpu_minimal_vblank_scroll_rom.vhd`;
+- `sim/modelsim/run_cpu_minimal_vblank_scroll_rom.do`.
+
+Comportamento da ROM:
+
+- imagem `ROM ONLY`, 32 KiB, sem MBC;
+- instala handler de VBlank em `0x0040`;
+- inicializa VRAM, tile map, `BGP`, `SCY`, `SCX` e `LCDC`;
+- limpa `IF`;
+- habilita `IE` bit 0;
+- executa `EI`;
+- entra em loop com `HALT`;
+- a cada VBlank, o handler incrementa um contador em HRAM e escreve o valor em
+  `SCX`, criando scroll horizontal dirigido por interrupcao.
+
+Validacao executada:
+
+- `python scripts\generate_minimal_vblank_scroll_rom.py`;
+- dry-run completo do loader para `roms\minimal_vblank_scroll.gb`;
+- `vsim -c -do run_cpu_minimal_vblank_scroll_rom.do`;
+- o testbench injeta uma requisicao de VBlank em `IF bit 0` depois que a ROM
+  habilita `IE`, entra em `HALT`, e confirma que o ISR atualiza `SCX`.
+
+Validacao em hardware:
+
+- FPGA programada com o top `sdram_video_rom_top`;
+- carga completa de `roms\minimal_vblank_scroll.gb` pela Virtual JTAG;
+- status final do loader: `0x94`;
+- LEDs permaneceram no estado esperado do checkpoint integrado;
+- a linha de tiles no VGA passou a se mover horizontalmente.
+
+Leitura tecnica:
+
+Esta fatia prova um passo mais proximo de software real: a CPU nao apenas
+configura video uma vez, mas tambem reage a uma interrupcao de VBlank, retorna
+com `RETI` e altera um registrador PPU em runtime. A observacao dos tiles em
+movimento confirma, no caminho integrado SDRAM/video, a cadeia:
+
+`VBlank IF -> CPU interrupt entry -> handler 0x0040 -> SCX update -> RETI`.
+
+Esse passa a ser o novo checkpoint de compatibilidade funcional antes de tentar
+uma ROM no-MBC comercial simples.

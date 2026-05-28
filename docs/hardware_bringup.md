@@ -238,3 +238,39 @@ follow-up build removed that dependency: `sdram_video_rom_top` now starts the
 PPU from the normal LCDC enable signal, and `minimal_visual.gb` no longer writes
 to `0xFF80`. Hardware validation kept the same VGA result and all four summary
 LEDs on, proving that the visible path now starts from `LCDC = 0x91`.
+
+## 2026-05-28 VBlank Interrupt Scroll Bring-Up
+
+Top-level entity: `sdram_video_rom_top`
+
+ROM image: `roms/minimal_vblank_scroll.gb`
+
+Purpose: validate that a ROM loaded from SDRAM can use the interrupt path for a
+video-synchronized update:
+
+1. initialize VRAM and PPU registers;
+2. enable LCDC;
+3. clear IF and enable IE bit 0;
+4. execute `EI` and wait in a `HALT` loop;
+5. service the VBlank handler at `0x0040`;
+6. return with `RETI`;
+7. update `SCX` from the interrupt handler.
+
+Validation:
+
+- `run_cpu_minimal_vblank_scroll_rom.do` passed in ModelSim;
+- `load_rom_virtual_jtag.tcl --dry-run roms\minimal_vblank_scroll.gb` passed;
+- the ROM loaded through Virtual JTAG with final status `0x94`;
+- hardware VGA showed the checkerboard tile row moving horizontally.
+
+Checkpoint meaning:
+
+This confirms that the integrated path is no longer only a static visual ROM.
+The hardware now supports a simple interrupt-driven video loop:
+
+```text
+VBlank IF -> CPU interrupt entry -> handler at 0x0040 -> SCX update -> RETI
+```
+
+That behavior is an important step toward simple commercial no-MBC games, which
+typically rely on VBlank synchronization for video updates.
