@@ -8,6 +8,7 @@
 -- =============================================================================
 -- Revision History:
 -- 2026-05-27 - Initial SDRAM ROM execution path integrated with video output
+-- 2026-05-28 - Start PPU from LCDC enable instead of debug LED marker
 -- =============================================================================
 
 library ieee;
@@ -143,8 +144,6 @@ architecture rtl of sdram_video_rom_top is
     signal ppu_sprite_count     : unsigned(3 downto 0);
     signal ppu_sprite_indices   : std_logic_vector(79 downto 0);
 
-    signal led_pattern          : std_logic_vector(3 downto 0);
-    signal cpu_vram_ready       : std_logic;
     signal ps2_btn_right        : std_logic;
     signal ps2_btn_left         : std_logic;
     signal ps2_btn_up           : std_logic;
@@ -194,8 +193,6 @@ begin
     reset_cpu <= reset_system or (not cpu_run_reg);
     execute_enabled <= cpu_run_reg;
     fatal_error <= loader_error or protocol_error or unsupported_opcode;
-    cpu_vram_ready <= led_pattern(0);
-
     joyp_btn_a <= (not key_n(0)) or ps2_btn_a;
     joyp_btn_b <= (not key_n(1)) or ps2_btn_b;
     joyp_btn_select <= (not key_n(2)) or ps2_btn_select;
@@ -454,7 +451,7 @@ begin
             ppu_oam_data         => ppu_oam_data,
             ppu_current_line     => ppu_current_line,
             ppu_mode             => ppu_mode,
-            led_pattern          => led_pattern,
+            led_pattern          => open,
             display_digits       => open,
             checker_failed       => open,
             final_passed         => open,
@@ -471,7 +468,7 @@ begin
         port map (
             clk       => clk_cpu,
             reset     => reset_cpu,
-            start     => cpu_vram_ready,
+            start     => ppu_lcd_enable,
             lcd_enable => ppu_lcd_enable,
             lcdc      => ppu_lcdc,
             scroll_y  => ppu_scy,
@@ -570,6 +567,6 @@ begin
     status_led(3) <= not fatal_error;
 
     led <= status_led when execute_enabled = '0' or fatal_error = '1' else
-           not (ppu_frame_seen & cpu_vram_ready & loader_done & sdram_init_done);
+           not (ppu_frame_seen & ppu_lcd_enable & loader_done & sdram_init_done);
 
 end architecture rtl;

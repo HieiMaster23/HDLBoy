@@ -55,7 +55,7 @@ architecture sim of tb_cpu_minimal_visual_rom is
     signal debug_pc : std_logic_vector(15 downto 0);
 
     signal mem : memory_t := load_rom(G_ROM_PATH);
-    signal start_seen : std_logic := '0';
+    signal lcdc_enabled_seen : std_logic := '0';
     signal vram_write_count : integer range 0 to 2047 := 0;
 
 begin
@@ -67,7 +67,7 @@ begin
     begin
         if rising_edge(clk) then
             if reset = '1' then
-                start_seen <= '0';
+                lcdc_enabled_seen <= '0';
                 vram_write_count <= 0;
             else
                 if mem_write = '1' then
@@ -79,8 +79,8 @@ begin
                         end if;
                     end if;
 
-                    if mem_addr = x"FF80" and mem_data_out = x"01" then
-                        start_seen <= '1';
+                    if mem_addr = x"FF40" and mem_data_out = x"91" then
+                        lcdc_enabled_seen <= '1';
                     end if;
                 end if;
             end if;
@@ -129,11 +129,11 @@ begin
             assert unsupported_opcode = '0'
                 report "FAIL: unsupported opcode while executing minimal visual ROM"
                 severity failure;
-            exit when start_seen = '1';
+            exit when lcdc_enabled_seen = '1';
         end loop;
 
-        assert start_seen = '1'
-            report "FAIL: CPU did not write renderer start marker to 0xFF80"
+        assert lcdc_enabled_seen = '1'
+            report "FAIL: CPU did not re-enable LCDC after preparing VRAM"
             severity failure;
         assert vram_write_count >= 1060
             report "FAIL: expected tile data and background map VRAM writes"
@@ -173,10 +173,6 @@ begin
         assert mem(16#FF40#) = x"91"
             report "FAIL: LCDC should be re-enabled with 0x91"
             severity failure;
-        assert mem(16#FF80#) = x"01"
-            report "FAIL: renderer start marker should be 1"
-            severity failure;
-
         report "=== tb_cpu_minimal_visual_rom: ALL TESTS PASSED ===" severity note;
         sim_done <= true;
         wait;

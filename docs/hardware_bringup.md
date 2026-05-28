@@ -190,7 +190,7 @@ Purpose: validate the first complete visual cartridge path:
 1. load a 32 KiB no-MBC ROM into external SDRAM through Virtual JTAG;
 2. release the CPU after SDRAM initialization and loader completion;
 3. fetch ROM bytes from SDRAM through `sdram_rom_reader`;
-4. let the CPU initialize VRAM, PPU registers, and the renderer start marker;
+4. let the CPU initialize VRAM and PPU registers;
 5. let the PPU render the ROM-authored tile pattern to the framebuffer and VGA.
 
 Commands used:
@@ -216,7 +216,7 @@ Final LED summary meaning in `sdram_video_rom_top`:
 
 - SDRAM initialization completed;
 - Virtual JTAG ROM load completed;
-- the CPU wrote the renderer start marker through `0xFF80`;
+- the CPU enabled LCDC through `0xFF40 = 0x91`;
 - the PPU completed at least one frame.
 
 Checkpoint meaning:
@@ -230,3 +230,11 @@ PC -> USB-Blaster -> Virtual JTAG -> SDRAM -> CPU -> VRAM -> PPU -> framebuffer 
 The result is not yet a commercial game, but it proves that a project-owned
 no-MBC ROM loaded from the host can execute from SDRAM and produce a real VGA
 image through the hardware CPU/PPU path.
+
+Follow-up refinement:
+
+The first version used `0xFF80` as a debug start marker for the renderer. The
+follow-up build removed that dependency: `sdram_video_rom_top` now starts the
+PPU from the normal LCDC enable signal, and `minimal_visual.gb` no longer writes
+to `0xFF80`. Hardware validation kept the same VGA result and all four summary
+LEDs on, proving that the visible path now starts from `LCDC = 0x91`.

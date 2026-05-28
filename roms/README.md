@@ -42,7 +42,7 @@ Purpose:
 - writes tile 0, tile 1, and a 32x32 background map in VRAM;
 - writes an alternating first tile row to the background map;
 - configures `BGP = 0xFC`, `SCY = 1`, `SCX = 8`, and `LCDC = 0x91`;
-- writes `0x01` to `0xFF80` to start the current PPU renderer in
+- starts video through the normal LCDC enable path used by
   `sdram_video_rom_top`.
 
 Recommended validation commands:

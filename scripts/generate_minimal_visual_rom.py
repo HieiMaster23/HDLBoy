@@ -117,7 +117,6 @@ def build_program() -> bytes:
     append_io_write(program, 0xFF42, 0x01)  # SCY = 1.
     append_io_write(program, 0xFF43, 0x08)  # SCX = 8.
     append_io_write(program, 0xFF40, 0x91)  # LCDC on, BG on, unsigned tile data.
-    append_io_write(program, 0xFF80, 0x01)  # Start the current renderer.
     program.extend([0x18, 0xFE])            # JR $.
 
     return bytes(program)

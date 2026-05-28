@@ -3203,7 +3203,7 @@ Comportamento da ROM:
 - limpa a background map `0x9800..0x9BFF`;
 - escreve a primeira linha alternando tile 1 e tile 0;
 - configura `BGP = 0xFC`, `SCY = 1`, `SCX = 8` e `LCDC = 0x91`;
-- escreve `0x01` em `0xFF80` para liberar o renderer atual;
+- inicia video pelo caminho normal de `LCDC`, sem depender de `0xFF80`;
 - estaciona em `JR $`.
 
 Validacao executada:
@@ -3211,7 +3211,7 @@ Validacao executada:
 - `python scripts\generate_minimal_visual_rom.py` gerou uma ROM de 32 KiB;
 - `vsim -c -do run_cpu_minimal_visual_rom.do` passou;
 - o testbench confirmou writes de VRAM, conteudo final do tile map, registradores
-  `BGP/SCY/SCX/LCDC` e o marcador `0xFF80 = 0x01`;
+  `BGP/SCY/SCX/LCDC` e a escrita final de `LCDC = 0x91`;
 - `quartus_stp -t scripts\load_rom_virtual_jtag.tcl --dry-run --max-bytes 32
   roms\minimal_visual.gb` passou;
 - `quartus_stp -t scripts\load_rom_virtual_jtag.tcl --dry-run
@@ -3272,7 +3272,7 @@ Significado dos 4 LEDs acesos neste top:
 
 - SDRAM inicializada;
 - loader finalizado;
-- CPU escreveu o marcador de start em `0xFF80`;
+- CPU habilitou LCDC pelo registrador `0xFF40`;
 - PPU concluiu ao menos um frame.
 
 Leitura do checkpoint:
@@ -3291,3 +3291,38 @@ controlada. A proxima etapa recomendada e aproximar essa ROM minima de um
 ambiente de jogo simples: remover dependencias de debug quando possivel,
 confirmar interrupcoes/VBlank usadas por jogos reais e entao tentar uma ROM
 no-MBC pequena com comportamento mais proximo de software comercial.
+
+## 43. Remocao do start de video por debug `0xFF80`
+
+Depois da primeira validacao visual, removemos a dependencia artificial do
+marcador de debug `0xFF80` para iniciar o renderer no top SDRAM/video.
+
+Alteracao aplicada:
+
+- `sdram_video_rom_top` passa `ppu_lcd_enable` diretamente para a entrada
+  `start` do `ppu_background_renderer`;
+- o LED de resumo que antes indicava `0xFF80` agora indica `LCDC(7)`;
+- `roms/minimal_visual.gb` foi regenerada sem escrita em `0xFF80`;
+- `tb_cpu_minimal_visual_rom` agora valida a escrita final de `LCDC = 0x91`.
+
+Validacao executada:
+
+- `python scripts\generate_minimal_visual_rom.py`;
+- `vsim -c -do run_cpu_minimal_visual_rom.do`;
+- dry-run completo do loader para `roms\minimal_visual.gb`;
+- `quartus_sh -t scripts\build_sdram_video_rom.tcl`;
+- programacao da FPGA pelo USB-Blaster;
+- carga completa da ROM pela Virtual JTAG.
+
+Resultado em hardware:
+
+- status final do loader: `0x94`;
+- os 4 LEDs permaneceram acesos;
+- a imagem VGA permaneceu igual ao checkpoint anterior.
+
+Leitura tecnica:
+
+Esse ajuste aproxima o top de um comportamento esperado por software real. A
+ROM minima ainda e controlada, mas agora ela nao precisa conhecer um registrador
+de debug fora do Game Boy para iniciar video; basta configurar `LCDC`, como um
+programa real faria.
